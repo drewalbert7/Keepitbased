@@ -1,0 +1,22 @@
+{
+  "version": "1.0",
+  "created": "2025-09-07T01:14:34.806Z",
+  "encrypted_keys": {
+    "KRAKEN_API_KEY": {
+      "encrypted": "0dcd21915c8b51e707d808b76699dd54:fb098f6cf03def1a3bbf47d4716ac3f7fe6e7923cdb768c0c67d9d64936f1b338e67060d4c74ebfe1d182581a354f98b58b6cc74888eb2e56c3f39471b7df533",
+      "created": "2025-09-07T01:14:34.813Z",
+      "lastUsed": null,
+      "usageCount": 0
+    },
+    "KRAKEN_API_SECRET": {
+      "encrypted": "4c4a9fee60c79b967a6bfe53913bd3ba:9436e7458e0b039bdba61aa2bdbb3d17ed1b7046db31f45bae59411cadc0b0b86c65b681c95a002c5d05485e9fff49ea7e9f329b5c540350ac83cbdfd155c1f2799057c27fa6cb86f358fc697358a1cdbad68c06479669e1fb4ec65f187fbac2",
+      "created": "2025-09-07T01:14:34.814Z",
+      "lastUsed": null,
+      "usageCount": 0
+    }
+  },
+  "metadata": {
+    "lastUpdated": "2025-09-07T01:14:34.814Z",
+    "keyCount": 2
+  }
+}

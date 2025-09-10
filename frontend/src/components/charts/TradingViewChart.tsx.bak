@@ -1,0 +1,269 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { createChart } from 'lightweight-charts';
+
+interface ChartData {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+interface TradingViewChartProps {
+  data: ChartData[];
+  symbol: string;
+  height?: number;
+  showVolume?: boolean;
+  showIndicators?: boolean;
+}
+
+export const TradingViewChart: React.FC<TradingViewChartProps> = ({
+  data,
+  symbol,
+  height = 600,
+  showVolume = true,
+  showIndicators = true
+}) => {
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<any>(null);
+  const candlestickSeriesRef = useRef<any>(null);
+  const volumeSeriesRef = useRef<any>(null);
+  const sma20SeriesRef = useRef<any>(null);
+  const sma50SeriesRef = useRef<any>(null);
+  
+  const [isLoading, setIsLoading] = useState(false);
+  const [chartType, setChartType] = useState<'candlestick' | 'line'>('candlestick');
+
+  useEffect(() => {
+    if (!chartContainerRef.current || data.length === 0) return;
+
+    setIsLoading(true);
+
+    // Create chart with TradingView-like styling
+    const chart = createChart(chartContainerRef.current, {
+      width: chartContainerRef.current.clientWidth,
+      height: showVolume ? height * 0.7 : height,
+      layout: {
+        background: { color: '#131722' },
+        textColor: '#d1d4dc',
+      },
+      grid: {
+        vertLines: { color: '#2B2B43' },
+        horzLines: { color: '#2B2B43' },
+      },
+      crosshair: {
+        mode: 1,
+      },
+      rightPriceScale: {
+        borderColor: '#485c7b',
+      },
+      timeScale: {
+        borderColor: '#485c7b',
+        timeVisible: true,
+        secondsVisible: false,
+      },
+    });
+
+    // Create candlestick series
+    const candlestickSeries = chart.addCandlestickSeries({
+      upColor: '#26a69a',
+      downColor: '#ef5350',
+      borderVisible: false,
+      wickUpColor: '#26a69a',
+      wickDownColor: '#ef5350',
+    });
+
+    // Calculate and add moving averages if indicators are enabled
+    let sma20Series: any = null;
+    let sma50Series: any = null;
+
+    if (showIndicators) {
+      sma20Series = chart.addLineSeries({
+        color: '#2196F3',
+        lineWidth: 2,
+      });
+
+      sma50Series = chart.addLineSeries({
+        color: '#FF9800',
+        lineWidth: 2,
+      });
+
+      // Calculate simple moving averages
+      const sma20Data = calculateSMA(data, 20);
+      const sma50Data = calculateSMA(data, 50);
+
+      sma20Series.setData(sma20Data);
+      sma50Series.setData(sma50Data);
+
+      sma20SeriesRef.current = sma20Series;
+      sma50SeriesRef.current = sma50Series;
+    }
+
+    // Create volume chart if enabled
+    let volumeSeries: any = null;
+    if (showVolume) {
+      const volumeChart = createChart(chartContainerRef.current, {
+        width: chartContainerRef.current.clientWidth,
+        height: height * 0.3,
+        layout: {
+          background: { color: '#131722' },
+          textColor: '#d1d4dc',
+        },
+        grid: {
+          vertLines: { color: '#2B2B43' },
+          horzLines: { color: '#2B2B43' },
+        },
+        rightPriceScale: {
+          borderColor: '#485c7b',
+        },
+        timeScale: {
+          borderColor: '#485c7b',
+          visible: false,
+        },
+      });
+
+      volumeSeries = volumeChart.addHistogramSeries({
+        color: '#26a69a',
+        priceFormat: {
+          type: 'volume',
+        },
+      });
+
+      const volumeData = data.map(item => ({
+        time: item.time,
+        value: item.volume,
+        color: item.close >= item.open ? '#26a69a' : '#ef5350'
+      }));
+
+      volumeSeries.setData(volumeData);
+      volumeSeriesRef.current = volumeSeries;
+    }
+
+    // Set main chart data
+    const candlestickData = data.map(item => ({
+      time: item.time,
+      open: item.open,
+      high: item.high,
+      low: item.low,
+      close: item.close,
+    }));
+
+    candlestickSeries.setData(candlestickData);
+
+    // Fit content
+    chart.timeScale().fitContent();
+
+    // Store refs
+    chartRef.current = chart;
+    candlestickSeriesRef.current = candlestickSeries;
+
+    setIsLoading(false);
+
+    // Handle resize
+    const handleResize = () => {
+      if (chartContainerRef.current) {
+        chart.applyOptions({ 
+          width: chartContainerRef.current.clientWidth 
+        });
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      chart.remove();
+    };
+  }, [data, showVolume, showIndicators, height]);
+
+  const calculateSMA = (data: ChartData[], period: number) => {
+    const smaData = [];
+    for (let i = period - 1; i < data.length; i++) {
+      const sum = data.slice(i - period + 1, i + 1).reduce((acc, item) => acc + item.close, 0);
+      const average = sum / period;
+      smaData.push({
+        time: data[i].time,
+        value: average
+      });
+    }
+    return smaData;
+  };
+
+  const toggleChartType = () => {
+    setChartType(prev => prev === 'candlestick' ? 'line' : 'candlestick');
+  };
+
+  return (
+    <div className="w-full bg-gray-900 rounded-lg overflow-hidden">
+      {/* Chart Header */}
+      <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
+        <div className="flex items-center space-x-4">
+          <h2 className="text-xl font-semibold text-white">{symbol}</h2>
+          {data.length > 0 && (
+            <div className="flex items-center space-x-2 text-sm">
+              <span className="text-gray-300">Close:</span>
+              <span className="text-white font-semibold">
+                ${data[data.length - 1]?.close.toFixed(2)}
+              </span>
+              <span 
+                className={`font-semibold ${
+                  data.length > 1 && data[data.length - 1]?.close >= data[data.length - 2]?.close
+                    ? 'text-green-400' 
+                    : 'text-red-400'
+                }`}
+              >
+                {data.length > 1 && (
+                  `${data[data.length - 1]?.close >= data[data.length - 2]?.close ? '+' : ''}${
+                    ((data[data.length - 1]?.close - data[data.length - 2]?.close) / data[data.length - 2]?.close * 100).toFixed(2)
+                  }%`
+                )}
+              </span>
+            </div>
+          )}
+        </div>
+        
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={toggleChartType}
+            className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+          >
+            {chartType === 'candlestick' ? 'Line' : 'Candlesticks'}
+          </button>
+          
+          <div className="flex items-center space-x-1">
+            <button className="px-2 py-1 text-xs bg-gray-700 text-white rounded hover:bg-gray-600">1D</button>
+            <button className="px-2 py-1 text-xs bg-gray-700 text-white rounded hover:bg-gray-600">1W</button>
+            <button className="px-2 py-1 text-xs bg-blue-600 text-white rounded">1M</button>
+            <button className="px-2 py-1 text-xs bg-gray-700 text-white rounded hover:bg-gray-600">3M</button>
+            <button className="px-2 py-1 text-xs bg-gray-700 text-white rounded hover:bg-gray-600">1Y</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Chart Container */}
+      <div className="relative">
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-75 z-10">
+            <div className="text-white">Loading chart...</div>
+          </div>
+        )}
+        <div ref={chartContainerRef} style={{ height: `${height}px` }} />
+      </div>
+
+      {/* Chart Legend */}
+      {showIndicators && (
+        <div className="flex items-center space-x-4 p-2 bg-gray-800 text-xs">
+          <div className="flex items-center space-x-1">
+            <div className="w-3 h-0.5 bg-blue-500"></div>
+            <span className="text-blue-400">SMA(20)</span>
+          </div>
+          <div className="flex items-center space-x-1">
+            <div className="w-3 h-0.5 bg-orange-500"></div>
+            <span className="text-orange-400">SMA(50)</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

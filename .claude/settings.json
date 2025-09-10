@@ -1,0 +1,28 @@
+{
+  "allowedSudoCommands": [
+    "systemctl start nginx",
+    "systemctl stop nginx",
+    "systemctl restart nginx",
+    "systemctl reload nginx",
+    "systemctl status nginx",
+    "systemctl start pm2-dstrad",
+    "systemctl stop pm2-dstrad", 
+    "systemctl restart pm2-dstrad",
+    "systemctl status pm2-dstrad",
+    "ufw allow 80",
+    "ufw allow 443",
+    "ufw allow 3000",
+    "ufw allow 8080",
+    "ufw status",
+    "lsof -i :80",
+    "lsof -i :443",
+    "lsof -i :3000",
+    "lsof -i :8080",
+    "netstat -tlnp",
+    "chown dstrad:dstrad /var/log/keepitbased.log",
+    "chmod 644 /var/log/keepitbased.log",
+    "tail -f /var/log/keepitbased.log",
+    "journalctl -u nginx -f",
+    "journalctl -u pm2-dstrad -f"
+  ]
+}
