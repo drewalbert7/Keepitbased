@@ -90,17 +90,24 @@ export interface CryptoSpread {
   timestamp: string;
 }
 
-// Kraken interval mapping (minutes)
+// Kraken interval mapping (minutes) - TradingView compatible
 export const KRAKEN_INTERVALS = {
   '1m': 1,
+  '3m': 3,
   '5m': 5,
   '15m': 15,
   '30m': 30,
   '1h': 60,
+  '2h': 120,
   '4h': 240,
+  '6h': 360,
+  '8h': 480,
+  '12h': 720,
   '1d': 1440,
+  '3d': 4320,
   '1w': 10080,
-  '15d': 21600
+  '2w': 20160,
+  '1M': 43200 // Monthly (approximately 30 days)
 } as const;
 
 export const POPULAR_CRYPTO_PAIRS = [
@@ -156,13 +163,26 @@ export const getCryptoOHLC = async (
   interval: keyof typeof KRAKEN_INTERVALS = '1h',
   since?: number
 ): Promise<CryptoOHLC> => {
+  const limit = calculateCandleCount(interval);
+  
   const response = await cryptoApi.get(`/ohlc/${pair}`, {
     params: { 
       interval: KRAKEN_INTERVALS[interval],
+      limit,
       ...(since && { since })
     }
   });
-  return response.data;
+  
+  // Convert timestamps from seconds to milliseconds for chart compatibility
+  const processedData = response.data.data.map((candle: CryptoCandle) => ({
+    ...candle,
+    time: candle.time * 1000 // Convert to milliseconds
+  }));
+  
+  return {
+    ...response.data,
+    data: processedData
+  };
 };
 
 // Get recent trades for a pair
@@ -250,36 +270,50 @@ export const formatCryptoVolume = (volume: number): string => {
   return volume.toFixed(2);
 };
 
-// Get interval label for display
+// Get interval label for display (TradingView style)
 export const getIntervalLabel = (interval: keyof typeof KRAKEN_INTERVALS): string => {
   const labels: Record<keyof typeof KRAKEN_INTERVALS, string> = {
-    '1m': '1 Min',
-    '5m': '5 Min',
-    '15m': '15 Min',
-    '30m': '30 Min',
-    '1h': '1 Hour',
-    '4h': '4 Hours',
-    '1d': '1 Day',
-    '1w': '1 Week',
-    '15d': '15 Days'
+    '1m': '1',
+    '3m': '3',
+    '5m': '5',
+    '15m': '15',
+    '30m': '30',
+    '1h': '60',
+    '2h': '120',
+    '4h': '240',
+    '6h': '360',
+    '8h': '480',
+    '12h': '720',
+    '1d': 'D',
+    '3d': '3D',
+    '1w': 'W',
+    '2w': '2W',
+    '1M': 'M'
   };
   
   return labels[interval];
 };
 
-// Calculate number of candles to fetch based on interval
+// Calculate number of candles to fetch based on interval (TradingView style)
 export const calculateCandleCount = (interval: keyof typeof KRAKEN_INTERVALS): number => {
   // Return appropriate number of candles for different intervals
   const counts: Record<keyof typeof KRAKEN_INTERVALS, number> = {
-    '1m': 200,   // ~3.3 hours
-    '5m': 200,   // ~16.7 hours
-    '15m': 200,  // ~50 hours
-    '30m': 200,  // ~100 hours
-    '1h': 200,   // ~8.3 days
-    '4h': 200,   // ~33 days
-    '1d': 365,   // ~1 year
-    '1w': 104,   // ~2 years
-    '15d': 52    // ~2 years
+    '1m': 1440,  // 24 hours of 1-minute candles
+    '3m': 480,   // 24 hours of 3-minute candles
+    '5m': 288,   // 24 hours of 5-minute candles
+    '15m': 96,   // 24 hours of 15-minute candles
+    '30m': 48,   // 24 hours of 30-minute candles
+    '1h': 168,   // 7 days of 1-hour candles
+    '2h': 84,   // 7 days of 2-hour candles
+    '4h': 42,   // 7 days of 4-hour candles
+    '6h': 28,   // 7 days of 6-hour candles
+    '8h': 21,   // 7 days of 8-hour candles
+    '12h': 14,  // 7 days of 12-hour candles
+    '1d': 365,  // 1 year of daily candles
+    '3d': 122,  // 1 year of 3-day candles
+    '1w': 52,   // 1 year of weekly candles
+    '2w': 26,   // 1 year of bi-weekly candles
+    '1M': 12    // 1 year of monthly candles
   };
   
   return counts[interval];

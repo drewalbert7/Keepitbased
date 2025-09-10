@@ -1,0 +1,36 @@
+2025-09-10 04:05:26,247 - __main__ - ERROR - Failed to initialize Kraken APIs: KrakenApi.__init__() got an unexpected keyword argument 'key'
+2025-09-10 04:05:26,247 - __main__ - ERROR - Error in main: KrakenApi.__init__() got an unexpected keyword argument 'key'
+2025-09-10 04:07:04,565 - __main__ - INFO - Successfully initialized Kraken API clients
+2025-09-10 04:07:04,565 - __main__ - ERROR - Health check failed: 'KrakenApi' object has no attribute 'get_server_time'
+2025-09-10 04:11:33,138 - __main__ - INFO - Successfully initialized Kraken API clients
+2025-09-10 04:11:33,416 - __main__ - INFO - Retrieved ticker for XXBTZUSD: 111434.6
+2025-09-10 04:11:33,417 - __main__ - INFO - Health check completed successfully
+2025-09-10 04:11:33,469 - __main__ - INFO - Retrieved 504 USD trading pairs
+2025-09-10 04:11:33,588 - __main__ - INFO - Retrieved ticker for XXBTZUSD: 111434.6
+2025-09-10 04:11:33,588 - __main__ - ERROR - Error getting OHLC data for XXBTZUSD: 'KrakenApi' object has no attribute 'get_ohlc_data'
+2025-09-10 04:11:33,708 - __main__ - INFO - Retrieved ticker for XXBTZUSD: 111434.6
+2025-09-10 04:11:33,708 - __main__ - ERROR - Error getting OHLC data for XXBTZUSD: 'KrakenApi' object has no attribute 'get_ohlc_data'
+2025-09-10 04:11:33,708 - __main__ - ERROR - Error getting OHLC data for XXBTZUSD: 'KrakenApi' object has no attribute 'get_ohlc_data'
+2025-09-10 04:11:33,708 - __main__ - ERROR - Error getting order book for XXBTZUSD: 'KrakenApi' object has no attribute 'get_order_book'
+2025-09-10 04:11:33,708 - __main__ - ERROR - Error getting recent trades for XXBTZUSD: 'KrakenApi' object has no attribute 'get_recent_trades'
+2025-09-10 04:11:33,708 - __main__ - INFO - Generated market summary for XXBTZUSD
+2025-09-10 04:13:36,842 - kraken_api_provider - INFO - Successfully initialized Kraken API clients
+2025-09-10 04:13:36,842 - __main__ - INFO - Kraken provider initialized successfully
+2025-09-10 04:13:36,846 - __main__ - INFO - Starting Flask API server on port 5001
+2025-09-10 04:13:36,846 - __main__ - INFO - Debug mode: False
+2025-09-10 04:13:36,846 - __main__ - INFO - Kraken provider initialized: True
+2025-09-10 04:13:36,848 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5001
+ * Running on http://178.156.206.27:5001
+2025-09-10 04:13:36,848 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-09-10 04:16:02,411 - kraken_api_provider - INFO - Retrieved ticker for XXBTZUSD: 111473.2
+2025-09-10 04:16:02,411 - kraken_api_provider - INFO - Health check completed successfully
+2025-09-10 04:16:02,412 - werkzeug - INFO - 127.0.0.1 - - [10/Sep/2025 04:16:02] "GET /api/health HTTP/1.1" 200 -
+2025-09-10 04:16:28,066 - kraken_api_provider - INFO - Retrieved 504 USD trading pairs
+2025-09-10 04:16:28,071 - werkzeug - INFO - 127.0.0.1 - - [10/Sep/2025 04:16:28] "GET /api/crypto/pairs HTTP/1.1" 200 -
+2025-09-10 04:16:52,395 - kraken_api_provider - INFO - Retrieved ticker for XXBTZUSD: 111473.2
+2025-09-10 04:16:52,395 - werkzeug - INFO - 127.0.0.1 - - [10/Sep/2025 04:16:52] "GET /api/crypto/ticker/XXBTZUSD HTTP/1.1" 200 -
+2025-09-10 04:19:14,177 - werkzeug - INFO - 127.0.0.1 - - [10/Sep/2025 04:19:14] "[33mGET /stock/AAPL/history?period=1y&interval=1d HTTP/1.1[0m" 404 -
+2025-09-10 04:19:14,178 - werkzeug - INFO - 127.0.0.1 - - [10/Sep/2025 04:19:14] "[33mGET /stock/AAPL/quote HTTP/1.1[0m" 404 -
+2025-09-10 04:19:14,179 - werkzeug - INFO - 127.0.0.1 - - [10/Sep/2025 04:19:14] "[33mGET /stock/AAPL/info HTTP/1.1[0m" 404 -

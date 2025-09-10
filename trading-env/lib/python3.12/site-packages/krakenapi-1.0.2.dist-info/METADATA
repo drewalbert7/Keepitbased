@@ -1,0 +1,78 @@
+Metadata-Version: 2.1
+Name: krakenapi
+Version: 1.0.2
+Summary: Python library for Kraken API.
+Home-page: https://github.com/FuturBroke/kraken-api
+Download-URL: https://github.com/FuturBroke/kraken-api
+Author: Avel Docquin
+Author-email: adocquin@outlook.com
+Maintainer: Avel Docquin
+Maintainer-email: adocquin@outlook.com
+License: GPL-3.0
+Keywords: python,kraken,api,interface
+Platform: Linux
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Information Technology
+Classifier: License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)
+Classifier: Natural Language :: English
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Software Development
+Classifier: Topic :: Utilities
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Provides-Extra: all
+Requires-Dist: attrs ; extra == 'all'
+Requires-Dist: freezegun ; extra == 'all'
+Requires-Dist: idna ; extra == 'all'
+Requires-Dist: iniconfig ; extra == 'all'
+Requires-Dist: multidict ; extra == 'all'
+Requires-Dist: packaging ; extra == 'all'
+Requires-Dist: pip ; extra == 'all'
+Requires-Dist: pluggy ; extra == 'all'
+Requires-Dist: py ; extra == 'all'
+Requires-Dist: pyparsing ; extra == 'all'
+Requires-Dist: pytest ; extra == 'all'
+Requires-Dist: python-dateutil ; extra == 'all'
+Requires-Dist: PyYAML ; extra == 'all'
+Requires-Dist: setuptools ; extra == 'all'
+Requires-Dist: six ; extra == 'all'
+Requires-Dist: toml ; extra == 'all'
+Requires-Dist: vcrpy ; extra == 'all'
+Requires-Dist: wrapt ; extra == 'all'
+Requires-Dist: yarl ; extra == 'all'
+
+# Kraken API
+Python interface library for Kraken API.
+
+## Documentation
+Package documentation is available at this address:
+https://adocquin.github.io/kraken-api/
+
+## Where to get it
+The source code is currently hosted on GitHub at: https://github.com/adocquin/kraken-api
+
+Binary installers for the latest released version are available at the Python Package Index (PyPI):
+```sh
+pip install krakenapi
+```
+
+## Installation from sources
+In the base directory execute:
+```sh
+pip install .
+```
+
+## License
+[GPL-3.0](https://github.com/FuturBroke/kraken-api/blob/main/LICENSE)
+
+## How to contribute
+Thanks for your interest in contributing to the project. You can contribute freely by creating an issue, fork or create 
+a pull request. Before issuing a pull request, make sure the changes did not break any existing functionality by 
+running unit tests in the base directory:
+```sh
+pytest
+```

@@ -39,18 +39,18 @@ const HomePage: React.FC = () => {
               </Link>
             </div>
             <div className="flex items-center space-x-4">
-              <Link
-                to="/login"
+              <a
+                href="https://app.keepitbased.com/login"
                 className="text-robinhood-gray-600 hover:text-robinhood-gray-900 font-medium transition-colors duration-200"
               >
                 Sign In
-              </Link>
-              <Link
-                to="/register"
+              </a>
+              <a
+                href="https://app.keepitbased.com/register"
                 className="bg-robinhood-green hover:bg-green-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200"
               >
                 Get Started
-              </Link>
+              </a>
             </div>
           </div>
         </nav>
@@ -74,18 +74,18 @@ const HomePage: React.FC = () => {
                   </p>
                   <div className="mt-8 sm:max-w-lg sm:mx-auto sm:text-center lg:text-left">
                     <div className="flex flex-col sm:flex-row gap-4">
-                      <Link 
-                        to="/register"
+                      <a 
+                        href="https://app.keepitbased.com/register"
                         className="btn-primary text-center text-lg py-4 px-8 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
                       >
                         Start Investing Smarter
-                      </Link>
-                      <Link
-                        to="/charts"
+                      </a>
+                      <a
+                        href="https://app.keepitbased.com/charts"
                         className="btn-secondary text-center text-lg py-4 px-8 hover:shadow-lg transform hover:scale-105 transition-all duration-200"
                       >
                         View Charts
-                      </Link>
+                      </a>
                     </div>
                     <p className="mt-4 text-sm text-robinhood-gray-500">
                       Free forever. No hidden fees. No commitments.
@@ -380,12 +380,12 @@ const HomePage: React.FC = () => {
             Join thousands of investors who never miss a buying opportunity
           </p>
           <div className="mt-10">
-            <Link
-              to="/register"
+            <a
+              href="https://app.keepitbased.com/register"
               className="bg-white text-robinhood-green font-bold text-lg py-4 px-10 rounded-xl hover:bg-green-50 transition-colors duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 inline-block"
             >
               Get Started Free
-            </Link>
+            </a>
           </div>
           <p className="mt-6 text-sm text-green-100">
             No credit card required • Free forever • Cancel anytime
@@ -400,9 +400,9 @@ const HomePage: React.FC = () => {
             <div>
               <h3 className="font-bold text-lg mb-4">Product</h3>
               <ul className="space-y-2 text-robinhood-gray-400">
-                <li><Link to="/charts" className="hover:text-white transition-colors">Charts</Link></li>
-                <li><Link to="/register" className="hover:text-white transition-colors">Alerts</Link></li>
-                <li><Link to="/register" className="hover:text-white transition-colors">Portfolio</Link></li>
+                <li><a href="https://app.keepitbased.com/charts" className="hover:text-white transition-colors">Charts</a></li>
+                <li><a href="https://app.keepitbased.com/alerts" className="hover:text-white transition-colors">Alerts</a></li>
+                <li><a href="https://app.keepitbased.com/portfolio" className="hover:text-white transition-colors">Portfolio</a></li>
               </ul>
             </div>
             <div>

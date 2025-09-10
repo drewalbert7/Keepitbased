@@ -41,14 +41,22 @@ export const CryptoPage: React.FC = () => {
   });
 
   const intervalOptions = [
-    { value: '1m' as const, label: '1M' },
-    { value: '5m' as const, label: '5M' },
-    { value: '15m' as const, label: '15M' },
-    { value: '30m' as const, label: '30M' },
-    { value: '1h' as const, label: '1H' },
-    { value: '4h' as const, label: '4H' },
-    { value: '1d' as const, label: '1D' },
-    { value: '1w' as const, label: '1W' }
+    { value: '1m' as const, label: '1m' },
+    { value: '3m' as const, label: '3m' },
+    { value: '5m' as const, label: '5m' },
+    { value: '15m' as const, label: '15m' },
+    { value: '30m' as const, label: '30m' },
+    { value: '1h' as const, label: '1h' },
+    { value: '2h' as const, label: '2h' },
+    { value: '4h' as const, label: '4h' },
+    { value: '6h' as const, label: '6h' },
+    { value: '8h' as const, label: '8h' },
+    { value: '12h' as const, label: '12h' },
+    { value: '1d' as const, label: '1d' },
+    { value: '3d' as const, label: '3d' },
+    { value: '1w' as const, label: '1w' },
+    { value: '2w' as const, label: '2w' },
+    { value: '1M' as const, label: '1M' }
   ];
 
   const loadCryptoData = async (pair: string, newInterval?: keyof typeof KRAKEN_INTERVALS) => {

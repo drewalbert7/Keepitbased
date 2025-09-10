@@ -135,7 +135,7 @@ router.get('/ticker/:pair', async (req, res) => {
 router.get('/ohlc/:pair', async (req, res) => {
   try {
     const { pair } = req.params;
-    const { interval = 60, since } = req.query; // Default to 1-hour intervals
+    const { interval = 60, since, limit } = req.query; // Default to 1-hour intervals
     
     const params = { pair, interval };
     if (since) params.since = since;
@@ -149,8 +149,9 @@ router.get('/ohlc/:pair', async (req, res) => {
     const ohlcArray = Object.values(response.data.result)[0];
     const lastId = response.data.result.last;
     
-    const chartData = ohlcArray.map(candle => ({
-      time: parseInt(candle[0]), // Unix timestamp
+    // Process and limit data if requested
+    let processedData = ohlcArray.map(candle => ({
+      time: parseInt(candle[0]), // Unix timestamp in seconds
       open: parseFloat(candle[1]),
       high: parseFloat(candle[2]),
       low: parseFloat(candle[3]),
@@ -160,11 +161,21 @@ router.get('/ohlc/:pair', async (req, res) => {
       trades: parseInt(candle[7])
     }));
     
+    // Apply limit if specified (most recent candles)
+    if (limit && parseInt(limit) > 0) {
+      const limitNum = parseInt(limit);
+      processedData = processedData.slice(-limitNum);
+    }
+    
+    // Sort by time to ensure chronological order
+    processedData.sort((a, b) => a.time - b.time);
+    
     res.json({
       symbol: pair,
-      data: chartData,
+      data: processedData,
       interval: parseInt(interval),
       lastId,
+      count: processedData.length,
       timestamp: new Date().toISOString()
     });
   } catch (error) {

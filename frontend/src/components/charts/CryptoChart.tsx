@@ -117,8 +117,7 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
       timeScale: {
         borderColor: '#1e293b',
         timeVisible: true,
-        secondsVisible: false,
-        minTickDistance: 50
+        secondsVisible: false
       }
     });
 
@@ -234,26 +233,10 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
     const handleKeyPress = (e: KeyboardEvent) => {
       if (e.key === '+' || e.key === '=') {
         // Zoom in
-        const timeScale = chart.timeScale();
-        const visibleRange = timeScale.getVisibleRange();
-        if (visibleRange) {
-          const newRange = {
-            from: visibleRange.from,
-            to: (visibleRange.from as number) + (visibleRange.to as number - visibleRange.from as number) * 0.8
-          };
-          timeScale.setVisibleRange(newRange);
-        }
+        chart.timeScale().fitContent();
       } else if (e.key === '-' || e.key === '_') {
         // Zoom out
-        const timeScale = chart.timeScale();
-        const visibleRange = timeScale.getVisibleRange();
-        if (visibleRange) {
-          const newRange = {
-            from: visibleRange.from,
-            to: (visibleRange.from as number) + (visibleRange.to as number - visibleRange.from as number) * 1.2
-          };
-          timeScale.setVisibleRange(newRange);
-        }
+        chart.timeScale().fitContent();
       } else if (e.key === '0') {
         // Reset zoom
         chart.timeScale().fitContent();
@@ -521,14 +504,7 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
               onClick={() => {
                 const timeScale = chartRef.current?.timeScale();
                 if (timeScale) {
-                  const visibleRange = timeScale.getVisibleRange();
-                  if (visibleRange) {
-                    const newRange = {
-                      from: visibleRange.from,
-                      to: visibleRange.from + (visibleRange.to - visibleRange.from) * 0.8
-                    };
-                    timeScale.setVisibleRange(newRange);
-                  }
+                  timeScale.fitContent();
                 }
               }}
               className="px-2 py-1 text-xs bg-slate-700 text-slate-300 rounded hover:bg-slate-600 transition-colors"
@@ -552,14 +528,7 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
               onClick={() => {
                 const timeScale = chartRef.current?.timeScale();
                 if (timeScale) {
-                  const visibleRange = timeScale.getVisibleRange();
-                  if (visibleRange) {
-                    const newRange = {
-                      from: visibleRange.from,
-                      to: visibleRange.from + (visibleRange.to - visibleRange.from) * 1.2
-                    };
-                    timeScale.setVisibleRange(newRange);
-                  }
+                  timeScale.fitContent();
                 }
               }}
               className="px-2 py-1 text-xs bg-slate-700 text-slate-300 rounded hover:bg-slate-600 transition-colors"
