@@ -411,4 +411,34 @@ router.get('/health', async (req, res) => {
   }
 });
 
+// Direct Kraken API proxy for better CORS handling
+router.all('/proxy/*', async (req, res) => {
+  try {
+    const targetPath = req.path.replace('/api/crypto/proxy/', '');
+    const targetUrl = `${KRAKEN_API_URL}/${targetPath}`;
+    
+    console.log(`Proxying request to: ${targetUrl}`);
+    
+    const response = await axios({
+      method: req.method,
+      url: targetUrl,
+      params: req.query,
+      data: req.body,
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'KeepItBased/1.0'
+      },
+      timeout: 30000
+    });
+    
+    res.json(response.data);
+  } catch (error) {
+    logger.error('Kraken API proxy error:', error.message);
+    res.status(error.response?.status || 500).json({
+      error: 'Proxy request failed',
+      message: error.message
+    });
+  }
+});
+
 module.exports = router;

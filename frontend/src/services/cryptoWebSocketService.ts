@@ -47,8 +47,13 @@ export class CryptoWebSocketService {
   private reconnectInterval = 5000; // 5 seconds
   private isManuallyDisconnected = false;
   private pingInterval: NodeJS.Timeout | null = null;
+  private connectionTimeout: NodeJS.Timeout | null = null;
+  private heartbeatInterval: NodeJS.Timeout | null = null;
+  private lastHeartbeat = 0;
 
   private readonly WS_URL = 'wss://ws.kraken.com';
+  private readonly CONNECTION_TIMEOUT = 10000; // 10 seconds
+  private readonly HEARTBEAT_INTERVAL = 30000; // 30 seconds
 
   constructor(callbacks?: CryptoWebSocketCallbacks) {
     this.callbacks = callbacks || {};
@@ -72,8 +77,23 @@ export class CryptoWebSocketService {
     this.isManuallyDisconnected = false;
     console.log(`Connecting to Kraken WebSocket at ${this.WS_URL}...`);
     
+    // Clear any existing timeouts
+    if (this.connectionTimeout) {
+      clearTimeout(this.connectionTimeout);
+    }
+    
     try {
       this.ws = new WebSocket(this.WS_URL);
+      
+      // Set connection timeout
+      this.connectionTimeout = setTimeout(() => {
+        if (this.ws && this.ws.readyState !== WebSocket.OPEN) {
+          console.error('WebSocket connection timeout');
+          this.ws.close();
+          this.handleConnectionError(new Error('Connection timeout'));
+        }
+      }, this.CONNECTION_TIMEOUT);
+      
     } catch (error) {
       console.error('Failed to create WebSocket:', error);
       this.handleConnectionError(error as Error);
@@ -83,10 +103,21 @@ export class CryptoWebSocketService {
     this.ws.onopen = () => {
       console.log('✅ Kraken WebSocket connected successfully');
       this.reconnectAttempts = 0;
+      this.lastHeartbeat = Date.now();
+      
+      // Clear connection timeout
+      if (this.connectionTimeout) {
+        clearTimeout(this.connectionTimeout);
+        this.connectionTimeout = null;
+      }
+      
       this.callbacks.onConnect?.();
       
       // Start ping interval to keep connection alive
       this.startPingInterval();
+      
+      // Start heartbeat monitoring
+      this.startHeartbeatMonitoring();
       
       // Resubscribe to any previous subscriptions
       this.resubscribe();
@@ -131,7 +162,15 @@ export class CryptoWebSocketService {
 
   disconnect(): void {
     this.isManuallyDisconnected = true;
+    
+    // Clear all timeouts and intervals
     this.stopPingInterval();
+    this.stopHeartbeatMonitoring();
+    
+    if (this.connectionTimeout) {
+      clearTimeout(this.connectionTimeout);
+      this.connectionTimeout = null;
+    }
     
     if (this.ws) {
       this.ws.close();
@@ -144,6 +183,27 @@ export class CryptoWebSocketService {
   private handleConnectionError(error: Error): void {
     console.error('WebSocket connection error:', error);
     this.callbacks.onError?.(error);
+  }
+
+  private startHeartbeatMonitoring(): void {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+    }
+    
+    this.heartbeatInterval = setInterval(() => {
+      const now = Date.now();
+      if (now - this.lastHeartbeat > this.HEARTBEAT_INTERVAL * 2) {
+        console.warn('WebSocket heartbeat timeout, reconnecting...');
+        this.reconnect();
+      }
+    }, this.HEARTBEAT_INTERVAL);
+  }
+
+  private stopHeartbeatMonitoring(): void {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
   }
 
   private reconnect(): void {
@@ -190,6 +250,9 @@ export class CryptoWebSocketService {
   }
 
   private handleMessage(data: any): void {
+    // Update heartbeat timestamp
+    this.lastHeartbeat = Date.now();
+
     // Handle system status messages
     if (data.event === 'systemStatus') {
       console.log(`🔍 Kraken system status: ${data.status} - ${data.version || 'Unknown version'}`);
@@ -297,11 +360,18 @@ export class CryptoWebSocketService {
     this.callbacks.onBook?.(book);
   }
 
-  // Subscribe to ticker updates
+  // Subscribe to ticker updates (limit to 10 pairs to avoid disconnects)
   subscribeTicker(pairs: string[]): void {
+    // Limit pairs to prevent connection issues
+    const limitedPairs = pairs.slice(0, 10);
+    
+    if (limitedPairs.length !== pairs.length) {
+      console.warn(`Limited ticker subscription from ${pairs.length} to ${limitedPairs.length} pairs to avoid disconnects`);
+    }
+    
     const subscription = JSON.stringify({
       event: 'subscribe',
-      pair: pairs,
+      pair: limitedPairs,
       subscription: { name: 'ticker' }
     });
 
