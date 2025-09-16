@@ -52,6 +52,15 @@ export class CryptoWebSocketService {
 
   constructor(callbacks?: CryptoWebSocketCallbacks) {
     this.callbacks = callbacks || {};
+    
+    // Add default error handler if none provided
+    if (!this.callbacks.onError) {
+      this.callbacks.onError = (error: Error) => {
+        console.error('WebSocket error:', error);
+        // Attempt to reconnect automatically
+        this.handleConnectionError(error);
+      };
+    }
   }
 
   connect(): void {
@@ -61,10 +70,18 @@ export class CryptoWebSocketService {
     }
 
     this.isManuallyDisconnected = false;
-    this.ws = new WebSocket(this.WS_URL);
+    console.log(`Connecting to Kraken WebSocket at ${this.WS_URL}...`);
+    
+    try {
+      this.ws = new WebSocket(this.WS_URL);
+    } catch (error) {
+      console.error('Failed to create WebSocket:', error);
+      this.handleConnectionError(error as Error);
+      return;
+    }
 
     this.ws.onopen = () => {
-      console.log('Kraken WebSocket connected');
+      console.log('✅ Kraken WebSocket connected successfully');
       this.reconnectAttempts = 0;
       this.callbacks.onConnect?.();
       
@@ -86,19 +103,29 @@ export class CryptoWebSocketService {
     };
 
     this.ws.onclose = (event) => {
-      console.log('Kraken WebSocket disconnected:', event.code, event.reason);
+      console.log(`❌ Kraken WebSocket disconnected: Code ${event.code}, Reason: ${event.reason || 'Unknown'}`);
       this.stopPingInterval();
       this.callbacks.onDisconnect?.();
       
+      // Log specific close codes for debugging
+      if (event.code === 1006) {
+        console.error('WebSocket connection was closed abnormally');
+      } else if (event.code === 1000) {
+        console.log('WebSocket closed normally');
+      }
+      
       if (!this.isManuallyDisconnected && this.reconnectAttempts < this.maxReconnectAttempts) {
+        console.log('🔄 Will attempt to reconnect...');
         this.reconnect();
+      } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+        console.error('❌ Max reconnection attempts reached');
       }
     };
 
     this.ws.onerror = (event) => {
-      console.error('Kraken WebSocket error:', event);
-      const error = new Error('WebSocket connection error');
-      this.callbacks.onError?.(error);
+      console.error('❌ Kraken WebSocket error:', event);
+      const error = new Error(`WebSocket connection error: ${event.message || 'Unknown error'}`);
+      this.handleConnectionError(error);
     };
   }
 
@@ -114,13 +141,26 @@ export class CryptoWebSocketService {
     this.subscriptions.clear();
   }
 
+  private handleConnectionError(error: Error): void {
+    console.error('WebSocket connection error:', error);
+    this.callbacks.onError?.(error);
+  }
+
   private reconnect(): void {
     this.reconnectAttempts++;
     console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
     
+    // Exponential backoff
+    const backoffTime = Math.min(
+      this.reconnectInterval * Math.pow(2, this.reconnectAttempts - 1),
+      30000 // Max 30 seconds
+    );
+    
+    console.log(`Reconnecting in ${backoffTime}ms...`);
+    
     setTimeout(() => {
       this.connect();
-    }, this.reconnectInterval);
+    }, backoffTime);
   }
 
   private startPingInterval(): void {
@@ -152,13 +192,17 @@ export class CryptoWebSocketService {
   private handleMessage(data: any): void {
     // Handle system status messages
     if (data.event === 'systemStatus') {
-      console.log('Kraken system status:', data);
+      console.log(`🔍 Kraken system status: ${data.status} - ${data.version || 'Unknown version'}`);
       return;
     }
 
     // Handle subscription status
     if (data.event === 'subscriptionStatus') {
-      console.log('Subscription status:', data);
+      const status = data.status === 'subscribed' ? '✅' : data.status === 'error' ? '❌' : '⏳';
+      console.log(`${status} Subscription ${data.status}: ${data.pair} (${data.subscription?.name || 'Unknown'})`);
+      if (data.status === 'error') {
+        console.error('Subscription error:', data.errorMessage || data.reqid);
+      }
       return;
     }
 
