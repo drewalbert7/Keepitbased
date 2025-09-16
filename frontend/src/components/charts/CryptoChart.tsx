@@ -50,7 +50,7 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
     for (let i = 19; i < data.length; i++) {
       const sum = data.slice(i - 19, i + 1).reduce((acc, candle) => acc + candle.close, 0);
       sma20.push({
-        time: data[i].time as any,
+        time: data[i].time as any, // Convert to proper Time type
         value: sum / 20
       });
     }
@@ -59,7 +59,7 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
     for (let i = 49; i < data.length; i++) {
       const sum = data.slice(i - 49, i + 1).reduce((acc, candle) => acc + candle.close, 0);
       sma50.push({
-        time: data[i].time as any,
+        time: data[i].time as any, // Convert to proper Time type
         value: sum / 50
       });
     }
@@ -117,7 +117,38 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
       timeScale: {
         borderColor: '#1e293b',
         timeVisible: true,
-        secondsVisible: false
+        secondsVisible: false,
+        fixLeftEdge: true,
+        fixRightEdge: true,
+        lockVisibleTimeRangeOnResize: true,
+        rightOffset: 0,
+        minBarSpacing: 0.5,
+        tickMarkFormatter: (time: number) => {
+          const date = new Date(time); // Now expecting milliseconds directly
+          const now = new Date();
+          const isToday = date.toDateString() === now.toDateString();
+          const isThisYear = date.getFullYear() === now.getFullYear();
+          
+          if (isToday) {
+            return date.toLocaleTimeString('en-US', { 
+              hour: '2-digit',
+              minute: '2-digit'
+            });
+          } else if (isThisYear) {
+            return date.toLocaleDateString('en-US', { 
+              month: 'short', 
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            });
+          } else {
+            return date.toLocaleDateString('en-US', { 
+              year: 'numeric',
+              month: 'short', 
+              day: 'numeric'
+            });
+          }
+        }
       }
     });
 
@@ -333,7 +364,7 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
     if (!data.length || !chartRef.current || !candlestickSeriesRef.current) return;
 
     const candlestickData: CandlestickData[] = data.map(candle => ({
-      time: candle.time as any,
+      time: candle.time as any, // Convert to proper Time type
       open: candle.open,
       high: candle.high,
       low: candle.low,
@@ -346,7 +377,7 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
     // Update volume series if it exists and is enabled
     if (volumeSeriesRef.current && showVolume) {
       const volumeData: HistogramData[] = data.map(candle => ({
-        time: candle.time as any,
+        time: candle.time, // Now expecting milliseconds
         value: candle.volume,
         color: candle.close >= candle.open ? '#10b981' : '#ef4444'
       }));
@@ -367,14 +398,27 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
     const timeScale = chartRef.current.timeScale();
     const barSpacing = getOptimalBarSpacing(data.length, interval);
     
+    // Calculate visible range based on data
+    const visibleRange = data.length > 0 ? {
+      from: data[0].time - 3600, // Add 1 hour padding before
+      to: data[data.length - 1].time + 3600 // Add 1 hour padding after
+    } : null;
+    
     timeScale.applyOptions({
       barSpacing: barSpacing,
       fixLeftEdge: true,
-      lockVisibleTimeRangeOnResize: true
+      fixRightEdge: true,
+      lockVisibleTimeRangeOnResize: true,
+      rightOffset: 10,
+      minBarSpacing: 0.5
     });
 
-    // Fit content to visible area
-    timeScale.fitContent();
+    // Set visible range if we have data
+    if (visibleRange) {
+      timeScale.setVisibleRange(visibleRange);
+    } else {
+      timeScale.fitContent();
+    }
   }, [data, technicalData, interval]); // Added interval to dependencies
 
   // Update chart size and handle responsive behavior
@@ -396,23 +440,33 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
 
   // Helper function to calculate optimal bar spacing based on data points and timeframe
   const getOptimalBarSpacing = (dataLength: number, interval: string): number => {
-    const baseWidth = Math.max(chartContainerRef.current?.clientWidth || 800, 400);
-    const targetBars = Math.min(200, Math.max(50, dataLength));
-    const spacing = baseWidth / targetBars;
+    if (!chartContainerRef.current) return 2;
     
-    // Adjust spacing based on timeframe
+    const baseWidth = chartContainerRef.current.clientWidth;
+    const targetBars = Math.min(150, Math.max(30, dataLength));
+    const spacing = Math.max(baseWidth / targetBars, 1);
+    
+    // Adjust spacing based on timeframe (smaller intervals = closer spacing)
     const timeframeMultiplier: Record<string, number> = {
-      '1m': 0.5,
+      '1m': 0.3,
+      '3m': 0.5,
       '5m': 0.7,
-      '15m': 0.9,
-      '30m': 1.1,
-      '1h': 1.3,
-      '4h': 1.5,
-      '1d': 2.0,
-      '1w': 3.0
+      '15m': 1.0,
+      '30m': 1.2,
+      '1h': 1.5,
+      '2h': 2.0,
+      '4h': 2.5,
+      '6h': 3.0,
+      '12h': 4.0,
+      '1d': 6.0,
+      '3d': 8.0,
+      '1w': 12.0,
+      '2w': 16.0,
+      '1M': 20.0
     };
     
-    return Math.max(spacing * (timeframeMultiplier[interval] || 1), 1);
+    const adjustedSpacing = spacing * (timeframeMultiplier[interval] || 1.0);
+    return Math.min(Math.max(adjustedSpacing, 0.5), 50); // Clamp between 0.5 and 50
   };
 
   const getCurrentPrice = () => {
