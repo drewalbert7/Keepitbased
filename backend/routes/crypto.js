@@ -151,7 +151,7 @@ router.get('/ohlc/:pair', async (req, res) => {
     
     // Process and limit data if requested
     let processedData = ohlcArray.map(candle => ({
-      time: parseInt(candle[0]), // Unix timestamp in seconds
+      time: parseInt(candle[0]) * 1000, // Convert seconds to milliseconds
       open: parseFloat(candle[1]),
       high: parseFloat(candle[2]),
       low: parseFloat(candle[3]),
@@ -208,7 +208,7 @@ router.get('/trades/:pair', async (req, res) => {
     const formattedTrades = trades.map(trade => ({
       price: parseFloat(trade[0]),
       volume: parseFloat(trade[1]),
-      time: parseFloat(trade[2]),
+      time: parseFloat(trade[2]) * 1000, // Convert seconds to milliseconds
       side: trade[3], // 'b' = buy, 's' = sell
       type: trade[4], // 'm' = market, 'l' = limit
       misc: trade[5]
@@ -248,7 +248,7 @@ router.get('/orderbook/:pair', async (req, res) => {
     const formatOrders = (orders) => orders.map(order => ({
       price: parseFloat(order[0]),
       volume: parseFloat(order[1]),
-      timestamp: parseInt(order[2])
+      timestamp: parseInt(order[2]) * 1000 // Convert seconds to milliseconds
     }));
     
     res.json({
@@ -285,7 +285,7 @@ router.get('/spread/:pair', async (req, res) => {
     const lastId = response.data.result.last;
     
     const formattedSpreads = spreads.map(spread => ({
-      time: parseInt(spread[0]),
+      time: parseInt(spread[0]) * 1000, // Convert seconds to milliseconds
       bid: parseFloat(spread[1]),
       ask: parseFloat(spread[2])
     }));

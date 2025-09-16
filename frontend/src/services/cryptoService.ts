@@ -110,6 +110,23 @@ export const KRAKEN_INTERVALS = {
   '1M': 43200 // Monthly (approximately 30 days)
 } as const;
 
+// Pair mapping for Kraken API (frontend display name → Kraken API name)
+export const PAIR_MAPPING: Record<string, string> = {
+  'BTC/USD': 'XXBTZUSD',
+  'ETH/USD': 'XETHZUSD',
+  'ADA/USD': 'ADAUSD',
+  'SOL/USD': 'SOLUSD',
+  'DOT/USD': 'DOTUSD',
+  'LINK/USD': 'LINKUSD',
+  'MATIC/USD': 'MATICUSD',
+  'AVAX/USD': 'AVAXUSD',
+  'ATOM/USD': 'ATOMUSD',
+  'ALGO/USD': 'ALGOUSD',
+  // Add reverse mapping for display
+  'XXBTZUSD': 'BTC/USD',
+  'XETHZUSD': 'ETH/USD'
+};
+
 export const POPULAR_CRYPTO_PAIRS = [
   'XXBTZUSD', // Bitcoin/USD
   'XETHZUSD', // Ethereum/USD
@@ -173,10 +190,10 @@ export const getCryptoOHLC = async (
     }
   });
   
-  // Convert timestamps from seconds to milliseconds for chart compatibility
+  // Data is already in milliseconds from backend, no conversion needed
   const processedData = response.data.data.map((candle: CryptoCandle) => ({
     ...candle,
-    time: candle.time * 1000 // Convert to milliseconds
+    time: candle.time // Use milliseconds directly
   }));
   
   return {
@@ -226,23 +243,14 @@ export const checkCryptoServiceHealth = async () => {
 
 // Utility functions
 
-// Format crypto pair name for display
+// Convert display pair name to Kraken API pair name
+export const toKrakenPair = (displayPair: string): string => {
+  return PAIR_MAPPING[displayPair] || displayPair;
+};
+
+// Convert Kraken API pair name to display name
 export const formatPairName = (pair: string): string => {
-  // Convert Kraken pair names to readable format
-  const conversions: Record<string, string> = {
-    'XXBTZUSD': 'BTC/USD',
-    'XETHZUSD': 'ETH/USD',
-    'ADAUSD': 'ADA/USD',
-    'SOLUSD': 'SOL/USD',
-    'DOTUSD': 'DOT/USD',
-    'LINKUSD': 'LINK/USD',
-    'MATICUSD': 'MATIC/USD',
-    'AVAXUSD': 'AVAX/USD',
-    'ATOMUSD': 'ATOM/USD',
-    'ALGOUSD': 'ALGO/USD'
-  };
-  
-  return conversions[pair] || pair;
+  return PAIR_MAPPING[pair] || pair;
 };
 
 // Format crypto price with appropriate decimals

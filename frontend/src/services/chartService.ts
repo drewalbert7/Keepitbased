@@ -134,9 +134,9 @@ export const checkChartServiceHealth = async () => {
   return response.data;
 };
 
-// Utility function to format timestamp for charts
+// Utility function to format timestamp for charts (expects milliseconds)
 export const formatTimestamp = (timestamp: number): string => {
-  return new Date(timestamp * 1000).toLocaleDateString();
+  return new Date(timestamp).toLocaleDateString();
 };
 
 // Utility function to format currency
