@@ -44,16 +44,29 @@ export class CryptoWebSocketService {
   private subscriptions: Set<string> = new Set();
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 10;
-  private reconnectInterval = 5000; // 5 seconds
+  private reconnectInterval = 2000; // 2 seconds base
   private isManuallyDisconnected = false;
   private pingInterval: NodeJS.Timeout | null = null;
   private connectionTimeout: NodeJS.Timeout | null = null;
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private lastHeartbeat = 0;
+  private lastMessageTime = 0;
+  private messageRate = 0;
+  private messageCount = 0;
+  private lastRateReset = 0;
+  private connectionPromise: Promise<void> | null = null;
+  private pendingSubscriptions: Array<{type: string, pairs: string[], options?: any}> = [];
+  private isRateLimited = false;
+  private rateLimitReset = 0;
 
   private readonly WS_URL = 'wss://ws.kraken.com';
   private readonly CONNECTION_TIMEOUT = 10000; // 10 seconds
   private readonly HEARTBEAT_INTERVAL = 30000; // 30 seconds
+  private readonly MAX_MESSAGE_RATE = 50; // messages per second (more conservative)
+  private readonly BACKOFF_MULTIPLIER = 1.3;
+  private readonly MAX_BACKOFF = 30000; // 30 seconds max backoff
+  private readonly RATE_LIMIT_THRESHOLD = 40; // Start rate limiting at 40 msg/sec
+  private readonly RATE_LIMIT_COOLDOWN = 5000; // 5 seconds cooldown
 
   constructor(callbacks?: CryptoWebSocketCallbacks) {
     this.callbacks = callbacks || {};
@@ -68,10 +81,15 @@ export class CryptoWebSocketService {
     }
   }
 
-  connect(): void {
+  async connect(): Promise<void> {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       console.log('WebSocket already connected');
       return;
+    }
+
+    // If there's already a connection attempt in progress, wait for it
+    if (this.connectionPromise) {
+      return this.connectionPromise;
     }
 
     this.isManuallyDisconnected = false;
@@ -82,33 +100,52 @@ export class CryptoWebSocketService {
       clearTimeout(this.connectionTimeout);
     }
     
+    this.connectionPromise = new Promise<void>((resolve, reject) => {
+      try {
+        this.ws = new WebSocket(this.WS_URL);
+        
+        // Set connection timeout
+        this.connectionTimeout = setTimeout(() => {
+          if (this.ws && this.ws.readyState !== WebSocket.OPEN) {
+            console.error('WebSocket connection timeout');
+            this.ws.close();
+            this.handleConnectionError(new Error('Connection timeout'));
+            reject(new Error('Connection timeout'));
+          }
+        }, this.CONNECTION_TIMEOUT);
+        
+        // Store resolve/reject for connection completion
+        (this.ws as any)._resolve = resolve;
+        (this.ws as any)._reject = reject;
+        
+      } catch (error) {
+        console.error('Failed to create WebSocket:', error);
+        this.handleConnectionError(error as Error);
+        reject(error);
+      }
+    });
+
     try {
-      this.ws = new WebSocket(this.WS_URL);
-      
-      // Set connection timeout
-      this.connectionTimeout = setTimeout(() => {
-        if (this.ws && this.ws.readyState !== WebSocket.OPEN) {
-          console.error('WebSocket connection timeout');
-          this.ws.close();
-          this.handleConnectionError(new Error('Connection timeout'));
-        }
-      }, this.CONNECTION_TIMEOUT);
-      
-    } catch (error) {
-      console.error('Failed to create WebSocket:', error);
-      this.handleConnectionError(error as Error);
-      return;
+      await this.connectionPromise;
+    } finally {
+      this.connectionPromise = null;
     }
+  }
 
     this.ws.onopen = () => {
       console.log('✅ Kraken WebSocket connected successfully');
-      this.reconnectAttempts = 0;
-      this.lastHeartbeat = Date.now();
+      this.resetConnectionState();
       
       // Clear connection timeout
       if (this.connectionTimeout) {
         clearTimeout(this.connectionTimeout);
         this.connectionTimeout = null;
+      }
+      
+      // Resolve connection promise
+      if ((this.ws as any)._resolve) {
+        (this.ws as any)._resolve();
+        delete (this.ws as any)._resolve;
       }
       
       this.callbacks.onConnect?.();
@@ -119,12 +156,19 @@ export class CryptoWebSocketService {
       // Start heartbeat monitoring
       this.startHeartbeatMonitoring();
       
-      // Resubscribe to any previous subscriptions
-      this.resubscribe();
+      // Resubscribe to any previous subscriptions with delay to avoid overwhelming
+      setTimeout(() => {
+        this.resubscribe();
+        this.processPendingSubscriptions();
+      }, 1000);
     };
 
     this.ws.onmessage = (event) => {
       try {
+        // Update message tracking
+        this.lastMessageTime = Date.now();
+        this.updateMessageRate();
+        
         const data = JSON.parse(event.data);
         this.handleMessage(data);
       } catch (error) {
@@ -155,7 +199,14 @@ export class CryptoWebSocketService {
 
     this.ws.onerror = (event) => {
       console.error('❌ Kraken WebSocket error:', event);
-      const error = new Error(`WebSocket connection error: ${event.message || 'Unknown error'}`);
+      const error = new Error(`WebSocket connection error: ${event instanceof ErrorEvent ? event.message : 'Unknown error'}`);
+      
+      // Reject connection promise if it exists
+      if ((this.ws as any)._reject) {
+        (this.ws as any)._reject(error);
+        delete (this.ws as any)._reject;
+      }
+      
       this.handleConnectionError(error);
     };
   }
@@ -192,8 +243,18 @@ export class CryptoWebSocketService {
     
     this.heartbeatInterval = setInterval(() => {
       const now = Date.now();
-      if (now - this.lastHeartbeat > this.HEARTBEAT_INTERVAL * 2) {
+      const timeSinceLastHeartbeat = now - this.lastHeartbeat;
+      const timeSinceLastMessage = now - this.lastMessageTime;
+      
+      // Check for heartbeat timeout
+      if (timeSinceLastHeartbeat > this.HEARTBEAT_INTERVAL * 2) {
         console.warn('WebSocket heartbeat timeout, reconnecting...');
+        this.reconnect();
+      }
+      
+      // Check for message timeout (more aggressive check)
+      if (timeSinceLastMessage > this.HEARTBEAT_INTERVAL * 3) {
+        console.warn('WebSocket message timeout, reconnecting...');
         this.reconnect();
       }
     }, this.HEARTBEAT_INTERVAL);
@@ -206,21 +267,64 @@ export class CryptoWebSocketService {
     }
   }
 
+  private updateMessageRate(): void {
+    const now = Date.now();
+    this.messageCount++;
+    
+    // Reset rate counter every second
+    if (now - this.lastRateReset >= 1000) {
+      this.messageRate = this.messageCount;
+      this.messageCount = 0;
+      this.lastRateReset = now;
+      
+      // Implement rate limiting
+      if (this.messageRate > this.RATE_LIMIT_THRESHOLD) {
+        if (!this.isRateLimited) {
+          this.isRateLimited = true;
+          this.rateLimitReset = now + this.RATE_LIMIT_COOLDOWN;
+          console.warn(`Rate limiting activated: ${this.messageRate} messages/sec`);
+        }
+      } else if (this.isRateLimited && now > this.rateLimitReset) {
+        this.isRateLimited = false;
+        console.log('Rate limiting deactivated');
+      }
+      
+      // Warn if message rate is too high
+      if (this.messageRate > this.MAX_MESSAGE_RATE) {
+        console.warn(`High message rate detected: ${this.messageRate} messages/sec`);
+      }
+    }
+  }
+
   private reconnect(): void {
     this.reconnectAttempts++;
-    console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
     
-    // Exponential backoff
-    const backoffTime = Math.min(
-      this.reconnectInterval * Math.pow(2, this.reconnectAttempts - 1),
-      30000 // Max 30 seconds
-    );
+    // Calculate exponential backoff with jitter
+    const baseDelay = this.reconnectInterval * Math.pow(this.BACKOFF_MULTIPLIER, this.reconnectAttempts - 1);
+    const jitter = Math.random() * 1000; // Add up to 1 second of jitter
+    const backoffTime = Math.min(baseDelay + jitter, this.MAX_BACKOFF);
     
-    console.log(`Reconnecting in ${backoffTime}ms...`);
+    console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts}) in ${Math.round(backoffTime)}ms`);
+    
+    // Implement circuit breaker pattern
+    if (this.reconnectAttempts > this.maxReconnectAttempts / 2) {
+      console.warn(`High reconnection attempts detected. Current backoff: ${Math.round(backoffTime)}ms`);
+    }
     
     setTimeout(() => {
-      this.connect();
+      if (!this.isManuallyDisconnected) {
+        this.connect();
+      }
     }, backoffTime);
+  }
+
+  private resetConnectionState(): void {
+    this.reconnectAttempts = 0;
+    this.lastHeartbeat = Date.now();
+    this.lastMessageTime = Date.now();
+    this.messageRate = 0;
+    this.messageCount = 0;
+    this.lastRateReset = Date.now();
   }
 
   private startPingInterval(): void {
@@ -279,12 +383,18 @@ export class CryptoWebSocketService {
       return;
     }
 
-    // Handle channel data
+    // Handle channel data with rate limiting
     if (Array.isArray(data) && data.length >= 4) {
       const channelID = data[0];
       const messageData = data[1];
       const channelName = data[2];
       const symbol = data[3];
+
+      // Implement message rate limiting for high-frequency channels
+      if (channelName === 'trade' && this.messageRate > this.MAX_MESSAGE_RATE * 0.8) {
+        // Skip some trade updates if rate is too high
+        if (Math.random() > 0.3) return; // Only process 30% of trades when rate is high
+      }
 
       switch (channelName) {
         case 'ticker':
@@ -309,7 +419,10 @@ export class CryptoWebSocketService {
         case 'book-100':
         case 'book-500':
         case 'book-1000':
-          this.handleBookUpdate(symbol, messageData);
+          // Limit order book updates to prevent overwhelming
+          if (this.messageRate < this.MAX_MESSAGE_RATE * 0.6) {
+            this.handleBookUpdate(symbol, messageData);
+          }
           break;
       }
     }
@@ -360,10 +473,21 @@ export class CryptoWebSocketService {
     this.callbacks.onBook?.(book);
   }
 
-  // Subscribe to ticker updates (limit to 10 pairs to avoid disconnects)
-  subscribeTicker(pairs: string[]): void {
-    // Limit pairs to prevent connection issues
-    const limitedPairs = pairs.slice(0, 10);
+  // Subscribe to ticker updates with conservative limits
+  async subscribeTicker(pairs: string[]): Promise<void> {
+    // Ensure connection before subscribing
+    if (!this.isConnected()) {
+      try {
+        await this.connect();
+      } catch (error) {
+        console.error('Failed to connect for ticker subscription:', error);
+        this.pendingSubscriptions.push({ type: 'ticker', pairs });
+        return;
+      }
+    }
+
+    // Conservative limit to prevent connection issues
+    const limitedPairs = pairs.slice(0, 3);
     
     if (limitedPairs.length !== pairs.length) {
       console.warn(`Limited ticker subscription from ${pairs.length} to ${limitedPairs.length} pairs to avoid disconnects`);
@@ -378,30 +502,62 @@ export class CryptoWebSocketService {
     this.subscriptions.add(subscription);
     
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(subscription);
+      // Add delay before sending subscription to avoid overwhelming
+      setTimeout(() => {
+        if (this.ws?.readyState === WebSocket.OPEN) {
+          this.ws?.send(subscription);
+        }
+      }, 500);
     }
   }
 
-  // Subscribe to trade updates
+  // Subscribe to trade updates with limits
   subscribeTrades(pairs: string[]): void {
+    // Limit trade pairs to prevent flooding
+    const limitedPairs = pairs.slice(0, 3);
+    
+    if (limitedPairs.length !== pairs.length) {
+      console.warn(`Limited trade subscription from ${pairs.length} to ${limitedPairs.length} pairs`);
+    }
+    
     const subscription = JSON.stringify({
       event: 'subscribe',
-      pair: pairs,
+      pair: limitedPairs,
       subscription: { name: 'trade' }
     });
 
     this.subscriptions.add(subscription);
     
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(subscription);
+      setTimeout(() => {
+        this.ws?.send(subscription);
+      }, 1000);
     }
   }
 
-  // Subscribe to OHLC updates
-  subscribeOHLC(pairs: string[], interval: number = 60): void {
+  // Subscribe to OHLC updates with conservative approach
+  async subscribeOHLC(pairs: string[], interval: number = 60): Promise<void> {
+    // Ensure connection before subscribing
+    if (!this.isConnected()) {
+      try {
+        await this.connect();
+      } catch (error) {
+        console.error('Failed to connect for OHLC subscription:', error);
+        this.pendingSubscriptions.push({ type: 'ohlc', pairs, options: { interval } });
+        return;
+      }
+    }
+
+    // Limit OHLC pairs and be conservative
+    const limitedPairs = pairs.slice(0, 1);
+    
+    if (limitedPairs.length !== pairs.length) {
+      console.warn(`Limited OHLC subscription from ${pairs.length} to ${limitedPairs.length} pairs`);
+    }
+    
     const subscription = JSON.stringify({
       event: 'subscribe',
-      pair: pairs,
+      pair: limitedPairs,
       subscription: { 
         name: 'ohlc',
         interval: interval
@@ -411,25 +567,39 @@ export class CryptoWebSocketService {
     this.subscriptions.add(subscription);
     
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(subscription);
+      setTimeout(() => {
+        if (this.ws?.readyState === WebSocket.OPEN) {
+          this.ws?.send(subscription);
+        }
+      }, 1500);
     }
   }
 
-  // Subscribe to order book updates
+  // Subscribe to order book updates with very conservative limits
   subscribeOrderBook(pairs: string[], depth: number = 10): void {
+    // Very conservative limits for order book
+    const limitedPairs = pairs.slice(0, 1);
+    const limitedDepth = Math.min(depth, 10); // Max depth 10
+    
+    if (limitedPairs.length !== pairs.length) {
+      console.warn(`Limited order book subscription from ${pairs.length} to ${limitedPairs.length} pair`);
+    }
+    
     const subscription = JSON.stringify({
       event: 'subscribe',
-      pair: pairs,
+      pair: limitedPairs,
       subscription: { 
         name: 'book',
-        depth: depth
+        depth: limitedDepth
       }
     });
 
     this.subscriptions.add(subscription);
     
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(subscription);
+      setTimeout(() => {
+        this.ws?.send(subscription);
+      }, 2000);
     }
   }
 
@@ -483,6 +653,46 @@ export class CryptoWebSocketService {
   // Check if connected
   isConnected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN;
+  }
+
+  // Process pending subscriptions after connection
+  private processPendingSubscriptions(): void {
+    if (!this.pendingSubscriptions.length) return;
+
+    console.log(`Processing ${this.pendingSubscriptions.length} pending subscriptions`);
+    
+    const pending = [...this.pendingSubscriptions];
+    this.pendingSubscriptions = [];
+
+    // Process subscriptions with delays to avoid overwhelming
+    pending.forEach((sub, index) => {
+      setTimeout(() => {
+        switch (sub.type) {
+          case 'ticker':
+            this.subscribeTicker(sub.pairs);
+            break;
+          case 'ohlc':
+            this.subscribeOHLC(sub.pairs, sub.options?.interval);
+            break;
+          case 'trade':
+            this.subscribeTrades(sub.pairs);
+            break;
+        }
+      }, index * 1000); // 1 second delay between each subscription
+    });
+  }
+
+  // Check if currently rate limited
+  isRateLimited(): boolean {
+    if (this.isRateLimited && Date.now() > this.rateLimitReset) {
+      this.isRateLimited = false;
+    }
+    return this.isRateLimited;
+  }
+
+  // Get current message rate
+  getMessageRate(): number {
+    return this.messageRate;
   }
 }
 

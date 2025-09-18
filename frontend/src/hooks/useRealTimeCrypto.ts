@@ -16,6 +16,7 @@ interface RealTimeCryptoOptions {
 interface RealTimeCryptoState {
   tickers: Record<string, CryptoTicker>;
   trades: Record<string, any[]>;
+  ohlcData: Record<string, any>;
   connectionStatus: 'connecting' | 'open' | 'closing' | 'closed';
   isConnected: boolean;
   error: string | null;
@@ -29,13 +30,14 @@ export const useRealTimeCrypto = (options: RealTimeCryptoOptions) => {
     onOHLCUpdate,
     enableTicker = true,
     enableTrades = false,
-    enableOHLC = false,
+    enableOHLC = true, // Changed default to true
     ohlcInterval = '1h'
   } = options;
 
   const [state, setState] = useState<RealTimeCryptoState>({
     tickers: {},
     trades: {},
+    ohlcData: {},
     connectionStatus: 'closed',
     isConnected: false,
     error: null
@@ -110,6 +112,15 @@ export const useRealTimeCrypto = (options: RealTimeCryptoOptions) => {
       count: krakenOHLC.ohlc[8]
     };
 
+    // Store OHLC data in state for potential use
+    setState(prev => ({
+      ...prev,
+      ohlcData: {
+        ...prev.ohlcData,
+        [krakenOHLC.symbol]: ohlc
+      }
+    }));
+
     onOHLCUpdate?.(ohlc);
   }, [onOHLCUpdate]);
 
@@ -138,7 +149,7 @@ export const useRealTimeCrypto = (options: RealTimeCryptoOptions) => {
     }));
   }, []);
 
-  // Initialize WebSocket connection
+  // Initialize WebSocket connection with better error handling
   useEffect(() => {
     const wsService = wsServiceRef.current;
 
@@ -153,10 +164,23 @@ export const useRealTimeCrypto = (options: RealTimeCryptoOptions) => {
     };
 
     // Connect if not already connected
-    if (!wsService.isConnected()) {
-      setState(prev => ({ ...prev, connectionStatus: 'connecting' }));
-      wsService.connect();
-    }
+    const initializeConnection = async () => {
+      if (!wsService.isConnected()) {
+        setState(prev => ({ ...prev, connectionStatus: 'connecting' }));
+        try {
+          await wsService.connect();
+        } catch (error) {
+          console.error('Failed to connect to WebSocket:', error);
+          setState(prev => ({ 
+            ...prev, 
+            connectionStatus: 'closed',
+            error: 'Failed to connect to WebSocket'
+          }));
+        }
+      }
+    };
+
+    initializeConnection();
 
     return () => {
       // Don't disconnect on unmount as other components might be using it
@@ -164,54 +188,80 @@ export const useRealTimeCrypto = (options: RealTimeCryptoOptions) => {
     };
   }, [handleTickerUpdate, handleTradeUpdate, handleOHLCUpdate, handleConnect, handleDisconnect, handleError]);
 
-  // Subscribe/unsubscribe to pairs
+  // Subscribe/unsubscribe to pairs with better error handling
   useEffect(() => {
     if (!pairs.length) return;
 
     const wsService = wsServiceRef.current;
     const previousPairs = previousPairsRef.current;
 
-    // Wait for connection
-    const waitForConnection = () => {
+    // Wait for connection with timeout
+    const waitForConnection = async () => {
+      let attempts = 0;
+      const maxAttempts = 30; // 30 * 100ms = 3 seconds
+
+      while (!wsService.isConnected() && attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+      }
+
       if (!wsService.isConnected()) {
-        setTimeout(waitForConnection, 100);
+        console.warn('WebSocket not connected after timeout, skipping subscriptions');
         return;
       }
 
-      // Unsubscribe from previous pairs that are no longer needed
-      const pairsToUnsubscribe = previousPairs.filter(pair => !pairs.includes(pair));
-      if (pairsToUnsubscribe.length > 0) {
-        if (enableTicker) {
-          wsService.unsubscribe(pairsToUnsubscribe, 'ticker');
-        }
-        if (enableTrades) {
-          wsService.unsubscribe(pairsToUnsubscribe, 'trade');
-        }
-        if (enableOHLC) {
-          wsService.unsubscribe(pairsToUnsubscribe, 'ohlc', { interval: KRAKEN_INTERVALS[ohlcInterval] });
-        }
+      // Check rate limiting before subscribing
+      if (wsService.isRateLimited()) {
+        console.warn('WebSocket is rate limited, delaying subscriptions');
+        setTimeout(() => waitForConnection(), 5000);
+        return;
       }
 
-      // Subscribe to new pairs
-      const newPairs = pairs.filter(pair => !previousPairs.includes(pair));
-      if (newPairs.length > 0 || pairsToUnsubscribe.length > 0) {
-        const pairsToSubscribe = newPairs.length > 0 ? newPairs : pairs;
-        
-        if (enableTicker) {
-          wsService.subscribeTicker(pairsToSubscribe);
+      try {
+        // Unsubscribe from previous pairs that are no longer needed
+        const pairsToUnsubscribe = previousPairs.filter(pair => !pairs.includes(pair));
+        if (pairsToUnsubscribe.length > 0) {
+          if (enableTicker) {
+            wsService.unsubscribe(pairsToUnsubscribe, 'ticker');
+          }
+          if (enableTrades) {
+            wsService.unsubscribe(pairsToUnsubscribe, 'trade');
+          }
+          if (enableOHLC) {
+            wsService.unsubscribe(pairsToUnsubscribe, 'ohlc', { interval: KRAKEN_INTERVALS[ohlcInterval] });
+          }
         }
-        if (enableTrades) {
-          wsService.subscribeTrades(pairsToSubscribe);
-        }
-        if (enableOHLC) {
-          wsService.subscribeOHLC(pairsToSubscribe, KRAKEN_INTERVALS[ohlcInterval]);
-        }
-      }
 
-      previousPairsRef.current = [...pairs];
+        // Subscribe to new pairs with error handling
+        const newPairs = pairs.filter(pair => !previousPairs.includes(pair));
+        if (newPairs.length > 0 || pairsToUnsubscribe.length > 0) {
+          const pairsToSubscribe = newPairs.length > 0 ? newPairs : pairs;
+          
+          // Add delays between subscriptions to avoid overwhelming
+          if (enableTicker) {
+            await wsService.subscribeTicker(pairsToSubscribe);
+          }
+          if (enableTrades) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            await wsService.subscribeTrades(pairsToSubscribe);
+          }
+          if (enableOHLC) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            await wsService.subscribeOHLC(pairsToSubscribe, KRAKEN_INTERVALS[ohlcInterval]);
+          }
+        }
+
+        previousPairsRef.current = [...pairs];
+      } catch (error) {
+        console.error('Error managing WebSocket subscriptions:', error);
+        setState(prev => ({ 
+          ...prev, 
+          error: 'Failed to manage WebSocket subscriptions'
+        }));
+      }
     };
 
-    waitForConnection();
+    waitForConnection().catch(console.error);
   }, [pairs, enableTicker, enableTrades, enableOHLC, ohlcInterval]);
 
   // Update connection status
@@ -234,21 +284,40 @@ export const useRealTimeCrypto = (options: RealTimeCryptoOptions) => {
     return () => clearInterval(interval);
   }, []);
 
-  // Methods to control subscriptions
-  const subscribeTicker = useCallback((pairsToSubscribe: string[]) => {
-    wsServiceRef.current.subscribeTicker(pairsToSubscribe);
+  // Methods to control subscriptions with async support
+  const subscribeTicker = useCallback(async (pairsToSubscribe: string[]) => {
+    try {
+      await wsServiceRef.current.subscribeTicker(pairsToSubscribe);
+    } catch (error) {
+      console.error('Failed to subscribe to ticker:', error);
+      setState(prev => ({ ...prev, error: 'Failed to subscribe to ticker data' }));
+    }
   }, []);
 
-  const subscribeTrades = useCallback((pairsToSubscribe: string[]) => {
-    wsServiceRef.current.subscribeTrades(pairsToSubscribe);
+  const subscribeTrades = useCallback(async (pairsToSubscribe: string[]) => {
+    try {
+      await wsServiceRef.current.subscribeTrades(pairsToSubscribe);
+    } catch (error) {
+      console.error('Failed to subscribe to trades:', error);
+      setState(prev => ({ ...prev, error: 'Failed to subscribe to trade data' }));
+    }
   }, []);
 
-  const subscribeOHLC = useCallback((pairsToSubscribe: string[], interval?: number) => {
-    wsServiceRef.current.subscribeOHLC(pairsToSubscribe, interval);
+  const subscribeOHLC = useCallback(async (pairsToSubscribe: string[], interval?: number) => {
+    try {
+      await wsServiceRef.current.subscribeOHLC(pairsToSubscribe, interval);
+    } catch (error) {
+      console.error('Failed to subscribe to OHLC:', error);
+      setState(prev => ({ ...prev, error: 'Failed to subscribe to OHLC data' }));
+    }
   }, []);
 
   const unsubscribe = useCallback((pairsToUnsubscribe: string[], channelName: string, options?: any) => {
-    wsServiceRef.current.unsubscribe(pairsToUnsubscribe, channelName, options);
+    try {
+      wsServiceRef.current.unsubscribe(pairsToUnsubscribe, channelName, options);
+    } catch (error) {
+      console.error('Failed to unsubscribe:', error);
+    }
   }, []);
 
   return {

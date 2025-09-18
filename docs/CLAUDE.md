@@ -75,19 +75,86 @@ keepitbased/
    - Backend API: http://localhost:3001
    - Python Service: http://localhost:5001
 
-## Notes for Claude
-- Main entry point: `backend/server.js`
-- This is a financial/trading application with advanced charting capabilities
-- Python service provides superior stock data compared to Alpha Vantage
-- Charts use TradingView Lightweight Charts library for professional interface
-- Real-time price updates via Socket.IO integration
+## 🔰 Claude's Session Checklist - REVIEW AT START OF EACH SESSION
 
-## Common Issues & Fixes
+### **Session Start Protocol**
+1. **READ THIS CHECKLIST FIRST** - Review current status and priorities
+2. **Check last session notes** in the "Session Tracking" section below
+3. **Use TodoWrite tool** to create session-specific task list based on priorities
+4. **Focus on highest priority items** first
+
+### **Current Project Status & Priorities**
+
+#### **🟢 COMPLETED - Crypto Chart Optimization (Recent)**
+- ✅ WebSocket connection management improvements
+- ✅ Request queuing and rate limiting implemented  
+- ✅ Enhanced error handling and retry logic
+- ✅ Optimized chart data loading and caching
+- ✅ Fixed concurrent login ↔ chart data operation issues
+
+#### **🟡 IN PROGRESS - System Stability & Performance**
+- ⚠️ Monitor WebSocket connection stability under load
+- ⚠️ Test error recovery mechanisms
+- ⚠️ Verify rate limiting effectiveness
+
+#### **🔴 HIGH PRIORITY - Backend Service Health**
+- 🔴 **Python Service**: Check if running on port 5001 (yfinance stock data)
+- 🔴 **Backend API**: Verify port 3001 functionality
+- 🔴 **WebSocket**: Test real-time data connections
+- 🔴 **Database**: Check PostgreSQL connection and Redis cache
+
+#### **🟡 MEDIUM PRIORITY - Feature Development**
+- 🟡 Stock chart data integration with Python service
+- 🟡 Alert system implementation and testing
+- 🟡 User authentication flow optimization
+
+#### **🔵 LOW PRIORITY - Enhancement & Optimization**
+- 🔵 Performance monitoring and logging
+- 🔵 Additional technical indicators (RSI, MACD, Bollinger Bands)
+- 🔵 Mobile responsiveness improvements
+
+### **Session Tracking**
+```
+Session 1: ✅ Crypto chart data loading optimization completed
+Session 2: 🔳 [Next session objectives to be added here]
+Session 3: 🔳 [Future session objectives]
+```
+
+### **Key Technical Context for Claude**
+- **Main entry point**: `backend/server.js`
+- **Financial/trading application** with advanced charting capabilities
+- **Crypto data**: Kraken WebSocket API + REST fallback
+- **Stock data**: Python yfinance service (port 5001)
+- **Charts**: TradingView Lightweight Charts library
+- **Real-time updates**: Socket.IO + WebSocket integration
+- **Recent optimizations**: Rate limiting, request queuing, connection management
+
+### **Development Guidelines**
+- **ALWAYS use TodoWrite tool** for tracking session tasks
+- **Mark tasks in_progress** when starting work
+- **Mark tasks completed** immediately after finishing
+- **Update this checklist** after major milestones
+- **Add session notes** in tracking section for continuity
+
+### **Common Issues & Quick Fixes**
+- **403 Forbidden Errors**: Check `frontend/src/services/chartService.ts` API_BASE_URL
+- **WebSocket Failures**: Verify `cryptoWebSocketService.ts` connection management
+- **API Timeouts**: Check request queue in `cryptoService.ts`
+- **Concurrent Issues**: Verify rate limiting and connection promises
+- **Cache Problems**: Clear browser cache and check dataCache in CryptoPage
+
+## Common Issues & Fixes (Legacy)
 - **403 Forbidden Errors**: Check frontend API configuration in `frontend/src/services/chartService.ts`
   - Ensure `API_BASE_URL` uses empty string for proxy compatibility
   - Frontend proxy is configured in `frontend/package.json` as `"proxy": "http://localhost:3001"`
   - Frontend should use relative API paths (e.g., `/charts/history/AAPL`) not absolute paths
   - Fixed by changing `API_BASE_URL` from absolute URL to empty string: `const API_BASE_URL = process.env.REACT_APP_API_URL || '';`
+
+### **Post-Optimization Issues**
+- **Crypto chart loading failures**: Check WebSocket connection status and rate limiting
+- **Concurrent login/chart issues**: Verify request queue is functioning properly
+- **High message rate warnings**: Rate limiting is working as designed (40 msg/sec threshold)
+- **WebSocket reconnection failures**: Check exponential backoff and max retry settings
 
 ## API Configuration
 - **Frontend**: Uses proxy configuration for development, relative paths for API calls

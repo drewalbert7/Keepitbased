@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import CryptoChart from '../components/charts/CryptoChart';
 import CryptoSearch from '../components/charts/CryptoSearch';
 import { 
@@ -10,9 +10,12 @@ import {
   formatCryptoPrice,
   formatCryptoVolume,
   formatPairName,
-  getIntervalLabel 
+  getIntervalLabel,
+  TimeRange,
+  getTimeRangeLabel 
 } from '../services/cryptoService';
 import { useRealTimeCrypto } from '../hooks/useRealTimeCrypto';
+import { mergeChartData, formatWebSocketOHLC, validateChartData } from '../utils/chartDataUtils';
 import { toast } from 'react-hot-toast';
 
 export const CryptoPage: React.FC = () => {
@@ -20,10 +23,13 @@ export const CryptoPage: React.FC = () => {
   const [chartData, setChartData] = useState<CryptoCandle[]>([]);
   const [tickerData, setTickerData] = useState<CryptoTicker | null>(null);
   const [interval, setInterval] = useState<keyof typeof KRAKEN_INTERVALS>('1h');
+  const [timeRange, setTimeRange] = useState<TimeRange>('1M');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [showVolume, setShowVolume] = useState<boolean>(true);
   const [showIndicators, setShowIndicators] = useState<boolean>(true);
   const [crosshairData, setCrosshairData] = useState<any>(null);
+  const [lastDataUpdate, setLastDataUpdate] = useState<number>(Date.now());
+  const [dataCache, setDataCache] = useState<Map<string, CryptoCandle[]>>(new Map());
 
   // Real-time data
   const {
@@ -34,9 +40,21 @@ export const CryptoPage: React.FC = () => {
     getTicker
   } = useRealTimeCrypto({
     pairs: [selectedPair],
+    enableOHLC: true,
+    ohlcInterval: interval,
     onTickerUpdate: (ticker) => {
       // Update ticker data with real-time information
       setTickerData(prevTicker => prevTicker ? { ...prevTicker, ...ticker } : ticker);
+    },
+    onOHLCUpdate: (ohlcData) => {
+      // Handle real-time OHLC updates for live chart
+      if (ohlcData.symbol === selectedPair) {
+        const formattedOHLC = formatWebSocketOHLC(ohlcData);
+        setChartData(prevData => {
+          const mergedData = mergeChartData(prevData, formattedOHLC, KRAKEN_INTERVALS[interval], true);
+          return validateChartData(mergedData);
+        });
+      }
     }
   });
 
@@ -56,19 +74,62 @@ export const CryptoPage: React.FC = () => {
     { value: '3d' as const, label: '3d' },
     { value: '1w' as const, label: '1w' },
     { value: '2w' as const, label: '2w' },
-    { value: '1M' as const, label: '1M' }
+    { value: '1M' as const, label: '1M' },
   ];
 
-  const loadCryptoData = async (pair: string, newInterval?: keyof typeof KRAKEN_INTERVALS) => {
+  const timeRangeOptions = [
+    { value: '1D' as const, label: '1D' },
+    { value: '1W' as const, label: '1W' },
+    { value: '1M' as const, label: '1M' },
+    { value: '3M' as const, label: '3M' },
+    { value: '6M' as const, label: '6M' },
+    { value: '1Y' as const, label: '1Y' },
+    { value: 'ALL' as const, label: 'ALL' }
+  ];
+
+  const loadCryptoData = useCallback(async (pair: string, newInterval?: keyof typeof KRAKEN_INTERVALS, newTimeRange?: TimeRange, forceRefresh: boolean = false) => {
+    const actualInterval = newInterval || interval;
+    const actualTimeRange = newTimeRange || timeRange;
+    const cacheKey = `${pair}-${actualInterval}-${actualTimeRange}`;
+
+    // Check cache first with expiry
+    if (!forceRefresh && dataCache.has(cacheKey)) {
+      const cachedData = dataCache.get(cacheKey)!;
+      const cacheAge = Date.now() - lastDataUpdate;
+      const maxCacheAge = actualInterval === '1m' ? 30000 : 300000; // 30s for 1m, 5m for others
+      
+      if (cacheAge < maxCacheAge) {
+        setChartData(cachedData);
+        
+        if (newInterval) setInterval(newInterval);
+        if (newTimeRange) setTimeRange(newTimeRange);
+        
+        setLastDataUpdate(Date.now());
+        return;
+      }
+    }
+
     setIsLoading(true);
     try {
-      const actualInterval = newInterval || interval;
-
-      // Load OHLC data and ticker in parallel
+      // Load OHLC data and ticker with staggered timing to reduce server load
       const [ohlcData, ticker] = await Promise.all([
-        getCryptoOHLC(pair, actualInterval),
-        getCryptoTicker(pair).catch(() => null) // Ticker is optional
+        getCryptoOHLC(pair, actualInterval, undefined, actualTimeRange),
+        new Promise(resolve => setTimeout(resolve, 500)).then(() => 
+          getCryptoTicker(pair).catch(() => null)
+        ) // Ticker is optional, delayed by 500ms
       ]);
+
+      // Update cache with expiry tracking
+      setDataCache(prev => {
+        const newCache = new Map(prev);
+        newCache.set(cacheKey, ohlcData.data);
+        // Limit cache size to prevent memory issues
+        if (newCache.size > 15) {
+          const firstKey = newCache.keys().next().value;
+          newCache.delete(firstKey);
+        }
+        return newCache;
+      });
 
       setChartData(ohlcData.data);
       if (ticker) {
@@ -79,19 +140,31 @@ export const CryptoPage: React.FC = () => {
         setInterval(newInterval);
       }
       
-      toast.success(`Loaded ${formatPairName(pair)} data`);
+      if (newTimeRange) {
+        setTimeRange(newTimeRange);
+      }
+      
+      setLastDataUpdate(Date.now());
+      toast.success(`Loaded ${formatPairName(pair)} data - ${getTimeRangeLabel(actualTimeRange)}`);
       
     } catch (error) {
       console.error('Error loading crypto data:', error);
       toast.error(`Failed to load data for ${formatPairName(pair)}`);
+      
+      // Fallback to cached data if available
+      if (dataCache.has(cacheKey)) {
+        console.log('Using cached data as fallback');
+        setChartData(dataCache.get(cacheKey)!);
+        toast.info('Showing cached data while offline');
+      }
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [interval, timeRange, dataCache, lastDataUpdate]);
 
   useEffect(() => {
     loadCryptoData(selectedPair);
-  }, [selectedPair]);
+  }, [selectedPair, loadCryptoData]);
 
   const handlePairSelect = (pair: string) => {
     setSelectedPair(pair);
@@ -99,7 +172,26 @@ export const CryptoPage: React.FC = () => {
   };
 
   const handleIntervalChange = (newInterval: keyof typeof KRAKEN_INTERVALS) => {
+    // Debounce rapid interval changes
+    if (isLoading) return;
+    
+    // Clear existing data when changing intervals to avoid timestamp conflicts
+    setChartData([]);
     loadCryptoData(selectedPair, newInterval);
+  };
+
+  const handleTimeRangeChange = (newTimeRange: TimeRange) => {
+    // Debounce rapid time range changes
+    if (isLoading) return;
+    
+    // Clear existing data when changing time ranges
+    setChartData([]);
+    loadCryptoData(selectedPair, undefined, newTimeRange);
+  };
+
+  const handleRefresh = () => {
+    // Force refresh current data
+    loadCryptoData(selectedPair, undefined, undefined, true);
   };
 
   const handleCrosshairMove = (data: any) => {
@@ -122,13 +214,18 @@ export const CryptoPage: React.FC = () => {
           {/* Connection Status */}
           <div className="flex items-center space-x-2">
             <div className={`w-3 h-3 rounded-full ${
-              isConnected ? 'bg-robinhood-green' : 
+              isConnected ? 'bg-robinhood-green animate-pulse' : 
               connectionStatus === 'connecting' ? 'bg-yellow-500' : 'bg-robinhood-red'
             }`} />
             <span className="text-sm text-robinhood-gray-600 font-medium">
               {isConnected ? 'Live Data' : 
                connectionStatus === 'connecting' ? 'Connecting...' : 'Disconnected'}
             </span>
+            {isConnected && (
+              <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
+                Real-time OHLC
+              </span>
+            )}
           </div>
         </div>
 
@@ -176,32 +273,63 @@ export const CryptoPage: React.FC = () => {
         {/* Main Chart */}
         <div className="lg:col-span-3">
           <div className="card p-0 overflow-hidden">
-            {/* Professional Interval Selection */}
+            {/* Professional Interval and Time Range Selection */}
             <div className="p-6 border-b border-slate-700 bg-slate-800/50">
-              <div className="flex items-center justify-between">
-                <div className="flex space-x-1 bg-slate-700 p-1 rounded-lg">
-                  {intervalOptions.map((option) => (
-                    <button
-                      key={option.value}
-                      onClick={() => handleIntervalChange(option.value)}
-                      disabled={isLoading}
-                      className={`px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
-                        interval === option.value
-                          ? 'bg-white text-slate-900 shadow-sm'
-                          : 'text-slate-300 hover:bg-slate-600'
-                      } disabled:opacity-50 disabled:cursor-not-allowed`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                {/* Interval Selection */}
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">Interval</span>
+                  <div className="flex space-x-1 bg-slate-700 p-1 rounded-lg">
+                    {intervalOptions.map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => handleIntervalChange(option.value)}
+                        disabled={isLoading}
+                        className={`px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                          interval === option.value
+                            ? 'bg-white text-slate-900 shadow-sm'
+                            : 'text-slate-300 hover:bg-slate-600'
+                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Time Range Selection */}
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">Time Range</span>
+                  <div className="flex space-x-1 bg-slate-700 p-1 rounded-lg">
+                    {timeRangeOptions.map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => handleTimeRangeChange(option.value)}
+                        disabled={isLoading}
+                        className={`px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                          timeRange === option.value
+                            ? 'bg-robinhood-green text-white shadow-sm'
+                            : 'text-slate-300 hover:bg-slate-600'
+                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 
-                {isLoading && (
-                  <div className="flex items-center space-x-2 text-slate-400">
-                    <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
-                    <span className="text-sm font-medium">Loading...</span>
-                  </div>
-                )}
+                {/* Refresh Button */}
+                <button
+                  onClick={handleRefresh}
+                  disabled={isLoading}
+                  className="flex items-center space-x-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Refresh data"
+                >
+                  <svg className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <span className="text-sm font-medium">Refresh</span>
+                </button>
               </div>
             </div>
 
@@ -215,6 +343,7 @@ export const CryptoPage: React.FC = () => {
                   showVolume={showVolume}
                   showIndicators={showIndicators}
                   interval={interval}
+                  isLive={isConnected}
                   onCrosshairMove={handleCrosshairMove}
                 />
               ) : (
@@ -244,7 +373,7 @@ export const CryptoPage: React.FC = () => {
                 <div className="border-b border-robinhood-gray-200 pb-4">
                   <h3 className="text-xl font-bold text-robinhood-gray-900">{formatPairName(currentTicker.symbol)}</h3>
                   <p className="text-robinhood-gray-500 text-sm">
-                    {getIntervalLabel(interval)} • Kraken
+                    {getIntervalLabel(interval)} • {getTimeRangeLabel(timeRange)} • Kraken
                   </p>
                 </div>
                 
@@ -368,6 +497,11 @@ export const CryptoPage: React.FC = () => {
               </div>
               
               <div className="flex justify-between">
+                <span className="text-robinhood-gray-600">Time Range</span>
+                <span className="font-semibold text-robinhood-gray-800">{getTimeRangeLabel(timeRange)}</span>
+              </div>
+              
+              <div className="flex justify-between">
                 <span className="text-robinhood-gray-600">Candles</span>
                 <span className="font-semibold text-robinhood-gray-800">{chartData.length.toLocaleString()}</span>
               </div>
@@ -378,9 +512,16 @@ export const CryptoPage: React.FC = () => {
               </div>
 
               <div className="flex justify-between">
-                <span className="text-robinhood-gray-600">Status</span>
-                <span className={`font-semibold ${isConnected ? 'price-positive' : 'price-negative'}`}>
-                  {isConnected ? 'Live' : 'Offline'}
+                <span className="text-robinhood-gray-600">Data Source</span>
+                <span className={`font-semibold ${isConnected ? 'text-green-600' : 'text-gray-600'}`}>
+                  {isConnected ? 'Live WebSocket' : 'REST API'}
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-robinhood-gray-600">Last Update</span>
+                <span className="font-semibold text-robinhood-gray-800">
+                  {isConnected ? 'Real-time' : new Date(lastDataUpdate).toLocaleTimeString()}
                 </span>
               </div>
             </div>
