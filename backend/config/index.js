@@ -7,7 +7,7 @@ function loadEnvironment() {
     path.join(__dirname, '../.env'),
     path.join(process.cwd(), '.env'),
     path.join(process.cwd(), 'backend/.env'),
-    '/home/dstrad/keepitbased/backend/.env'
+    path.join(process.env.HOME || '/home', 'keepitbased', 'backend', '.env')
   ];
 
   for (const envPath of possibleEnvPaths) {
@@ -30,7 +30,7 @@ const config = {
   FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:3000',
 
   // Database - with fallback for development
-  DATABASE_URL: process.env.DATABASE_URL || 'postgresql://dstrad:password@localhost:5432/keepitbased',
+  DATABASE_URL: process.env.DATABASE_URL || 'postgresql://keepitbased:password@localhost:5432/keepitbased',
   REDIS_URL: process.env.REDIS_URL || 'redis://localhost:6379',
 
   // Python Service
@@ -84,7 +84,7 @@ function validateConfig() {
     warnings.push('⚠️  Using default JWT_SECRET - change this in production!');
   }
 
-  if (config.DATABASE_URL === 'postgresql://dstrad:password@localhost:5432/keepitbased') {
+  if (config.DATABASE_URL === 'postgresql://keepitbased:password@localhost:5432/keepitbased') {
     warnings.push('⚠️  Using default database credentials');
   }
 

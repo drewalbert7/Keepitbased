@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { User } from '../types';
+import { getApiBaseUrl } from '../config/apiBase';
 
 interface LoginResponse {
   message: string;
@@ -18,7 +19,7 @@ class AuthService {
 
   constructor() {
     // Set up axios defaults
-    axios.defaults.baseURL = process.env.REACT_APP_API_URL || '/api';
+    axios.defaults.baseURL = getApiBaseUrl();
     
     // Add request interceptor to include auth token
     axios.interceptors.request.use((config) => {
@@ -33,9 +34,14 @@ class AuthService {
       (response) => response,
       (error) => {
         if (error.response?.status === 401) {
-          this.clearToken();
-          localStorage.removeItem('token');
-          window.location.href = '/login';
+          const url = String(error.config?.url || '');
+          const isCredentialAttempt =
+            url.includes('/auth/login') || url.includes('/auth/register');
+          if (!isCredentialAttempt) {
+            this.clearToken();
+            localStorage.removeItem('token');
+            window.location.href = '/login';
+          }
         }
         return Promise.reject(error);
       }

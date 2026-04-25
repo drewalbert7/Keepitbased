@@ -6,7 +6,7 @@ import numpy as np
 import redis
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 app = Flask(__name__)
@@ -15,6 +15,13 @@ CORS(app)
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+try:
+    from langgraph_agent.graph import build_buy_alert_graph
+    BUY_ALERT_GRAPH = build_buy_alert_graph()
+except Exception as langgraph_err:
+    logger.warning(f"LangGraph unavailable at startup: {langgraph_err}")
+    BUY_ALERT_GRAPH = None
 
 # Redis connection
 try:
@@ -261,6 +268,36 @@ def get_technical_indicators(symbol):
         
     except Exception as e:
         logger.error(f"Error getting technical data for {symbol}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/agent/buy-alert/<symbol>', methods=['GET'])
+def get_buy_alert(symbol):
+    """Run LangGraph-based buy-alert pipeline for a stock symbol."""
+    if BUY_ALERT_GRAPH is None:
+        return jsonify(
+            {
+                "error": "LangGraph is not initialized. Install python-service requirements and restart service."
+            }
+        ), 503
+
+    try:
+        period = request.args.get('period', '6mo')
+        interval = request.args.get('interval', '1d')
+        max_alerts = int(request.args.get('maxAlertsPerDay', 5))
+
+        result = BUY_ALERT_GRAPH.invoke(
+            {
+                "symbol": symbol.upper(),
+                "period": period,
+                "interval": interval,
+                "max_alerts_per_day": max_alerts,
+                "as_of": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        return jsonify(result.get("output", result))
+    except Exception as e:
+        logger.error(f"Error generating buy alert for {symbol}: {e}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':

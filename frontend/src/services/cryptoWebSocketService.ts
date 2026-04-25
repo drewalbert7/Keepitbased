@@ -56,7 +56,11 @@ export class CryptoWebSocketService {
   private lastRateReset = 0;
   private connectionPromise: Promise<void> | null = null;
   private pendingSubscriptions: Array<{type: string, pairs: string[], options?: any}> = [];
-  private isRateLimited = false;
+  public isRateLimited(): boolean {
+    return this.isCurrentlyRateLimited;
+  }
+
+  private isCurrentlyRateLimited = false;
   private rateLimitReset = 0;
 
   private readonly WS_URL = 'wss://ws.kraken.com';
@@ -118,6 +122,9 @@ export class CryptoWebSocketService {
         (this.ws as any)._resolve = resolve;
         (this.ws as any)._reject = reject;
         
+        // Setup WebSocket event handlers
+        this.setupWebSocketHandlers();
+        
       } catch (error) {
         console.error('Failed to create WebSocket:', error);
         this.handleConnectionError(error as Error);
@@ -132,6 +139,9 @@ export class CryptoWebSocketService {
     }
   }
 
+  private setupWebSocketHandlers() {
+    if (!this.ws) return;
+    
     this.ws.onopen = () => {
       console.log('✅ Kraken WebSocket connected successfully');
       this.resetConnectionState();
@@ -280,12 +290,12 @@ export class CryptoWebSocketService {
       // Implement rate limiting
       if (this.messageRate > this.RATE_LIMIT_THRESHOLD) {
         if (!this.isRateLimited) {
-          this.isRateLimited = true;
+          this.isCurrentlyRateLimited = true;
           this.rateLimitReset = now + this.RATE_LIMIT_COOLDOWN;
           console.warn(`Rate limiting activated: ${this.messageRate} messages/sec`);
         }
-      } else if (this.isRateLimited && now > this.rateLimitReset) {
-        this.isRateLimited = false;
+      } else if (this.isCurrentlyRateLimited && now > this.rateLimitReset) {
+        this.isCurrentlyRateLimited = false;
         console.log('Rate limiting deactivated');
       }
       
@@ -682,14 +692,7 @@ export class CryptoWebSocketService {
     });
   }
 
-  // Check if currently rate limited
-  isRateLimited(): boolean {
-    if (this.isRateLimited && Date.now() > this.rateLimitReset) {
-      this.isRateLimited = false;
-    }
-    return this.isRateLimited;
-  }
-
+  
   // Get current message rate
   getMessageRate(): number {
     return this.messageRate;

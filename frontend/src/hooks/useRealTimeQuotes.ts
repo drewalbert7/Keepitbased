@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { QuoteData } from '../services/chartService';
+import { getSocketOrigin } from '../config/apiBase';
 
 interface PriceUpdate {
   symbol: string;
@@ -24,7 +25,7 @@ export const useRealTimeQuotes = ({ symbols, onQuoteUpdate }: UseRealTimeQuotesP
   useEffect(() => {
     if (symbols.length === 0) return;
 
-    const socketUrl = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:3001';
+    const socketUrl = getSocketOrigin();
     
     // Create socket connection
     const socket = io(socketUrl, {

@@ -6,7 +6,7 @@ The application now has robust error handling and graceful degradation. It will 
 
 ```bash
 # Navigate to project directory
-cd /home/dstrad/keepitbased
+cd /home/<user>/keepitbased
 
 # Start with PM2 (recommended)
 npm run pm2:start
@@ -134,8 +134,8 @@ Password: password123
 ```bash
 # Create database and user
 sudo -u postgres createdb keepitbased
-sudo -u postgres psql -c "CREATE USER dstrad WITH PASSWORD 'password';"
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE keepitbased TO dstrad;"
+sudo -u postgres psql -c "CREATE USER keepitbased WITH PASSWORD 'password';"
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE keepitbased TO keepitbased;"
 
 # Tables are automatically created on first run
 ```
@@ -229,8 +229,8 @@ If the system fails to start:
 ## 📊 Monitoring
 
 ### Log Files (PM2)
-- Output: `/home/dstrad/keepitbased/logs/api-out-0.log`
-- Errors: `/home/dstrad/keepitbased/logs/api-err-0.log`
+- Output: `/home/<user>/keepitbased/logs/api-out-0.log`
+- Errors: `/home/<user>/keepitbased/logs/api-err-0.log`
 
 ### Key Metrics to Monitor
 - Health check endpoints status

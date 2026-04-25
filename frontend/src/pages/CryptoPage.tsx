@@ -155,7 +155,7 @@ export const CryptoPage: React.FC = () => {
       if (dataCache.has(cacheKey)) {
         console.log('Using cached data as fallback');
         setChartData(dataCache.get(cacheKey)!);
-        toast.info('Showing cached data while offline');
+        toast('Showing cached data while offline');
       }
     } finally {
       setIsLoading(false);

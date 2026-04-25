@@ -10,6 +10,7 @@ interface CryptoChartProps {
   showVolume?: boolean;
   showIndicators?: boolean;
   interval?: string;
+  isLive?: boolean;
   onCrosshairMove?: (data: any) => void;
   onTimeScaleChange?: (scale: string, interval: string) => void;
   currentTimeScale?: string;
@@ -23,6 +24,7 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
   showVolume = true,
   showIndicators = true,
   interval = '1h',
+  isLive = false,
   onCrosshairMove,
   onTimeScaleChange,
   currentTimeScale = '1Y',
@@ -39,34 +41,7 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
   const [zoomEnabled, setZoomEnabled] = useState(true);
   const [panEnabled, setPanEnabled] = useState(true);
 
-  // Calculate technical indicators
-  const technicalData = useMemo(() => {
-    if (!data.length) return { sma20: [], sma50: [] };
-
-    const sma20: LineData[] = [];
-    const sma50: LineData[] = [];
-
-    // Calculate SMA 20
-    for (let i = 19; i < data.length; i++) {
-      const sum = data.slice(i - 19, i + 1).reduce((acc, candle) => acc + candle.close, 0);
-      sma20.push({
-        time: data[i].time as any, // Convert to proper Time type
-        value: sum / 20
-      });
-    }
-
-    // Calculate SMA 50
-    for (let i = 49; i < data.length; i++) {
-      const sum = data.slice(i - 49, i + 1).reduce((acc, candle) => acc + candle.close, 0);
-      sma50.push({
-        time: data[i].time as any, // Convert to proper Time type
-        value: sum / 50
-      });
-    }
-
-    return { sma20, sma50 };
-  }, [data]);
-
+  
   // Initialize chart (only once)
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -124,25 +99,42 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
         rightOffset: 0,
         minBarSpacing: 0.5,
         tickMarkFormatter: (time: number) => {
-          const date = new Date(time); // Now expecting milliseconds directly
+          const date = new Date(time); // Expecting milliseconds
           const now = new Date();
-          const isToday = date.toDateString() === now.toDateString();
-          const isThisYear = date.getFullYear() === now.getFullYear();
           
-          if (isToday) {
-            return date.toLocaleTimeString('en-US', { 
+          // Calculate time differences for smart formatting
+          const timeDiff = now.getTime() - date.getTime();
+          const daysDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+          
+          // Use browser's locale for automatic localization
+          const locale = undefined;
+          
+          // Format based on time range and data density
+          if (daysDiff <= 1) {
+            // Today - show time in 24-hour format
+            return date.toLocaleTimeString(locale, { 
               hour: '2-digit',
-              minute: '2-digit'
+              minute: '2-digit',
+              hour12: false
             });
-          } else if (isThisYear) {
-            return date.toLocaleDateString('en-US', { 
+          } else if (daysDiff <= 7) {
+            // Last week - show day and time
+            return date.toLocaleString(locale, { 
               month: 'short', 
               day: 'numeric',
               hour: '2-digit',
-              minute: '2-digit'
+              minute: '2-digit',
+              hour12: false
+            });
+          } else if (daysDiff <= 365) {
+            // This year - show month/day
+            return date.toLocaleDateString(locale, { 
+              month: 'short', 
+              day: 'numeric'
             });
           } else {
-            return date.toLocaleDateString('en-US', { 
+            // Previous years - show year/month/day
+            return date.toLocaleDateString(locale, { 
               year: 'numeric',
               month: 'short', 
               day: 'numeric'
@@ -359,6 +351,151 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
     }
   }, [showIndicators]);
 
+  // Enhanced technical indicators calculation with more options
+  const technicalData = useMemo(() => {
+    if (!data.length) return { 
+      sma20: [], 
+      sma50: [], 
+      ema12: [], 
+      ema26: [], 
+      macd: { signal: [], histogram: [], macd: [] },
+      rsi: [],
+      bollinger: { upper: [], middle: [], lower: [] }
+    };
+
+    // Simple Moving Averages
+    const sma20: LineData[] = [];
+    const sma50: LineData[] = [];
+    
+    // Exponential Moving Averages
+    const ema12: LineData[] = [];
+    const ema26: LineData[] = [];
+    
+    // MACD
+    const macdSignal: LineData[] = [];
+    const macdHistogram: LineData[] = [];
+    const macdLine: LineData[] = [];
+    
+    // RSI
+    const rsi: LineData[] = [];
+    
+    // Bollinger Bands
+    const bbUpper: LineData[] = [];
+    const bbMiddle: LineData[] = [];
+    const bbLower: LineData[] = [];
+
+    // Calculate SMA 20
+    for (let i = 19; i < data.length; i++) {
+      const sum = data.slice(i - 19, i + 1).reduce((acc, candle) => acc + candle.close, 0);
+      sma20.push({
+        time: data[i].time as any,
+        value: sum / 20
+      });
+    }
+
+    // Calculate SMA 50
+    for (let i = 49; i < data.length; i++) {
+      const sum = data.slice(i - 49, i + 1).reduce((acc, candle) => acc + candle.close, 0);
+      sma50.push({
+        time: data[i].time as any,
+        value: sum / 50
+      });
+    }
+
+    // Calculate EMA 12
+    const ema12Data = calculateEMA(data, 12);
+    ema12Data.forEach((value, index) => {
+      if (index >= 11) {
+        ema12.push({
+          time: data[index].time as any,
+          value
+        });
+      }
+    });
+
+    // Calculate EMA 26
+    const ema26Data = calculateEMA(data, 26);
+    ema26Data.forEach((value, index) => {
+      if (index >= 25) {
+        ema26.push({
+          time: data[index].time as any,
+          value
+        });
+      }
+    });
+
+    // Calculate MACD
+    const minEMAIndex = Math.max(25, 11);
+    for (let i = minEMAIndex; i < data.length; i++) {
+      const macdValue = ema12Data[i] - ema26Data[i];
+      macdLine.push({
+        time: data[i].time as any,
+        value: macdValue
+      });
+    }
+
+    // Calculate MACD Signal (9-period EMA of MACD)
+    const macdSignalData = calculateEMA(macdLine.map(item => item.value), 9);
+    macdSignalData.forEach((value, index) => {
+      if (index >= 8 && macdLine[index]) {
+        macdSignal.push({
+          time: macdLine[index].time,
+          value
+        });
+        macdHistogram.push({
+          time: macdLine[index].time,
+          value: macdLine[index].value - value
+        });
+      }
+    });
+
+    // Calculate RSI (14-period)
+    for (let i = 14; i < data.length; i++) {
+      const rsiValue = calculateRSI(data.slice(i - 14, i + 1));
+      if (rsiValue !== null) {
+        rsi.push({
+          time: data[i].time as any,
+          value: rsiValue
+        });
+      }
+    }
+
+    // Calculate Bollinger Bands (20-period, 2 standard deviations)
+    for (let i = 19; i < data.length; i++) {
+      const period = data.slice(i - 19, i + 1);
+      const sum = period.reduce((acc, candle) => acc + candle.close, 0);
+      const mean = sum / 20;
+      
+      const variance = period.reduce((acc, candle) => acc + Math.pow(candle.close - mean, 2), 0) / 20;
+      const stdDev = Math.sqrt(variance);
+      
+      bbUpper.push({
+        time: data[i].time as any,
+        value: mean + (stdDev * 2)
+      });
+      
+      bbMiddle.push({
+        time: data[i].time as any,
+        value: mean
+      });
+      
+      bbLower.push({
+        time: data[i].time as any,
+        value: mean - (stdDev * 2)
+      });
+    }
+
+    return { 
+      sma20, 
+      sma50, 
+      ema12, 
+      ema26, 
+      macd: { signal: macdSignal, histogram: macdHistogram, macd: macdLine },
+      rsi,
+      bollinger: { upper: bbUpper, middle: bbMiddle, lower: bbLower }
+    };
+  }, [data]);
+
   // Update chart data
   useEffect(() => {
     if (!data.length || !chartRef.current || !candlestickSeriesRef.current) return;
@@ -377,7 +514,7 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
     // Update volume series if it exists and is enabled
     if (volumeSeriesRef.current && showVolume) {
       const volumeData: HistogramData[] = data.map(candle => ({
-        time: candle.time, // Now expecting milliseconds
+        time: candle.time as any, // Convert to proper Time type
         value: candle.volume,
         color: candle.close >= candle.open ? '#10b981' : '#ef4444'
       }));
@@ -404,22 +541,34 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
       to: data[data.length - 1].time + 3600 // Add 1 hour padding after
     } : null;
     
+    // For live data, keep the chart scrolled to the right to show latest data
+    const rightOffset = isLive ? 20 : 10;
+    
     timeScale.applyOptions({
       barSpacing: barSpacing,
       fixLeftEdge: true,
       fixRightEdge: true,
       lockVisibleTimeRangeOnResize: true,
-      rightOffset: 10,
+      rightOffset: rightOffset,
       minBarSpacing: 0.5
     });
 
     // Set visible range if we have data
     if (visibleRange) {
-      timeScale.setVisibleRange(visibleRange);
+      timeScale.setVisibleRange({
+        from: visibleRange.from as any,
+        to: visibleRange.to as any
+      });
     } else {
       timeScale.fitContent();
     }
-  }, [data, technicalData, interval]); // Added interval to dependencies
+    
+    // For live data, scroll to show the most recent candle
+    if (isLive && data.length > 0) {
+      const latestTime = data[data.length - 1].time;
+      timeScale.scrollToRealTime();
+    }
+  }, [data, technicalData, interval, isLive]); // Added isLive to dependencies
 
   // Update chart size and handle responsive behavior
   useEffect(() => {
@@ -438,7 +587,197 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
     }
   }, [height]);
 
-  // Helper function to calculate optimal bar spacing based on data points and timeframe
+  // Helper functions for technical indicators
+  const calculateTechnicalIndicators = (data: any[]) => {
+    if (!data.length) return { 
+      sma20: [], 
+      sma50: [], 
+      ema12: [], 
+      ema26: [], 
+      macd: { signal: [], histogram: [], macd: [] },
+      rsi: [],
+      bollinger: { upper: [], middle: [], lower: [] }
+    };
+
+    // Simple Moving Averages
+    const sma20: LineData[] = [];
+    const sma50: LineData[] = [];
+    
+    // Exponential Moving Averages
+    const ema12: LineData[] = [];
+    const ema26: LineData[] = [];
+    
+    // MACD
+    const macdSignal: LineData[] = [];
+    const macdHistogram: LineData[] = [];
+    const macdLine: LineData[] = [];
+    
+    // RSI
+    const rsi: LineData[] = [];
+    
+    // Bollinger Bands
+    const bbUpper: LineData[] = [];
+    const bbMiddle: LineData[] = [];
+    const bbLower: LineData[] = [];
+
+    // Calculate SMA 20
+    for (let i = 19; i < data.length; i++) {
+      const sum = data.slice(i - 19, i + 1).reduce((acc, candle) => acc + candle.close, 0);
+      sma20.push({
+        time: data[i].time as any,
+        value: sum / 20
+      });
+    }
+
+    // Calculate SMA 50
+    for (let i = 49; i < data.length; i++) {
+      const sum = data.slice(i - 49, i + 1).reduce((acc, candle) => acc + candle.close, 0);
+      sma50.push({
+        time: data[i].time as any,
+        value: sum / 50
+      });
+    }
+
+    // Calculate EMA 12
+    const ema12Data = calculateEMA(data, 12);
+    ema12Data.forEach((value, index) => {
+      if (index >= 11) {
+        ema12.push({
+          time: data[index].time as any,
+          value
+        });
+      }
+    });
+
+    // Calculate EMA 26
+    const ema26Data = calculateEMA(data, 26);
+    ema26Data.forEach((value, index) => {
+      if (index >= 25) {
+        ema26.push({
+          time: data[index].time as any,
+          value
+        });
+      }
+    });
+
+    // Calculate MACD
+    const minEMAIndex = Math.max(25, 11);
+    for (let i = minEMAIndex; i < data.length; i++) {
+      const macdValue = ema12Data[i] - ema26Data[i];
+      macdLine.push({
+        time: data[i].time as any,
+        value: macdValue
+      });
+    }
+
+    // Calculate MACD Signal (9-period EMA of MACD)
+    const macdSignalData = calculateEMA(macdLine.map(item => item.value), 9);
+    macdSignalData.forEach((value, index) => {
+      if (index >= 8 && macdLine[index]) {
+        macdSignal.push({
+          time: macdLine[index].time,
+          value
+        });
+        macdHistogram.push({
+          time: macdLine[index].time,
+          value: macdLine[index].value - value
+        });
+      }
+    });
+
+    // Calculate RSI (14-period)
+    for (let i = 14; i < data.length; i++) {
+      const rsiValue = calculateRSI(data.slice(i - 14, i + 1));
+      rsi.push({
+        time: data[i].time as any,
+        value: rsiValue
+      });
+    }
+
+    // Calculate Bollinger Bands (20-period, 2 standard deviations)
+    for (let i = 19; i < data.length; i++) {
+      const periodData = data.slice(i - 19, i + 1);
+      const sum = periodData.reduce((acc, candle) => acc + candle.close, 0);
+      const middle = sum / 20;
+      
+      const variance = periodData.reduce((acc, candle) => acc + Math.pow(candle.close - middle, 2), 0);
+      const stdDev = Math.sqrt(variance / 20);
+      
+      const upper = middle + (stdDev * 2);
+      const lower = middle - (stdDev * 2);
+      
+      bbUpper.push({
+        time: data[i].time as any,
+        value: upper
+      });
+      bbMiddle.push({
+        time: data[i].time as any,
+        value: middle
+      });
+      bbLower.push({
+        time: data[i].time as any,
+        value: lower
+      });
+    }
+
+    return { 
+      sma20, 
+      sma50, 
+      ema12, 
+      ema26, 
+      macd: { signal: macdSignal, histogram: macdHistogram, macd: macdLine },
+      rsi,
+      bollinger: { upper: bbUpper, middle: bbMiddle, lower: bbLower }
+    };
+  };
+
+  const technicalIndicators = calculateTechnicalIndicators(data);
+
+  // Helper functions for technical indicators
+  const calculateEMA = (data: any[], period: number): number[] => {
+    const ema: number[] = [];
+    const multiplier = 2 / (period + 1);
+    
+    // Start with SMA for first value
+    let sum = 0;
+    for (let i = 0; i < period && i < data.length; i++) {
+      sum += data[i].close;
+    }
+    ema[period - 1] = sum / Math.min(period, data.length);
+    
+    // Calculate EMA for remaining values
+    for (let i = period; i < data.length; i++) {
+      ema[i] = (data[i].close - ema[i - 1]) * multiplier + ema[i - 1];
+    }
+    
+    return ema;
+  };
+
+  const calculateRSI = (periodData: any[]): number => {
+    if (periodData.length < 2) return 50;
+    
+    let gains = 0;
+    let losses = 0;
+    
+    for (let i = 1; i < periodData.length; i++) {
+      const change = periodData[i].close - periodData[i - 1].close;
+      if (change > 0) {
+        gains += change;
+      } else {
+        losses += Math.abs(change);
+      }
+    }
+    
+    if (losses === 0) return 100;
+    
+    const avgGain = gains / (periodData.length - 1);
+    const avgLoss = losses / (periodData.length - 1);
+    const rs = avgGain / avgLoss;
+    
+    return 100 - (100 / (1 + rs));
+  };
+
+  // Enhanced bar spacing calculation with performance optimization
   const getOptimalBarSpacing = (dataLength: number, interval: string): number => {
     if (!chartContainerRef.current) return 2;
     
@@ -446,27 +785,83 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
     const targetBars = Math.min(150, Math.max(30, dataLength));
     const spacing = Math.max(baseWidth / targetBars, 1);
     
-    // Adjust spacing based on timeframe (smaller intervals = closer spacing)
+    // Enhanced timeframe multipliers for better visualization
     const timeframeMultiplier: Record<string, number> = {
-      '1m': 0.3,
-      '3m': 0.5,
-      '5m': 0.7,
-      '15m': 1.0,
-      '30m': 1.2,
-      '1h': 1.5,
-      '2h': 2.0,
-      '4h': 2.5,
-      '6h': 3.0,
-      '12h': 4.0,
-      '1d': 6.0,
+      '1m': 0.2,
+      '3m': 0.3,
+      '5m': 0.4,
+      '15m': 0.6,
+      '30m': 0.8,
+      '1h': 1.0,
+      '2h': 1.3,
+      '4h': 1.8,
+      '6h': 2.2,
+      '12h': 3.0,
+      '1d': 5.0,
       '3d': 8.0,
       '1w': 12.0,
-      '2w': 16.0,
-      '1M': 20.0
+      '2w': 18.0,
+      '1M': 25.0
     };
     
     const adjustedSpacing = spacing * (timeframeMultiplier[interval] || 1.0);
-    return Math.min(Math.max(adjustedSpacing, 0.5), 50); // Clamp between 0.5 and 50
+    return Math.min(Math.max(adjustedSpacing, 0.3), 40); // Optimized range
+  };
+
+  // Dynamic time formatter based on data range and interval
+  const getTimeFormatter = () => {
+    if (!data.length) return (time: number) => new Date(time).toLocaleDateString();
+    
+    const earliestTime = data[0].time;
+    const latestTime = data[data.length - 1].time;
+    const timeRange = latestTime - earliestTime;
+    const daysRange = timeRange / (1000 * 60 * 60 * 24);
+    
+    return (time: number) => {
+      const date = new Date(time);
+      const now = new Date();
+      
+      // Use browser's locale for automatic localization
+      const locale = undefined; // Let browser determine user's locale
+      
+      // Different formatting based on data range
+      if (daysRange <= 1) {
+        // Intraday data - show times in 24-hour format for international consistency
+        return date.toLocaleTimeString(locale, { 
+          hour: '2-digit', 
+          minute: '2-digit',
+          hour12: false
+        });
+      } else if (daysRange <= 7) {
+        // Weekly range - show abbreviated date and time
+        return date.toLocaleString(locale, { 
+          month: 'short', 
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        });
+      } else if (daysRange <= 90) {
+        // Quarterly range - show abbreviated date
+        return date.toLocaleDateString(locale, { 
+          month: 'short', 
+          day: 'numeric'
+        });
+      } else if (daysRange <= 730) {
+        // Biennial range - show month and year
+        return date.toLocaleDateString(locale, { 
+          month: 'short', 
+          year: 'numeric'
+        });
+      } else {
+        // Multi-year range - show full date with year
+        return date.toLocaleDateString(locale, { 
+          year: 'numeric',
+          month: 'short', 
+          day: 'numeric'
+        });
+      }
+    };
   };
 
   const getCurrentPrice = () => {
@@ -496,6 +891,14 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
         <div className="flex items-center space-x-6">
           <div className="flex items-center space-x-3">
             <h2 className="text-xl font-bold text-white">{symbol}</h2>
+            {isLive && (
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="text-xs text-green-400 font-medium bg-green-900/30 px-2 py-1 rounded-full">
+                  LIVE
+                </span>
+              </div>
+            )}
             <div className="flex items-baseline space-x-3">
               <span className="text-2xl font-bold text-white">
                 {formatCryptoPrice(currentPrice)}

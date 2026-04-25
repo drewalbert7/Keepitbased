@@ -20,9 +20,9 @@ const LoginPage: React.FC = () => {
       return;
     }
 
-    const success = await login(email, password);
-    if (!success) {
-      toast.error('Invalid email or password');
+    const result = await login(email, password);
+    if (!result.ok) {
+      toast.error(result.message);
     } else {
       toast.success('Welcome back!');
     }

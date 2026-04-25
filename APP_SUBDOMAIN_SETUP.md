@@ -45,12 +45,12 @@ sudo certbot --expand -d keepitbased.com -d www.keepitbased.com -d app.keepitbas
 ## Nginx Configuration
 
 The configuration file has been created at:
-`/home/dstrad/keepitbased/config/nginx/sites-available/app.keepitbased-https.conf`
+`/home/<user>/keepitbased/config/nginx/sites-available/app.keepitbased-https.conf`
 
 ### To Enable:
 ```bash
 # Create symbolic link to enable the site
-sudo ln -sf /home/dstrad/keepitbased/config/nginx/sites-available/app.keepitbased-https.conf /etc/nginx/sites-enabled/
+sudo ln -sf /home/<user>/keepitbased/config/nginx/sites-available/app.keepitbased-https.conf /etc/nginx/sites-enabled/
 
 # Test Nginx configuration
 sudo nginx -t

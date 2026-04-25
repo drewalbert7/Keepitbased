@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { getApiBaseUrl } from '../config/apiBase';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = getApiBaseUrl();
 
 export interface CryptoPair {
   symbol: string;
@@ -209,7 +210,7 @@ const requestQueue = new RequestQueue();
 cryptoApi.interceptors.request.use(
   (config) => {
     // Add timestamp for tracking
-    config.metadata = { startTime: Date.now() };
+    (config as any).metadata = { startTime: Date.now() };
     return config;
   },
   (error) => Promise.reject(error)
@@ -218,7 +219,7 @@ cryptoApi.interceptors.request.use(
 cryptoApi.interceptors.response.use(
   (response) => {
     // Log successful requests
-    const duration = Date.now() - response.config.metadata.startTime;
+    const duration = Date.now() - (response.config as any).metadata.startTime;
     if (duration > 5000) { // Log slow requests
       console.warn(`Slow crypto API request: ${response.config.url} took ${duration}ms`);
     }

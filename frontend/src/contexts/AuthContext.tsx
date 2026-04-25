@@ -1,10 +1,27 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
+import axios from 'axios';
 import { AuthState, User } from '../types';
 import { authService } from '../services/authService';
 
+export type AuthActionResult =
+  | { ok: true }
+  | { ok: false; message: string };
+
+function authErrorMessage(error: unknown, fallback: string): string {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data as { message?: string; errors?: Array<{ msg?: string }> };
+    if (typeof data?.message === 'string') return data.message;
+    if (Array.isArray(data?.errors) && data.errors.length > 0) {
+      const first = data.errors[0];
+      if (typeof first?.msg === 'string') return first.msg;
+    }
+  }
+  return fallback;
+}
+
 interface AuthContextType extends AuthState {
-  login: (email: string, password: string) => Promise<boolean>;
-  register: (firstName: string, lastName: string, email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<AuthActionResult>;
+  register: (firstName: string, lastName: string, email: string, password: string) => Promise<AuthActionResult>;
   logout: () => void;
   updateUser: (userData: Partial<User>) => void;
 }
@@ -78,7 +95,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initializeAuth();
   }, []);
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (email: string, password: string): Promise<AuthActionResult> => {
     try {
       dispatch({ type: 'SET_LOADING', payload: true });
       const { user, token } = await authService.login(email, password);
@@ -87,15 +104,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       authService.setToken(token);
       
       dispatch({ type: 'SET_USER', payload: { user, token } });
-      return true;
+      return { ok: true };
     } catch (error) {
       console.error('Login failed:', error);
       dispatch({ type: 'SET_LOADING', payload: false });
-      return false;
+      return {
+        ok: false,
+        message: authErrorMessage(error, 'Invalid email or password'),
+      };
     }
   };
 
-  const register = async (firstName: string, lastName: string, email: string, password: string): Promise<boolean> => {
+  const register = async (
+    firstName: string,
+    lastName: string,
+    email: string,
+    password: string
+  ): Promise<AuthActionResult> => {
     try {
       dispatch({ type: 'SET_LOADING', payload: true });
       const { user, token } = await authService.register(firstName, lastName, email, password);
@@ -104,11 +129,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       authService.setToken(token);
       
       dispatch({ type: 'SET_USER', payload: { user, token } });
-      return true;
+      return { ok: true };
     } catch (error) {
       console.error('Registration failed:', error);
       dispatch({ type: 'SET_LOADING', payload: false });
-      return false;
+      return {
+        ok: false,
+        message: authErrorMessage(error, 'Registration failed. Please try again.'),
+      };
     }
   };
 

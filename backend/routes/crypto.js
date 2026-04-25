@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
 const logger = require('../utils/logger');
 const config = require('../config');
 const secureConfig = require('../utils/secureConfig');
@@ -13,6 +14,28 @@ const {
 
 const KRAKEN_API_URL = 'https://api.kraken.com';
 const KRAKEN_WS_URL = 'wss://ws.kraken.com';
+
+// Rate limiting for Kraken API calls
+const krakenApiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  message: {
+    error: 'Too many requests to Kraken API',
+    retryAfter: 900
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Health check limiter (less restrictive)
+const healthCheckLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 30, // 30 health checks per minute
+  message: {
+    error: 'Too many health check requests',
+    retryAfter: 60
+  }
+});
 
 // Kraken API helper functions
 const createKrakenSignature = (path, data, secret) => {
@@ -39,26 +62,60 @@ const makePrivateRequest = async (endpoint, data = {}) => {
   const headers = {
     'API-Key': apiKey,
     'API-Sign': signature,
-    'Content-Type': 'application/x-www-form-urlencoded'
+    'Content-Type': 'application/x-www-form-urlencoded',
+    'User-Agent': 'KeepItBased/1.0'
   };
   
-  const response = await axios.post(`${KRAKEN_API_URL}/0/private/${endpoint}`, postData, { headers });
+  const response = await axios.post(`${KRAKEN_API_URL}/0/private/${endpoint}`, postData, { 
+    headers,
+    timeout: 30000,
+    validateStatus: function (status) {
+      return status >= 200 && status < 500; // Accept all responses except server errors
+    }
+  });
+  
   return response.data;
+};
+
+// Enhanced public request with better error handling
+const makePublicRequest = async (endpoint, params = {}) => {
+  try {
+    const response = await axios.get(`${KRAKEN_API_URL}/0/public/${endpoint}`, {
+      params,
+      timeout: 15000,
+      headers: {
+        'User-Agent': 'KeepItBased/1.0'
+      },
+      validateStatus: function (status) {
+        return status >= 200 && status < 500;
+      }
+    });
+    
+    return response.data;
+  } catch (error) {
+    if (error.code === 'ECONNABORTED') {
+      throw new Error('Request timeout - Kraken API is slow to respond');
+    }
+    if (error.code === 'ENOTFOUND') {
+      throw new Error('Unable to connect to Kraken API - network error');
+    }
+    throw error;
+  }
 };
 
 // Apply security middleware to all routes
 router.use(publicCryptoSecurity);
 
 // Get available crypto trading pairs
-router.get('/pairs', async (req, res) => {
+router.get('/pairs', krakenApiLimiter, async (req, res) => {
   try {
-    const response = await axios.get(`${KRAKEN_API_URL}/0/public/AssetPairs`);
+    const response = await makePublicRequest('AssetPairs');
     
-    if (response.data.error && response.data.error.length > 0) {
-      throw new Error(response.data.error.join(', '));
+    if (response.error && response.error.length > 0) {
+      throw new Error(response.error.join(', '));
     }
     
-    const pairs = response.data.result;
+    const pairs = response.result;
     
     // Filter for USD pairs and format them nicely
     const usdPairs = Object.entries(pairs)
@@ -74,6 +131,9 @@ router.get('/pairs', async (req, res) => {
       }))
       .sort((a, b) => a.displayName.localeCompare(b.displayName));
     
+    // Cache response for 5 minutes
+    res.set('Cache-Control', 'public, max-age=300');
+    
     res.json({
       pairs: usdPairs,
       total: usdPairs.length,
@@ -81,6 +141,24 @@ router.get('/pairs', async (req, res) => {
     });
   } catch (error) {
     logger.error('Error getting crypto pairs:', error.message);
+    
+    // Return appropriate status code based on error type
+    if (error.message.includes('timeout')) {
+      return res.status(504).json({ 
+        message: 'Kraken API timeout',
+        error: error.message,
+        retryable: true
+      });
+    }
+    
+    if (error.message.includes('network error')) {
+      return res.status(503).json({ 
+        message: 'Network error connecting to Kraken',
+        error: error.message,
+        retryable: true
+      });
+    }
+    
     res.status(500).json({ 
       message: 'Failed to get crypto pairs',
       error: error.message 
@@ -89,20 +167,29 @@ router.get('/pairs', async (req, res) => {
 });
 
 // Get current ticker/quote for crypto pair
-router.get('/ticker/:pair', async (req, res) => {
+router.get('/ticker/:pair', krakenApiLimiter, async (req, res) => {
   try {
     const { pair } = req.params;
     
-    const response = await axios.get(`${KRAKEN_API_URL}/0/public/Ticker`, {
-      params: { pair }
-    });
+    if (!pair || pair.length === 0) {
+      return res.status(400).json({
+        message: 'Pair parameter is required',
+        error: 'Missing pair parameter'
+      });
+    }
     
-    if (response.data.error && response.data.error.length > 0) {
-      throw new Error(response.data.error.join(', '));
+    const response = await makePublicRequest('Ticker', { pair });
+    
+    if (response.error && response.error.length > 0) {
+      throw new Error(response.error.join(', '));
     }
     
     const ticker = Object.values(response.data.result)[0];
     const pairInfo = Object.keys(response.data.result)[0];
+    
+    if (!ticker || !pairInfo) {
+      throw new Error('Invalid ticker data received from Kraken');
+    }
     
     const formattedTicker = {
       symbol: pairInfo,
@@ -121,9 +208,28 @@ router.get('/ticker/:pair', async (req, res) => {
       timestamp: new Date().toISOString()
     };
     
+    // Cache ticker for 30 seconds
+    res.set('Cache-Control', 'public, max-age=30');
     res.json(formattedTicker);
   } catch (error) {
     logger.error(`Error getting ticker for ${req.params.pair}:`, error.message);
+    
+    if (error.message.includes('timeout')) {
+      return res.status(504).json({ 
+        message: 'Kraken API timeout',
+        error: error.message,
+        retryable: true
+      });
+    }
+    
+    if (error.message.includes('network error')) {
+      return res.status(503).json({ 
+        message: 'Network error connecting to Kraken',
+        error: error.message,
+        retryable: true
+      });
+    }
+    
     res.status(500).json({ 
       message: 'Failed to get ticker data',
       error: error.message 
@@ -132,22 +238,54 @@ router.get('/ticker/:pair', async (req, res) => {
 });
 
 // Get OHLC data for crypto pair
-router.get('/ohlc/:pair', async (req, res) => {
+router.get('/ohlc/:pair', krakenApiLimiter, async (req, res) => {
   try {
     const { pair } = req.params;
     const { interval = 60, since, limit } = req.query; // Default to 1-hour intervals
     
-    const params = { pair, interval };
+    if (!pair || pair.length === 0) {
+      return res.status(400).json({
+        message: 'Pair parameter is required',
+        error: 'Missing pair parameter'
+      });
+    }
+    
+    // Validate interval
+    const intervalNum = parseInt(interval);
+    if (isNaN(intervalNum) || intervalNum < 1) {
+      return res.status(400).json({
+        message: 'Invalid interval parameter',
+        error: 'Interval must be a positive number'
+      });
+    }
+    
+    // Validate limit
+    let limitNum = 720; // Kraken's default max
+    if (limit) {
+      limitNum = parseInt(limit);
+      if (isNaN(limitNum) || limitNum < 1 || limitNum > 720) {
+        return res.status(400).json({
+          message: 'Invalid limit parameter',
+          error: 'Limit must be between 1 and 720'
+        });
+      }
+    }
+    
+    const params = { pair, interval: intervalNum };
     if (since) params.since = since;
     
-    const response = await axios.get(`${KRAKEN_API_URL}/0/public/OHLC`, { params });
+    const response = await makePublicRequest('OHLC', params);
     
-    if (response.data.error && response.data.error.length > 0) {
-      throw new Error(response.data.error.join(', '));
+    if (response.error && response.error.length > 0) {
+      throw new Error(response.error.join(', '));
     }
     
     const ohlcArray = Object.values(response.data.result)[0];
     const lastId = response.data.result.last;
+    
+    if (!ohlcArray || !Array.isArray(ohlcArray)) {
+      throw new Error('Invalid OHLC data received from Kraken');
+    }
     
     // Process and limit data if requested
     let processedData = ohlcArray.map(candle => ({
@@ -159,27 +297,44 @@ router.get('/ohlc/:pair', async (req, res) => {
       vwap: parseFloat(candle[5]),
       volume: parseFloat(candle[6]),
       trades: parseInt(candle[7])
-    }));
+    })).filter(candle => !isNaN(candle.time) && !isNaN(candle.open)); // Filter out invalid data
     
     // Apply limit if specified (most recent candles)
-    if (limit && parseInt(limit) > 0) {
-      const limitNum = parseInt(limit);
-      processedData = processedData.slice(-limitNum);
-    }
+    processedData = processedData.slice(-limitNum);
     
     // Sort by time to ensure chronological order
     processedData.sort((a, b) => a.time - b.time);
     
+    // Cache OHLC data for 1 minute
+    res.set('Cache-Control', 'public, max-age=60');
+    
     res.json({
       symbol: pair,
       data: processedData,
-      interval: parseInt(interval),
+      interval: intervalNum,
       lastId,
       count: processedData.length,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
     logger.error(`Error getting OHLC data for ${req.params.pair}:`, error.message);
+    
+    if (error.message.includes('timeout')) {
+      return res.status(504).json({ 
+        message: 'Kraken API timeout',
+        error: error.message,
+        retryable: true
+      });
+    }
+    
+    if (error.message.includes('network error')) {
+      return res.status(503).json({ 
+        message: 'Network error connecting to Kraken',
+        error: error.message,
+        retryable: true
+      });
+    }
+    
     res.status(500).json({ 
       message: 'Failed to get OHLC data',
       error: error.message 
@@ -383,15 +538,15 @@ router.get('/trades-history', privateCryptoSecurity, async (req, res) => {
 });
 
 // Health check endpoint
-router.get('/health', async (req, res) => {
+router.get('/health', healthCheckLimiter, async (req, res) => {
   try {
-    const response = await axios.get(`${KRAKEN_API_URL}/0/public/SystemStatus`);
+    const response = await makePublicRequest('SystemStatus');
     
     const hasApiKeys = !!(config.KRAKEN_API_KEY && config.KRAKEN_API_SECRET);
     
     res.json({
       status: 'healthy',
-      krakenStatus: response.data.result,
+      krakenStatus: response.result,
       wsUrl: KRAKEN_WS_URL,
       apiKeysConfigured: hasApiKeys,
       features: {
@@ -399,13 +554,21 @@ router.get('/health', async (req, res) => {
         privateData: hasApiKeys,
         realTimeWebSocket: true
       },
+      uptime: process.uptime(),
+      memoryUsage: process.memoryUsage(),
       timestamp: new Date().toISOString()
     });
   } catch (error) {
     logger.error('Kraken API health check failed:', error.message);
+    
     res.status(503).json({
       status: 'unhealthy',
-      error: 'Kraken API unavailable',
+      error: error.message,
+      features: {
+        publicData: false,
+        privateData: false,
+        realTimeWebSocket: false
+      },
       timestamp: new Date().toISOString()
     });
   }

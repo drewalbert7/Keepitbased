@@ -31,9 +31,14 @@ const RegisterPage: React.FC = () => {
       return;
     }
 
-    const success = await register(formData.firstName, formData.lastName, formData.email, formData.password);
-    if (!success) {
-      toast.error('Registration failed. Please try again.');
+    const result = await register(
+      formData.firstName,
+      formData.lastName,
+      formData.email,
+      formData.password
+    );
+    if (!result.ok) {
+      toast.error(result.message);
     } else {
       toast.success('Account created successfully!');
     }

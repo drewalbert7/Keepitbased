@@ -134,7 +134,7 @@ class PriceMonitor {
           prices.push(priceData);
           
           // Store in Redis for caching
-          this.redis.setex(
+          this.redis.setEx(
             `price:${priceData.type}:${priceData.symbol}`,
             300, // 5 minutes TTL
             JSON.stringify(priceData)
@@ -185,12 +185,12 @@ class PriceMonitor {
   async getUserWatchlists() {
     try {
       const result = await db.query(`
-        SELECT DISTINCT symbol, type 
+        SELECT DISTINCT symbol, asset_type 
         FROM user_alerts 
         WHERE active = true
       `);
       
-      const symbols = result.rows.map(row => `${row.type.toUpperCase()}:${row.symbol}`);
+      const symbols = result.rows.map(row => `${row.asset_type.toUpperCase()}:${row.symbol}`);
       return [{ symbols }];
       
     } catch (error) {

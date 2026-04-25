@@ -235,7 +235,7 @@ FLASK_DEBUG=false
 
 # Logging
 LOG_LEVEL=INFO
-LOG_FILE=/home/dstrad/keepitbased/logs/kraken_api.log
+LOG_FILE=/home/<user>/keepitbased/logs/kraken_api.log
 ```
 
 ### Supported Trading Pairs
@@ -340,8 +340,8 @@ pip install -r requirements.txt
 ### Logs
 ```bash
 # View application logs
-tail -f /home/dstrad/keepitbased/logs/kraken_api.log
-tail -f /home/dstrad/keepitbased/logs/flask_api.log
+tail -f /home/<user>/keepitbased/logs/kraken_api.log
+tail -f /home/<user>/keepitbased/logs/flask_api.log
 ```
 
 ## Performance
