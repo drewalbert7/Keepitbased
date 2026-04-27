@@ -1,16 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { useState, useEffect } from 'react';
 import { QuoteData } from '../services/chartService';
-import { getSocketOrigin } from '../config/apiBase';
-
-interface PriceUpdate {
-  symbol: string;
-  price: number;
-  change24h?: number;
-  changePercent?: number;
-  timestamp: number;
-  type: string;
-}
+import { getStockQuote } from '../services/chartService';
 
 interface UseRealTimeQuotesProps {
   symbols: string[];
@@ -20,98 +10,89 @@ interface UseRealTimeQuotesProps {
 export const useRealTimeQuotes = ({ symbols, onQuoteUpdate }: UseRealTimeQuotesProps) => {
   const [quotes, setQuotes] = useState<Map<string, QuoteData>>(new Map());
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
-  const socketRef = useRef<Socket | null>(null);
+  const [pollingIntervalMs, setPollingIntervalMs] = useState<number>(10000);
 
   useEffect(() => {
     if (symbols.length === 0) return;
-
-    const socketUrl = getSocketOrigin();
-    
-    // Create socket connection
-    const socket = io(socketUrl, {
-      transports: ['websocket', 'polling'],
-      upgrade: true,
-    });
-
-    socketRef.current = socket;
-
-    socket.on('connect', () => {
-      console.log('Connected to real-time quotes');
-      setConnectionStatus('connected');
-      
-      // Subscribe to price updates for the specified symbols
-      const symbolsWithType = symbols.map(symbol => `stock:${symbol}`);
-      socket.emit('subscribe', symbolsWithType);
-    });
-
-    socket.on('disconnect', () => {
-      console.log('Disconnected from real-time quotes');
-      setConnectionStatus('disconnected');
-    });
-
-    socket.on('priceUpdate', (priceUpdates: PriceUpdate[]) => {
-      console.log('Received price updates:', priceUpdates);
-      
-      setQuotes(prevQuotes => {
-        const newQuotes = new Map(prevQuotes);
-        
-        priceUpdates.forEach(update => {
-          if (update.type === 'stock' && symbols.includes(update.symbol)) {
-            const quote: QuoteData = {
-              symbol: update.symbol,
-              price: update.price,
-              open: update.price, // We don't have open price in real-time update
-              high: update.price,
-              low: update.price,
-              volume: 0, // Volume not available in real-time update
-              change: update.change24h || 0,
-              changePercent: update.changePercent || 0,
-              marketCap: 0,
-              companyName: update.symbol,
-              timestamp: new Date(update.timestamp).toISOString()
-            };
-            
-            newQuotes.set(update.symbol, quote);
-            
-            // Call callback if provided
-            if (onQuoteUpdate) {
-              onQuoteUpdate(quote);
-            }
-          }
-        });
-        
-        return newQuotes;
-      });
-    });
-
-    socket.on('priceDrop', (dropData: any) => {
-      console.log('Price drop alert:', dropData);
-      // You can add toast notifications here for price drops
-    });
-
+    let cancelled = false;
+    let timeoutId: number | null = null;
+    let currentIntervalMs = 10000;
     setConnectionStatus('connecting');
 
-    // Cleanup function
-    return () => {
-      if (socket) {
-        socket.emit('unsubscribe');
-        socket.disconnect();
+    const getIntervalForSource = (sourceUsed?: string) => {
+      if (sourceUsed === 'snapshot') return 3000;
+      if (sourceUsed === 'agg_minute') return 10000;
+      return 60000;
+    };
+
+    const pollQuotes = async () => {
+      try {
+        const quoteResults = await Promise.all(
+          symbols.map((symbol) => getStockQuote(symbol).catch(() => null))
+        );
+
+        if (cancelled) return;
+
+        setQuotes((prevQuotes) => {
+          const newQuotes = new Map(prevQuotes);
+          quoteResults.forEach((quote) => {
+            if (!quote) return;
+            newQuotes.set(quote.symbol, quote);
+            onQuoteUpdate?.(quote);
+          });
+          return newQuotes;
+        });
+
+        const firstAvailableQuote = quoteResults.find((q): q is QuoteData => q !== null);
+        const nextInterval = getIntervalForSource(firstAvailableQuote?.sourceUsed);
+        currentIntervalMs = nextInterval;
+        setPollingIntervalMs(nextInterval);
+        setConnectionStatus('connected');
+      } catch (_error) {
+        if (!cancelled) {
+          setConnectionStatus('disconnected');
+          setPollingIntervalMs(15000);
+        }
+      } finally {
+        if (!cancelled) {
+          timeoutId = window.setTimeout(() => {
+            void pollQuotes();
+          }, currentIntervalMs);
+        }
       }
-      socketRef.current = null;
+    };
+
+    void pollQuotes();
+
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }, [symbols, onQuoteUpdate]);
 
   // Function to manually request latest quotes
   const refreshQuotes = async () => {
-    // This would typically call the REST API to get latest quotes
-    // for now, we rely on the real-time updates
-    console.log('Refreshing quotes for symbols:', symbols);
+    const quoteResults = await Promise.all(
+      symbols.map((symbol) => getStockQuote(symbol).catch(() => null))
+    );
+
+    setQuotes((prevQuotes) => {
+      const newQuotes = new Map(prevQuotes);
+      quoteResults.forEach((quote) => {
+        if (quote) {
+          newQuotes.set(quote.symbol, quote);
+          onQuoteUpdate?.(quote);
+        }
+      });
+      return newQuotes;
+    });
   };
 
   return {
     quotes: Object.fromEntries(quotes),
     connectionStatus,
     refreshQuotes,
+    pollingIntervalMs,
     isConnected: connectionStatus === 'connected'
   };
 };

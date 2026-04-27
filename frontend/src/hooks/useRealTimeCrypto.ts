@@ -78,7 +78,7 @@ export const useRealTimeCrypto = (options: RealTimeCryptoOptions) => {
 
   // Handle trade updates
   const handleTradeUpdate = useCallback((krakenTrade: KrakenTrade) => {
-    const trades = krakenTrade.trades.map(trade => ({
+    const trades = krakenTrade.trades.map((trade: [string, string, string, string, string]) => ({
       price: parseFloat(trade[0]),
       volume: parseFloat(trade[1]),
       time: parseFloat(trade[2]),

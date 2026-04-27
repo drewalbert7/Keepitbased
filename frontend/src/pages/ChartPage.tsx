@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { SimpleChart } from '../components/charts/SimpleChart';
 import { StockSearch } from '../components/charts/StockSearch';
-import { getStockHistory, getStockQuote, getStockInfo, ChartData, QuoteData, StockInfo } from '../services/chartService';
+import { getStockHistory, getStockQuote, getStockInfo, getTechnicalData, ChartData, QuoteData, StockInfo, TechnicalData } from '../services/chartService';
 import { useRealTimeQuotes } from '../hooks/useRealTimeQuotes';
 import { toast } from 'react-hot-toast';
 
@@ -15,15 +15,73 @@ export const ChartPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [showVolume, setShowVolume] = useState<boolean>(true);
   const [showIndicators, setShowIndicators] = useState<boolean>(true);
+  const [historySource, setHistorySource] = useState<string>('massive_aggs');
+  const [quoteSource, setQuoteSource] = useState<string>('snapshot');
+  const [quoteLastUpdated, setQuoteLastUpdated] = useState<string>('');
+  const [historyLastUpdated, setHistoryLastUpdated] = useState<string>('');
+  const [technicalData, setTechnicalData] = useState<TechnicalData['data']>([]);
+  const [staleSeconds, setStaleSeconds] = useState<number>(0);
+  const [dataErrorMessage, setDataErrorMessage] = useState<string>('');
+
+  const formatCompact = useCallback(
+    (value: number) => Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(value),
+    []
+  );
+
+  const getSourceStatus = (source: string): { label: string; className: string } => {
+    if (source === 'snapshot') {
+      return { label: 'Live', className: 'bg-green-900/40 text-green-300 border-green-700' };
+    }
+    if (source === 'agg_minute') {
+      return { label: 'Near-live', className: 'bg-yellow-900/40 text-yellow-300 border-yellow-700' };
+    }
+    return { label: 'Delayed', className: 'bg-blue-900/40 text-blue-300 border-blue-700' };
+  };
+
+  const quoteStatus = getSourceStatus(quoteSource);
+
+  const getStaleThresholdSeconds = (source: string) => {
+    if (source === 'snapshot') return 10;
+    if (source === 'agg_minute') return 30;
+    return 120;
+  };
+
+  const isDataStale = staleSeconds > getStaleThresholdSeconds(quoteSource);
+
+  const handleQuoteUpdate = useCallback((quote: QuoteData) => {
+    setQuoteData((prevQuote) => (prevQuote ? { ...prevQuote, ...quote } : quote));
+    setQuoteSource(quote.sourceUsed || 'snapshot');
+    setQuoteLastUpdated(quote.lastUpdated || quote.timestamp || new Date().toISOString());
+  }, []);
 
   // Real-time quotes
-  const { quotes, connectionStatus, isConnected } = useRealTimeQuotes({
+  const { connectionStatus, isConnected, pollingIntervalMs } = useRealTimeQuotes({
     symbols: [selectedSymbol],
-    onQuoteUpdate: (quote) => {
-      // Update quote data with real-time information
-      setQuoteData(prevQuote => prevQuote ? { ...prevQuote, ...quote } : quote);
-    }
+    onQuoteUpdate: handleQuoteUpdate
   });
+
+  const updateCadenceLabel = pollingIntervalMs >= 60000
+    ? 'updates every 60s'
+    : pollingIntervalMs <= 3000
+      ? 'updates every 3s'
+      : 'updates every 10s';
+  const connectionLabel = isConnected
+    ? 'Connected'
+    : connectionStatus === 'connecting'
+      ? 'Syncing'
+      : 'Disconnected';
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      if (!quoteLastUpdated) return;
+      const age = Math.max(0, Math.floor((Date.now() - new Date(quoteLastUpdated).getTime()) / 1000));
+      setStaleSeconds(age);
+    }, 5000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [quoteLastUpdated]);
 
   const periodOptions = [
     { value: '1d', label: '1D', interval: '5m' },
@@ -37,67 +95,91 @@ export const ChartPage: React.FC = () => {
     { value: 'all', label: 'All', interval: '1mo' },
   ];
 
-  const loadStockData = async (symbol: string, newPeriod?: string, newInterval?: string) => {
+  const loadStockData = useCallback(async (symbol: string, newPeriod?: string, newInterval?: string) => {
     setIsLoading(true);
+    setDataErrorMessage('');
     try {
       const actualPeriod = newPeriod || period;
       const actualInterval = newInterval || interval;
 
       // Load chart data, quote, and stock info in parallel
-      const [historyData, quote, info] = await Promise.all([
+      const [historyData, quote, info, technical] = await Promise.all([
         getStockHistory(symbol, actualPeriod, actualInterval),
         getStockQuote(symbol),
-        getStockInfo(symbol).catch(() => null) // Stock info is optional
+        getStockInfo(symbol).catch(() => null), // Stock info is optional
+        getTechnicalData(symbol, actualPeriod).catch(() => null)
       ]);
 
       setChartData(historyData.data);
       setQuoteData(quote);
       setStockInfo(info);
+      setTechnicalData(technical?.data || []);
+      setHistorySource(historyData.sourceUsed || 'massive_aggs');
+      setQuoteSource(quote.sourceUsed || 'snapshot');
+      setQuoteLastUpdated(quote.lastUpdated || quote.timestamp || new Date().toISOString());
+      setHistoryLastUpdated(historyData.lastUpdated || historyData.timestamp || new Date().toISOString());
       
       if (newPeriod) setPeriod(newPeriod);
       if (newInterval) setInterval(newInterval);
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading stock data:', error);
+      const status = error?.response?.status;
+      if (status === 403) {
+        setDataErrorMessage('Massive entitlement does not include this symbol/timeframe yet.');
+      } else if (status === 404) {
+        setDataErrorMessage(`Symbol ${symbol} was not found.`);
+      } else if (status === 429) {
+        setDataErrorMessage('Rate limit reached. Please retry in a moment.');
+      } else {
+        setDataErrorMessage('Temporary market-data error. Please retry.');
+      }
       toast.error(`Failed to load data for ${symbol}`);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [interval, period]);
 
   useEffect(() => {
     loadStockData(selectedSymbol);
-  }, [selectedSymbol]);
+  }, [selectedSymbol, loadStockData]);
 
-  const handleSymbolSelect = (symbol: string) => {
+  const handleSymbolSelect = useCallback((symbol: string) => {
     setSelectedSymbol(symbol);
-  };
+  }, []);
 
-  const handlePeriodChange = (newPeriod: string, newInterval: string) => {
+  const handlePeriodChange = useCallback((newPeriod: string, newInterval: string) => {
     loadStockData(selectedSymbol, newPeriod, newInterval);
-  };
+  }, [loadStockData, selectedSymbol]);
+
+  const latestTechnical = technicalData.length > 0 ? technicalData[technicalData.length - 1] : null;
+  const quoteChangePositive = (quoteData?.change ?? 0) >= 0;
+  const staleLabel = useMemo(() => `updated ${staleSeconds}s ago`, [staleSeconds]);
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="min-h-screen bg-gradient-to-b from-gray-950 via-gray-900 to-gray-950 text-white">
       {/* Header */}
-      <div className="border-b border-gray-800">
+      <div className="border-b border-gray-800/80 backdrop-blur">
         <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-2xl font-bold">Stock Charts</h1>
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-4">
+            <div className="space-y-1">
+              <h1 className="text-2xl font-bold tracking-tight">Stocks Dashboard</h1>
+              <p className="text-sm text-gray-400">Professional charting powered by Massive market data</p>
+            </div>
             
             {/* Controls */}
-            <div className="flex items-center space-x-4">
+            <div className="flex flex-wrap items-center gap-3">
               {/* Connection Status */}
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2 rounded-lg bg-gray-800/70 px-3 py-1.5 border border-gray-700">
                 <div className={`w-2 h-2 rounded-full ${
                   isConnected ? 'bg-green-500' : connectionStatus === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
                 }`} />
                 <span className="text-xs text-gray-400">
-                  {isConnected ? 'Live' : connectionStatus === 'connecting' ? 'Connecting...' : 'Disconnected'}
+                  {connectionLabel}
                 </span>
               </div>
 
-              <label className="flex items-center space-x-2">
+              <label className="flex items-center space-x-2 rounded-lg bg-gray-800/70 px-3 py-1.5 border border-gray-700">
                 <input
                   type="checkbox"
                   checked={showVolume}
@@ -107,7 +189,7 @@ export const ChartPage: React.FC = () => {
                 <span className="text-sm">Volume</span>
               </label>
               
-              <label className="flex items-center space-x-2">
+              <label className="flex items-center space-x-2 rounded-lg bg-gray-800/70 px-3 py-1.5 border border-gray-700">
                 <input
                   type="checkbox"
                   checked={showIndicators}
@@ -116,6 +198,26 @@ export const ChartPage: React.FC = () => {
                 />
                 <span className="text-sm">Indicators</span>
               </label>
+
+              <div className="px-2 py-1 rounded text-xs bg-gray-800 border border-gray-700 text-gray-300">
+                Data: {quoteSource}
+              </div>
+              <div className={`px-2 py-1 rounded text-xs border ${quoteStatus.className}`}>
+                {quoteStatus.label}
+              </div>
+              <div className="px-2 py-1 rounded text-xs bg-gray-800 border border-gray-700 text-gray-300">
+                {updateCadenceLabel}
+              </div>
+              <div className={`w-32 text-center px-2 py-1 rounded text-xs border tabular-nums ${isDataStale ? 'bg-red-900/40 text-red-300 border-red-700' : 'bg-gray-800 text-gray-300 border-gray-700'}`}>
+                {staleLabel}
+              </div>
+              <button
+                onClick={() => loadStockData(selectedSymbol)}
+                disabled={isLoading}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-blue-700 bg-blue-600/80 hover:bg-blue-500 disabled:opacity-50"
+              >
+                Refresh
+              </button>
             </div>
           </div>
 
@@ -130,9 +232,9 @@ export const ChartPage: React.FC = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 lg:[grid-template-columns:minmax(0,3fr)_minmax(320px,1fr)] gap-6">
           {/* Main Chart */}
-          <div className="lg:col-span-3">
+          <div>
             <div className="space-y-4">
               {/* Period Selection */}
               <div className="flex items-center justify-between">
@@ -162,10 +264,27 @@ export const ChartPage: React.FC = () => {
               </div>
 
               {/* Chart */}
-              <div className="bg-gray-800 rounded-lg overflow-hidden">
+              <div className="bg-gray-800/80 rounded-xl overflow-hidden border border-gray-700/70 shadow-xl">
+                <div className="px-4 py-2 border-b border-gray-700 text-xs text-gray-300 bg-gray-900/90 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">Feed status</span>
+                    <span className={`px-2 py-0.5 rounded border ${quoteStatus.className}`}>{quoteStatus.label}</span>
+                    <span className="text-gray-400">quote: {quoteSource}</span>
+                    <span className="text-gray-400">history: {historySource}</span>
+                    <span className="text-gray-500">{updateCadenceLabel}</span>
+                    <span className={`${isDataStale ? 'text-red-300' : 'text-gray-500'}`}>
+                      quote updated {staleSeconds}s ago
+                    </span>
+                  </div>
+                  <div className="text-gray-500">
+                    Massive data pipeline
+                    {historyLastUpdated ? ` • history ${new Date(historyLastUpdated).toLocaleTimeString()}` : ''}
+                  </div>
+                </div>
                 {chartData.length > 0 ? (
                   <SimpleChart
                     data={chartData}
+                    technicalData={technicalData}
                     symbol={selectedSymbol}
                     height={600}
                     showVolume={showVolume}
@@ -173,10 +292,13 @@ export const ChartPage: React.FC = () => {
                     onTimeScaleChange={handlePeriodChange}
                     currentTimeScale={period}
                     currentInterval={interval}
+                    sourceUsed={historySource}
                   />
                 ) : (
                   <div className="h-96 flex items-center justify-center text-gray-400">
-                    {isLoading ? 'Loading chart data...' : 'No chart data available'}
+                    {isLoading
+                      ? 'Loading chart data...'
+                      : dataErrorMessage || 'No chart data available for this symbol/timeframe'}
                   </div>
                 )}
               </div>
@@ -184,14 +306,17 @@ export const ChartPage: React.FC = () => {
           </div>
 
           {/* Sidebar */}
-          <div className="space-y-6">
+          <div className="space-y-6 min-w-[320px]">
             {/* Quote Information */}
             {quoteData && (
-              <div className="bg-gray-800 rounded-lg p-6">
+              <div className="bg-gray-800/80 rounded-xl p-6 border border-gray-700/70">
                 <div className="space-y-4">
                   <div>
                     <h3 className="text-lg font-semibold">{quoteData.symbol}</h3>
                     <p className="text-gray-400 text-sm">{quoteData.companyName}</p>
+                    <p className={`text-sm mt-1 font-medium ${quoteChangePositive ? 'text-green-400' : 'text-red-400'}`}>
+                      {quoteChangePositive ? '+' : ''}${quoteData.change.toFixed(2)} ({quoteData.changePercent.toFixed(2)}%)
+                    </p>
                   </div>
                   
                   <div className="space-y-2">
@@ -224,7 +349,7 @@ export const ChartPage: React.FC = () => {
                     
                     <div className="flex justify-between">
                       <span className="text-gray-400">Volume</span>
-                      <span>{quoteData.volume.toLocaleString()}</span>
+                      <span>{formatCompact(quoteData.volume)}</span>
                     </div>
                   </div>
                 </div>
@@ -233,7 +358,7 @@ export const ChartPage: React.FC = () => {
 
             {/* Stock Information */}
             {stockInfo && (
-              <div className="bg-gray-800 rounded-lg p-6">
+              <div className="bg-gray-800/80 rounded-xl p-6 border border-gray-700/70">
                 <h4 className="text-lg font-semibold mb-4">Company Info</h4>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
@@ -248,7 +373,7 @@ export const ChartPage: React.FC = () => {
                   
                   <div className="flex justify-between">
                     <span className="text-gray-400">Market Cap</span>
-                    <span>{stockInfo.marketCap ? `$${(stockInfo.marketCap / 1e9).toFixed(2)}B` : 'N/A'}</span>
+                    <span>{stockInfo.marketCap ? `$${formatCompact(stockInfo.marketCap)}` : 'N/A'}</span>
                   </div>
                   
                   <div className="flex justify-between">
@@ -269,6 +394,49 @@ export const ChartPage: React.FC = () => {
                   <div className="flex justify-between">
                     <span className="text-gray-400">52W Low</span>
                     <span>{stockInfo.week52Low ? `$${stockInfo.week52Low.toFixed(2)}` : 'N/A'}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Technical Indicators */}
+            {showIndicators && latestTechnical && (
+              <div className="bg-gray-800/80 rounded-xl p-6 border border-gray-700/70">
+                <h4 className="text-lg font-semibold mb-4">Indicators</h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">SMA 20</span>
+                    <span>{latestTechnical.sma20 != null ? latestTechnical.sma20.toFixed(2) : 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">SMA 50</span>
+                    <span>{latestTechnical.sma50 != null ? latestTechnical.sma50.toFixed(2) : 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">EMA 20</span>
+                    <span>{latestTechnical.ema20 != null ? latestTechnical.ema20.toFixed(2) : 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">EMA 50</span>
+                    <span>{latestTechnical.ema50 != null ? latestTechnical.ema50.toFixed(2) : 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">RSI 14</span>
+                    <span>{latestTechnical.rsi != null ? latestTechnical.rsi.toFixed(2) : 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">MACD</span>
+                    <span>{latestTechnical.macd != null ? latestTechnical.macd.toFixed(4) : 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Signal</span>
+                    <span>{latestTechnical.signal != null ? latestTechnical.signal.toFixed(4) : 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Histogram</span>
+                    <span className={latestTechnical.histogram != null && latestTechnical.histogram >= 0 ? 'text-green-400' : 'text-red-400'}>
+                      {latestTechnical.histogram != null ? latestTechnical.histogram.toFixed(4) : 'N/A'}
+                    </span>
                   </div>
                 </div>
               </div>

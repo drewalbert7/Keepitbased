@@ -14,15 +14,15 @@ interface TradingViewTimelineProps {
 }
 
 const TimeScaleOptions: TimeScaleOption[] = [
-  { value: '1D', label: '1D', interval: '5m', days: 1 },
-  { value: '5D', label: '5D', interval: '15m', days: 5 },
-  { value: '1M', label: '1M', interval: '1h', days: 30 },
-  { value: '3M', label: '3M', interval: '1d', days: 90 },
-  { value: '6M', label: '6M', interval: '1d', days: 180 },
-  { value: 'YTD', label: 'YTD', interval: '1d', days: 365 },
-  { value: '1Y', label: '1Y', interval: '1d', days: 365 },
-  { value: '5Y', label: '5Y', interval: '1wk', days: 1825 },
-  { value: 'ALL', label: 'All', interval: '1mo', days: 3650 },
+  { value: '1d', label: '1D', interval: '5m', days: 1 },
+  { value: '5d', label: '5D', interval: '15m', days: 5 },
+  { value: '1mo', label: '1M', interval: '1h', days: 30 },
+  { value: '3mo', label: '3M', interval: '1d', days: 90 },
+  { value: '6mo', label: '6M', interval: '1d', days: 180 },
+  { value: 'ytd', label: 'YTD', interval: '1d', days: 365 },
+  { value: '1y', label: '1Y', interval: '1d', days: 365 },
+  { value: '5y', label: '5Y', interval: '1wk', days: 1825 },
+  { value: 'all', label: 'All', interval: '1mo', days: 3650 },
 ];
 
 export const TradingViewTimeline: React.FC<TradingViewTimelineProps> = ({
@@ -42,12 +42,12 @@ export const TradingViewTimeline: React.FC<TradingViewTimelineProps> = ({
     const now = new Date();
     const startDate = new Date();
 
-    if (selected.value === 'YTD') {
+    if (selected.value === 'ytd') {
       startDate.setMonth(0, 1); // January 1st
     } else if (selected.days) {
       startDate.setDate(now.getDate() - selected.days);
-    } else if (selected.value === '1Y' || selected.value === '5Y') {
-      startDate.setFullYear(now.getFullYear() - (selected.value === '1Y' ? 1 : 5));
+    } else if (selected.value === '1y' || selected.value === '5y') {
+      startDate.setFullYear(now.getFullYear() - (selected.value === '1y' ? 1 : 5));
     }
 
     return `${startDate.toLocaleDateString('en-US', { 
@@ -106,7 +106,7 @@ export const TradingViewTimeline: React.FC<TradingViewTimelineProps> = ({
           <button
             onClick={() => setShowMoreMenu(!showMoreMenu)}
             className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-              currentScale === 'ALL'
+              currentScale === 'all'
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
             }`}

@@ -8,18 +8,117 @@ class PriceMonitor {
     this.io = io;
     this.redis = getRedisClient();
     this.lastPrices = new Map();
+    this.polygonCryptoUnavailable = false;
+    this.polygonStocksUnavailable = false;
+    this.coinGeckoRateLimitedUntil = 0;
+    this.logCooldownMs = 5 * 60 * 1000;
+    this.lastLogByKey = new Map();
     
     // Popular symbols to track by default
     this.defaultSymbols = {
-      crypto: ['BTC', 'ETH', 'ADA', 'DOT', 'SOL', 'MATIC', 'LINK', 'UNI'],
-      stocks: ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'AMZN', 'NVDA', 'META', 'NFLX']
+      crypto: ['BTC', 'ETH'],
+      stocks: []
     };
   }
 
   async getCryptoPrice(symbol) {
     try {
-      // Using CoinGecko free API (no key required)
-      const response = await axios.get(`https://api.coingecko.com/api/v3/simple/price`, {
+      if (this.polygonCryptoUnavailable) {
+        return this.getCryptoPriceFromBinance(symbol);
+      }
+
+      const polygonSymbol = this.toPolygonCryptoSymbol(symbol);
+      const response = await this.makePolygonRequest(`/v2/snapshot/locale/global/markets/crypto/tickers/${encodeURIComponent(polygonSymbol)}`);
+      const ticker = response.ticker;
+
+      if (!ticker) {
+        throw new Error(`No Polygon crypto snapshot found for ${polygonSymbol}`);
+      }
+
+      const open = Number(ticker.day?.o ?? ticker.day?.c ?? 0);
+      const close = Number(ticker.day?.c ?? ticker.lastTrade?.p ?? open);
+      const changePercent = open ? ((close - open) / open) * 100 : 0;
+
+      return {
+        symbol: symbol,
+        price: close,
+        change24h: changePercent,
+        timestamp: Date.now(),
+        type: 'crypto'
+      };
+    } catch (error) {
+      if (error.response?.status === 403 && !this.polygonCryptoUnavailable) {
+        this.polygonCryptoUnavailable = true;
+        this.logWithCooldown('polygon-crypto-entitlement', 'warn', 'Polygon crypto snapshot endpoints are unavailable for this API key; using fallback providers.');
+      }
+      this.logWithCooldown(`polygon-crypto-failure-${symbol}`, 'warn', `Polygon crypto price fetch failed for ${symbol}; falling back to Binance.`);
+      return this.getCryptoPriceFromBinance(symbol);
+    }
+  }
+  async getCryptoPriceFromBinance(symbol) {
+    try {
+      const response = await axios.get('https://api.binance.com/api/v3/ticker/24hr', {
+        params: { symbol: `${symbol.toUpperCase()}USDT` },
+        timeout: 10000
+      });
+
+      return {
+        symbol,
+        price: Number(response.data.lastPrice),
+        change24h: Number(response.data.priceChangePercent || 0),
+        timestamp: Date.now(),
+        type: 'crypto'
+      };
+    } catch (error) {
+      this.logWithCooldown(`binance-crypto-failure-${symbol}`, 'warn', `Binance crypto fallback failed for ${symbol}; trying CoinGecko.`);
+      return this.getCryptoPriceFromCoinGecko(symbol);
+    }
+  }
+
+
+  async getStockPrice(symbol) {
+    try {
+      if (this.polygonStocksUnavailable) {
+        return null;
+      }
+
+      const response = await this.makePolygonRequest(`/v2/snapshot/locale/us/markets/stocks/tickers/${encodeURIComponent(symbol)}`);
+      const ticker = response.ticker;
+
+      if (!ticker) {
+        throw new Error(`No Polygon stock snapshot found for ${symbol}`);
+      }
+
+      const open = Number(ticker.day?.o ?? ticker.day?.c ?? 0);
+      const close = Number(ticker.day?.c ?? ticker.lastTrade?.p ?? open);
+      const change = close - open;
+      const changePercent = open ? (change / open) * 100 : 0;
+
+      return {
+        symbol: symbol,
+        price: close,
+        change24h: change,
+        changePercent,
+        timestamp: Date.now(),
+        type: 'stock'
+      };
+    } catch (error) {
+      if (error.response?.status === 403 && !this.polygonStocksUnavailable) {
+        this.polygonStocksUnavailable = true;
+        this.logWithCooldown('polygon-stock-entitlement', 'warn', 'Polygon stock snapshot endpoints are unavailable for this API key.');
+      }
+      this.logWithCooldown(`polygon-stock-failure-${symbol}`, 'warn', `Polygon stock price fetch failed for ${symbol}.`);
+      return null;
+    }
+  }
+
+  async getCryptoPriceFromCoinGecko(symbol) {
+    try {
+      if (Date.now() < this.coinGeckoRateLimitedUntil) {
+        return this.getLastKnownPrice('crypto', symbol);
+      }
+
+      const response = await axios.get('https://api.coingecko.com/api/v3/simple/price', {
         params: {
           ids: this.getCoinGeckoId(symbol),
           vs_currencies: 'usd',
@@ -27,69 +126,80 @@ class PriceMonitor {
         },
         timeout: 10000
       });
-      
+
       const coinId = this.getCoinGeckoId(symbol);
       const data = response.data[coinId];
-      
       if (!data) {
-        throw new Error(`No data found for ${symbol}`);
+        throw new Error(`No CoinGecko data found for ${symbol}`);
       }
-      
+
       return {
-        symbol: symbol,
-        price: data.usd,
-        change24h: data.usd_24h_change || 0,
+        symbol,
+        price: Number(data.usd),
+        change24h: Number(data.usd_24h_change || 0),
         timestamp: Date.now(),
         type: 'crypto'
       };
     } catch (error) {
-      logger.error(`Error fetching crypto price for ${symbol}:`, error.message);
+      if (error.response?.status === 429) {
+        this.coinGeckoRateLimitedUntil = Date.now() + 60 * 1000;
+        this.logWithCooldown('coingecko-rate-limit', 'warn', 'CoinGecko rate-limited. Using cached crypto prices for 60s.');
+        return this.getLastKnownPrice('crypto', symbol);
+      }
+      this.logWithCooldown(`coingecko-failure-${symbol}`, 'error', `CoinGecko fallback failed for ${symbol}.`);
       return null;
     }
   }
 
-  async getStockPrice(symbol) {
-    try {
-      // Using Alpha Vantage API (free tier)
-      const apiKey = process.env.ALPHA_VANTAGE_API_KEY || 'demo';
-      const response = await axios.get(`https://www.alphavantage.co/query`, {
-        params: {
-          function: 'GLOBAL_QUOTE',
-          symbol: symbol,
-          apikey: apiKey
-        },
-        timeout: 10000
-      });
-      
-      const quote = response.data['Global Quote'];
-      if (!quote || !quote['05. price']) {
-        throw new Error(`No data found for ${symbol}`);
-      }
-      
-      return {
-        symbol: symbol,
-        price: parseFloat(quote['05. price']),
-        change24h: parseFloat(quote['09. change']) || 0,
-        changePercent: parseFloat(quote['10. change percent'].replace('%', '')) || 0,
-        timestamp: Date.now(),
-        type: 'stock'
-      };
-    } catch (error) {
-      logger.error(`Error fetching stock price for ${symbol}:`, error.message);
-      return null;
+  async makePolygonRequest(path, params = {}) {
+    const apiKey = process.env.POLYGON_API_KEY || process.env.MASSIVE_API_KEY;
+    if (!apiKey) {
+      throw new Error('POLYGON_API_KEY is not configured');
     }
+
+    const response = await axios.get(`https://api.polygon.io${path}`, {
+      params: {
+        ...params,
+        apiKey
+      },
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'X-Polygon-API-Key': apiKey
+      },
+      timeout: 10000
+    });
+
+    return response.data;
+  }
+
+  toPolygonCryptoSymbol(symbol) {
+    return `X:${symbol.toUpperCase()}USD`;
+  }
+
+  getLastKnownPrice(type, symbol) {
+    const key = `${type}:${symbol}`;
+    return this.lastPrices.get(key) || null;
+  }
+
+  logWithCooldown(key, level, message) {
+    const last = this.lastLogByKey.get(key) || 0;
+    if (Date.now() - last < this.logCooldownMs) {
+      return;
+    }
+    this.lastLogByKey.set(key, Date.now());
+    logger[level](message);
   }
 
   getCoinGeckoId(symbol) {
     const coinMap = {
-      'BTC': 'bitcoin',
-      'ETH': 'ethereum',
-      'ADA': 'cardano',
-      'DOT': 'polkadot',
-      'SOL': 'solana',
-      'MATIC': 'matic-network',
-      'LINK': 'chainlink',
-      'UNI': 'uniswap'
+      BTC: 'bitcoin',
+      ETH: 'ethereum',
+      ADA: 'cardano',
+      DOT: 'polkadot',
+      SOL: 'solana',
+      MATIC: 'matic-network',
+      LINK: 'chainlink',
+      UNI: 'uniswap'
     };
     return coinMap[symbol] || symbol.toLowerCase();
   }

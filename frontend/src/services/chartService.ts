@@ -17,6 +17,9 @@ export interface HistoryResponse {
   period: string;
   interval: string;
   timestamp: string;
+  sourceUsed?: string;
+  partialData?: boolean;
+  lastUpdated?: string;
 }
 
 export interface QuoteData {
@@ -31,6 +34,9 @@ export interface QuoteData {
   marketCap: number;
   companyName: string;
   timestamp: string;
+  sourceUsed?: 'snapshot' | 'agg_minute' | 'agg_day' | string;
+  partialData?: boolean;
+  lastUpdated?: string;
 }
 
 export interface StockInfo {
@@ -56,8 +62,11 @@ export interface TechnicalData {
     close: number;
     sma20: number | null;
     sma50: number | null;
+    ema20: number | null;
+    ema50: number | null;
     macd: number | null;
     signal: number | null;
+    histogram: number | null;
     rsi: number | null;
   }[];
   timestamp: string;
@@ -99,7 +108,25 @@ export const getStockHistory = async (
   const response = await chartApi.get(`/history/${symbol}`, {
     params: { period, interval }
   });
-  return response.data;
+  const payload = response.data as HistoryResponse;
+  const normalizedData = (payload.data || [])
+    .filter((row) =>
+      Number.isFinite(row.time) &&
+      Number.isFinite(row.open) &&
+      Number.isFinite(row.high) &&
+      Number.isFinite(row.low) &&
+      Number.isFinite(row.close)
+    )
+    .map((row) => ({
+      ...row,
+      time: Math.floor(Number(row.time))
+    }))
+    .sort((a, b) => a.time - b.time);
+
+  return {
+    ...payload,
+    data: normalizedData
+  };
 };
 
 export const getStockQuote = async (symbol: string): Promise<QuoteData> => {

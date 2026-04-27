@@ -111,34 +111,34 @@ export const KRAKEN_INTERVALS = {
   '1M': 43200 // Monthly (approximately 30 days)
 } as const;
 
-// Pair mapping for Kraken API (frontend display name → Kraken API name)
+// Pair mapping for Polygon crypto tickers (frontend display name → Polygon ticker)
 export const PAIR_MAPPING: Record<string, string> = {
-  'BTC/USD': 'XXBTZUSD',
-  'ETH/USD': 'XETHZUSD',
-  'ADA/USD': 'ADAUSD',
-  'SOL/USD': 'SOLUSD',
-  'DOT/USD': 'DOTUSD',
-  'LINK/USD': 'LINKUSD',
-  'MATIC/USD': 'MATICUSD',
-  'AVAX/USD': 'AVAXUSD',
-  'ATOM/USD': 'ATOMUSD',
-  'ALGO/USD': 'ALGOUSD',
+  'BTC/USD': 'X:BTCUSD',
+  'ETH/USD': 'X:ETHUSD',
+  'ADA/USD': 'X:ADAUSD',
+  'SOL/USD': 'X:SOLUSD',
+  'DOT/USD': 'X:DOTUSD',
+  'LINK/USD': 'X:LINKUSD',
+  'MATIC/USD': 'X:MATICUSD',
+  'AVAX/USD': 'X:AVAXUSD',
+  'ATOM/USD': 'X:ATOMUSD',
+  'ALGO/USD': 'X:ALGOUSD',
   // Add reverse mapping for display
-  'XXBTZUSD': 'BTC/USD',
-  'XETHZUSD': 'ETH/USD'
+  'X:BTCUSD': 'BTC/USD',
+  'X:ETHUSD': 'ETH/USD'
 };
 
 export const POPULAR_CRYPTO_PAIRS = [
-  'XXBTZUSD', // Bitcoin/USD
-  'XETHZUSD', // Ethereum/USD
-  'ADAUSD',   // Cardano/USD
-  'SOLUSD',   // Solana/USD
-  'DOTUSD',   // Polkadot/USD
-  'LINKUSD',  // Chainlink/USD
-  'MATICUSD', // Polygon/USD
-  'AVAXUSD',  // Avalanche/USD
-  'ATOMUSD',  // Cosmos/USD
-  'ALGOUSD'   // Algorand/USD
+  'X:BTCUSD', // Bitcoin/USD
+  'X:ETHUSD', // Ethereum/USD
+  'X:ADAUSD', // Cardano/USD
+  'X:SOLUSD', // Solana/USD
+  'X:DOTUSD', // Polkadot/USD
+  'X:LINKUSD', // Chainlink/USD
+  'X:MATICUSD', // Polygon/USD
+  'X:AVAXUSD', // Avalanche/USD
+  'X:ATOMUSD', // Cosmos/USD
+  'X:ALGOUSD' // Algorand/USD
 ];
 
 // Create axios instance with enhanced configuration
@@ -451,84 +451,4 @@ export const getTimeRangeLabel = (timeRange: TimeRange): string => {
   return labels[timeRange];
 };
 
-// Direct Kraken API proxy service for enhanced CORS handling
-class KrakenProxyService {
-  private api = axios.create({
-    baseURL: `${API_BASE_URL}/crypto/proxy/0/public`,
-    timeout: 30000,
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-
-  // Direct proxy to Kraken API endpoints
-  async getTicker(pair: string = 'XBTUSD') {
-    try {
-      const response = await this.api.get('/Ticker', { params: { pair } });
-      if (response.data.error && response.data.error.length > 0) {
-        throw new Error(response.data.error.join(', '));
-      }
-      return response.data.result;
-    } catch (error) {
-      console.error('Kraken proxy ticker error:', error);
-      throw error;
-    }
-  }
-
-  async getOHLC(pair: string = 'XBTUSD', interval: number = 60, since?: number) {
-    try {
-      const params: any = { pair, interval };
-      if (since) params.since = since;
-      
-      const response = await this.api.get('/OHLC', { params });
-      if (response.data.error && response.data.error.length > 0) {
-        throw new Error(response.data.error.join(', '));
-      }
-      
-      const ohlcData = response.data.result[Object.keys(response.data.result)[0]] || [];
-      
-      // Convert timestamps from seconds to milliseconds
-      return ohlcData.map((candle: any) => ({
-        time: parseInt(candle[0]) * 1000,
-        open: parseFloat(candle[1]),
-        high: parseFloat(candle[2]),
-        low: parseFloat(candle[3]),
-        close: parseFloat(candle[4]),
-        vwap: parseFloat(candle[5]),
-        volume: parseFloat(candle[6]),
-        trades: parseInt(candle[7])
-      }));
-    } catch (error) {
-      console.error('Kraken proxy OHLC error:', error);
-      throw error;
-    }
-  }
-
-  async getTrades(pair: string, since?: string) {
-    try {
-      const params: any = { pair };
-      if (since) params.since = since;
-      
-      const response = await this.api.get('/Trades', { params });
-      if (response.data.error && response.data.error.length > 0) {
-        throw new Error(response.data.error.join(', '));
-      }
-      
-      const trades = response.data.result[Object.keys(response.data.result)[0]] || [];
-      return trades.map((trade: any) => ({
-        price: parseFloat(trade[0]),
-        volume: parseFloat(trade[1]),
-        time: parseFloat(trade[2]) * 1000,
-        side: trade[3],
-        type: trade[4],
-        misc: trade[5]
-      }));
-    } catch (error) {
-      console.error('Kraken proxy trades error:', error);
-      throw error;
-    }
-  }
-}
-
-export const krakenProxyService = new KrakenProxyService();
 export default cryptoApi;

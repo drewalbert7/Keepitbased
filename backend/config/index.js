@@ -42,13 +42,10 @@ const config = {
 
   // API Keys
   ALPHA_VANTAGE_API_KEY: process.env.ALPHA_VANTAGE_API_KEY || 'demo',
-  POLYGON_API_KEY: process.env.POLYGON_API_KEY || '',
+  MASSIVE_API_KEY: process.env.MASSIVE_API_KEY || '',
+  POLYGON_API_KEY: process.env.POLYGON_API_KEY || process.env.MASSIVE_API_KEY || '',
   COINAPI_KEY: process.env.COINAPI_KEY || '',
   
-  // Kraken API (for crypto)
-  KRAKEN_API_KEY: process.env.KRAKEN_API_KEY || '',
-  KRAKEN_API_SECRET: process.env.KRAKEN_API_SECRET || '',
-
   // Email
   SMTP_HOST: process.env.SMTP_HOST || 'smtp.gmail.com',
   SMTP_PORT: parseInt(process.env.SMTP_PORT) || 587,
@@ -78,9 +75,10 @@ const config = {
 function validateConfig() {
   const errors = [];
   const warnings = [];
+  const isJwtFallback = config.JWT_SECRET.startsWith('fallback-jwt-secret-change-in-production-');
 
   // Critical validations
-  if (!config.JWT_SECRET || config.JWT_SECRET === 'your-super-secret-jwt-key-change-in-production') {
+  if (!config.JWT_SECRET || config.JWT_SECRET === 'your-super-secret-jwt-key-change-in-production' || isJwtFallback) {
     warnings.push('⚠️  Using default JWT_SECRET - change this in production!');
   }
 
@@ -98,11 +96,20 @@ function validateConfig() {
     if (!process.env.JWT_SECRET) {
       errors.push('❌ JWT_SECRET must be set in production');
     }
+    if (isJwtFallback) {
+      errors.push('❌ Fallback JWT secret is not allowed in production');
+    }
+    if (!process.env.MASSIVE_API_KEY && !process.env.POLYGON_API_KEY) {
+      errors.push('❌ MASSIVE_API_KEY (or POLYGON_API_KEY) must be set in production');
+    }
     if (!process.env.DATABASE_URL) {
       warnings.push('⚠️  DATABASE_URL not explicitly set in production');
     }
     if (config.HTTPS_ENABLED && (!config.SSL_KEY_PATH || !config.SSL_CERT_PATH)) {
       warnings.push('⚠️  HTTPS enabled but SSL certificates not configured');
+    }
+    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+      warnings.push('⚠️  SMTP credentials are not fully configured in production');
     }
   }
 

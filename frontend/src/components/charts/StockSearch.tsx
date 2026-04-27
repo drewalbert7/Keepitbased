@@ -45,6 +45,14 @@ export const StockSearch: React.FC<StockSearchProps> = ({ onSelectStock, current
     debouncedSearch(query);
   }, [query, debouncedSearch]);
 
+  useEffect(() => {
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsOpen(false);
+    };
+    window.addEventListener('keydown', onEsc);
+    return () => window.removeEventListener('keydown', onEsc);
+  }, []);
+
   const handleSelectStock = (symbol: string) => {
     onSelectStock(symbol);
     setQuery('');
@@ -74,7 +82,7 @@ export const StockSearch: React.FC<StockSearchProps> = ({ onSelectStock, current
             setIsOpen(true);
           }}
           onFocus={() => setIsOpen(true)}
-          className="w-full pl-10 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+          className="w-full pl-10 pr-4 py-2.5 bg-gray-800/90 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm"
         />
         <MagnifyingGlassIcon className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
         {isLoading && (
@@ -90,7 +98,7 @@ export const StockSearch: React.FC<StockSearchProps> = ({ onSelectStock, current
             className="fixed inset-0 z-10" 
             onClick={() => setIsOpen(false)}
           />
-          <div className="absolute z-20 w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-lg max-h-96 overflow-y-auto">
+          <div className="absolute z-20 w-full mt-1 bg-gray-800/95 border border-gray-700 rounded-xl shadow-2xl max-h-96 overflow-y-auto backdrop-blur">
             {query.length >= 2 ? (
               results.length > 0 ? (
                 <div>
@@ -101,8 +109,8 @@ export const StockSearch: React.FC<StockSearchProps> = ({ onSelectStock, current
                     <button
                       key={stock.symbol}
                       onClick={() => handleSelectStock(stock.symbol)}
-                      className={`w-full px-4 py-3 text-left hover:bg-gray-700 transition-colors ${
-                        currentSymbol === stock.symbol ? 'bg-blue-600' : ''
+                    className={`w-full px-4 py-3 text-left hover:bg-gray-700 transition-colors ${
+                        currentSymbol === stock.symbol ? 'bg-blue-600/70' : ''
                       }`}
                     >
                       <div className="flex items-center justify-between">
@@ -132,7 +140,7 @@ export const StockSearch: React.FC<StockSearchProps> = ({ onSelectStock, current
                     key={stock.symbol}
                     onClick={() => handleSelectStock(stock.symbol)}
                     className={`w-full px-4 py-3 text-left hover:bg-gray-700 transition-colors ${
-                      currentSymbol === stock.symbol ? 'bg-blue-600' : ''
+                      currentSymbol === stock.symbol ? 'bg-blue-600/70' : ''
                     }`}
                   >
                     <div className="flex items-center justify-between">

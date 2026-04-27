@@ -78,7 +78,7 @@ const cryptoSecurityHeaders = helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      connectSrc: ["'self'", "https://api.kraken.com", "wss://ws.kraken.com"],
+      connectSrc: ["'self'", "https://api.polygon.io"],
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "https:"],
@@ -279,7 +279,7 @@ const validateApiKeys = (req, res, next) => {
   if (isPrivateEndpoint) {
     const config = require('../config');
     
-    if (!config.KRAKEN_API_KEY || !config.KRAKEN_API_SECRET) {
+    if (!config.POLYGON_API_KEY && !config.MASSIVE_API_KEY) {
       return res.status(503).json({
         error: 'Service unavailable',
         message: 'Private API endpoints are not configured'

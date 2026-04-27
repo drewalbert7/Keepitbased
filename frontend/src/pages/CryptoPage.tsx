@@ -14,12 +14,10 @@ import {
   TimeRange,
   getTimeRangeLabel 
 } from '../services/cryptoService';
-import { useRealTimeCrypto } from '../hooks/useRealTimeCrypto';
-import { mergeChartData, formatWebSocketOHLC, validateChartData } from '../utils/chartDataUtils';
 import { toast } from 'react-hot-toast';
 
 export const CryptoPage: React.FC = () => {
-  const [selectedPair, setSelectedPair] = useState<string>('XXBTZUSD'); // Bitcoin/USD
+  const [selectedPair, setSelectedPair] = useState<string>('X:BTCUSD'); // Bitcoin/USD
   const [chartData, setChartData] = useState<CryptoCandle[]>([]);
   const [tickerData, setTickerData] = useState<CryptoTicker | null>(null);
   const [interval, setInterval] = useState<keyof typeof KRAKEN_INTERVALS>('1h');
@@ -31,32 +29,9 @@ export const CryptoPage: React.FC = () => {
   const [lastDataUpdate, setLastDataUpdate] = useState<number>(Date.now());
   const [dataCache, setDataCache] = useState<Map<string, CryptoCandle[]>>(new Map());
 
-  // Real-time data
-  const {
-    tickers,
-    connectionStatus,
-    isConnected,
-    error: wsError,
-    getTicker
-  } = useRealTimeCrypto({
-    pairs: [selectedPair],
-    enableOHLC: true,
-    ohlcInterval: interval,
-    onTickerUpdate: (ticker) => {
-      // Update ticker data with real-time information
-      setTickerData(prevTicker => prevTicker ? { ...prevTicker, ...ticker } : ticker);
-    },
-    onOHLCUpdate: (ohlcData) => {
-      // Handle real-time OHLC updates for live chart
-      if (ohlcData.symbol === selectedPair) {
-        const formattedOHLC = formatWebSocketOHLC(ohlcData);
-        setChartData(prevData => {
-          const mergedData = mergeChartData(prevData, formattedOHLC, KRAKEN_INTERVALS[interval], true);
-          return validateChartData(mergedData);
-        });
-      }
-    }
-  });
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'open' | 'closing' | 'closed'>('closed');
+  const [isConnected, setIsConnected] = useState<boolean>(false);
+  const [wsError, setWsError] = useState<string | null>(null);
 
   const intervalOptions = [
     { value: '1m' as const, label: '1m' },
@@ -166,6 +141,37 @@ export const CryptoPage: React.FC = () => {
     loadCryptoData(selectedPair);
   }, [selectedPair, loadCryptoData]);
 
+  useEffect(() => {
+    let active = true;
+    setConnectionStatus('connecting');
+
+    const refreshTicker = async () => {
+      try {
+        const ticker = await getCryptoTicker(selectedPair);
+        if (!active) return;
+        setTickerData(prev => prev ? { ...prev, ...ticker } : ticker);
+        setConnectionStatus('open');
+        setIsConnected(true);
+        setWsError(null);
+      } catch (error) {
+        if (!active) return;
+        setConnectionStatus('closed');
+        setIsConnected(false);
+        setWsError('Failed to fetch live ticker updates');
+      }
+    };
+
+    void refreshTicker();
+    const id = window.setInterval(() => {
+      void refreshTicker();
+    }, 10000);
+
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+  }, [selectedPair]);
+
   const handlePairSelect = (pair: string) => {
     setSelectedPair(pair);
     setCrosshairData(null);
@@ -198,8 +204,8 @@ export const CryptoPage: React.FC = () => {
     setCrosshairData(data);
   };
 
-  // Get the current ticker data (real-time or static)
-  const currentTicker = getTicker(selectedPair) || tickerData;
+  // Current ticker data from periodic updates + initial load
+  const currentTicker = tickerData;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -208,7 +214,7 @@ export const CryptoPage: React.FC = () => {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold text-robinhood-gray-900">Crypto Charts</h1>
-            <p className="text-robinhood-gray-600 mt-2">Real-time cryptocurrency trading charts powered by Kraken</p>
+            <p className="text-robinhood-gray-600 mt-2">Real-time cryptocurrency trading charts powered by Polygon</p>
           </div>
           
           {/* Connection Status */}
@@ -223,7 +229,7 @@ export const CryptoPage: React.FC = () => {
             </span>
             {isConnected && (
               <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
-                Real-time OHLC
+                Live ticker
               </span>
             )}
           </div>
@@ -373,7 +379,7 @@ export const CryptoPage: React.FC = () => {
                 <div className="border-b border-robinhood-gray-200 pb-4">
                   <h3 className="text-xl font-bold text-robinhood-gray-900">{formatPairName(currentTicker.symbol)}</h3>
                   <p className="text-robinhood-gray-500 text-sm">
-                    {getIntervalLabel(interval)} • {getTimeRangeLabel(timeRange)} • Kraken
+                    {getIntervalLabel(interval)} • {getTimeRangeLabel(timeRange)} • Polygon
                   </p>
                 </div>
                 
@@ -508,13 +514,13 @@ export const CryptoPage: React.FC = () => {
               
               <div className="flex justify-between">
                 <span className="text-robinhood-gray-600">Exchange</span>
-                <span className="font-semibold text-robinhood-gray-800">Kraken</span>
+                <span className="font-semibold text-robinhood-gray-800">Polygon</span>
               </div>
 
               <div className="flex justify-between">
                 <span className="text-robinhood-gray-600">Data Source</span>
                 <span className={`font-semibold ${isConnected ? 'text-green-600' : 'text-gray-600'}`}>
-                  {isConnected ? 'Live WebSocket' : 'REST API'}
+                  {isConnected ? 'Live polling' : 'REST API'}
                 </span>
               </div>
 
