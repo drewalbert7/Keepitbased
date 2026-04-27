@@ -8,6 +8,11 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 import logging
+import uuid
+import time
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
@@ -22,6 +27,13 @@ try:
 except Exception as langgraph_err:
     logger.warning(f"LangGraph unavailable at startup: {langgraph_err}")
     BUY_ALERT_GRAPH = None
+
+try:
+    from langgraph_agent.opportunity_graph import build_opportunity_graph
+    OPPORTUNITY_GRAPH = build_opportunity_graph()
+except Exception as langgraph_err:
+    logger.warning(f"Opportunity graph unavailable at startup: {langgraph_err}")
+    OPPORTUNITY_GRAPH = None
 
 # Redis connection
 try:
@@ -298,6 +310,69 @@ def get_buy_alert(symbol):
         return jsonify(result.get("output", result))
     except Exception as e:
         logger.error(f"Error generating buy alert for {symbol}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/agent/opportunities', methods=['POST'])
+def get_opportunities():
+    """Run LangGraph opportunity-scout workflow."""
+    if OPPORTUNITY_GRAPH is None:
+        return jsonify({"error": "Opportunity graph is not initialized"}), 503
+
+    try:
+        request_start = time.perf_counter()
+        body = request.get_json(silent=True) or {}
+        prompt = str(body.get("prompt", "")).strip()
+        if not prompt:
+            return jsonify({"error": "prompt is required"}), 400
+
+        mode = body.get("mode", "recommend_only")
+        preferences = body.get("preferences", {})
+        user_id = body.get("userId", 0)
+        as_of = datetime.now(timezone.utc).isoformat()
+        run_id = str(uuid.uuid4())
+        node_started = time.perf_counter()
+
+        result = OPPORTUNITY_GRAPH.invoke(
+            {
+                "prompt": prompt,
+                "mode": mode,
+                "preferences": preferences,
+                "user_id": user_id,
+                "as_of": as_of,
+            }
+        )
+        node_elapsed_ms = int((time.perf_counter() - node_started) * 1000)
+        total_elapsed_ms = int((time.perf_counter() - request_start) * 1000)
+        provider_used = "unknown"
+        fallback_used = True
+        try:
+            from langgraph_agent.opportunity_nodes import LLM_CLIENT
+            provider_used = getattr(LLM_CLIENT, "last_used_provider", "template")
+            fallback_used = bool(getattr(LLM_CLIENT, "last_fallback_used", True))
+        except Exception:
+            provider_used = "template"
+            fallback_used = True
+
+        return jsonify(
+            {
+                "mode": "recommend_only",
+                "reply": result.get("reply", "Opportunity scan complete."),
+                "output": result.get("output", {"schemaVersion": "v1", "topCandidates": []}),
+                "runMetadata": {
+                    "runId": run_id,
+                    "nodeTimings": {
+                        "langgraphInvokeMs": node_elapsed_ms,
+                        "totalMs": total_elapsed_ms
+                    },
+                    "providerUsed": provider_used,
+                    "fallbackUsed": fallback_used
+                },
+                "timestamp": as_of,
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error generating opportunities: {e}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':

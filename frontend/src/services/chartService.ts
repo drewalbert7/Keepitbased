@@ -91,6 +91,10 @@ const chartApi = axios.create({
   },
 });
 
+const quoteCache = new Map<string, { value: QuoteData; expiresAt: number }>();
+const quoteInflight = new Map<string, Promise<QuoteData>>();
+const QUOTE_CACHE_TTL_MS = 2500;
+
 // Add request interceptor for error handling
 chartApi.interceptors.response.use(
   (response) => response,
@@ -130,8 +134,32 @@ export const getStockHistory = async (
 };
 
 export const getStockQuote = async (symbol: string): Promise<QuoteData> => {
-  const response = await chartApi.get(`/quote/${symbol}`);
-  return response.data;
+  const key = symbol.toUpperCase();
+  const now = Date.now();
+
+  const cached = quoteCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
+  }
+
+  const inflight = quoteInflight.get(key);
+  if (inflight) {
+    return inflight;
+  }
+
+  const request = chartApi.get(`/quote/${key}`).then((response) => {
+    const payload = response.data as QuoteData;
+    quoteCache.set(key, {
+      value: payload,
+      expiresAt: Date.now() + QUOTE_CACHE_TTL_MS
+    });
+    return payload;
+  }).finally(() => {
+    quoteInflight.delete(key);
+  });
+
+  quoteInflight.set(key, request);
+  return request;
 };
 
 export const getStockInfo = async (symbol: string): Promise<StockInfo> => {

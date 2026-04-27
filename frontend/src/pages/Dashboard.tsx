@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 
 const Dashboard: React.FC = () => {
   return (
@@ -49,6 +50,20 @@ const Dashboard: React.FC = () => {
               Receive real-time alerts when prices drop and it's time to buy the dip!
             </p>
           </div>
+        </div>
+      </div>
+
+      <div className="mt-8 card">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-xl font-semibold text-robinhood-gray-900 mb-2">AI Agent Workspace</h3>
+            <p className="text-sm text-robinhood-gray-600">
+              Build and operate your alert assistant with guided plans and one-click alert execution.
+            </p>
+          </div>
+          <Link to="/ai-agent" className="btn-primary whitespace-nowrap">
+            Open AI Agent
+          </Link>
         </div>
       </div>
     </div>

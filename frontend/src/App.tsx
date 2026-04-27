@@ -13,6 +13,7 @@ import AlertsPage from './pages/AlertsPage';
 import ProfilePage from './pages/ProfilePage';
 import { ChartPage } from './pages/ChartPage';
 import { CryptoPage } from './pages/CryptoPage';
+import AIAgentPage from './pages/AIAgentPage';
 import LoadingSpinner from './components/ui/LoadingSpinner';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -89,6 +90,11 @@ const AppRoutes: React.FC = () => {
                 <SocketProvider>
                   <CryptoPage />
                 </SocketProvider>
+              </ProtectedRoute>
+            } />
+            <Route path="/ai-agent" element={
+              <ProtectedRoute>
+                <AIAgentPage />
               </ProtectedRoute>
             } />
           </Routes>

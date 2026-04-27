@@ -55,6 +55,10 @@ const config = {
   // Rate Limiting
   RATE_LIMIT_WINDOW_MS: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000,
   RATE_LIMIT_MAX_REQUESTS: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+  CHARTS_QUOTE_RATE_WINDOW_MS: parseInt(process.env.CHARTS_QUOTE_RATE_WINDOW_MS) || 60000,
+  CHARTS_QUOTE_RATE_MAX: parseInt(process.env.CHARTS_QUOTE_RATE_MAX) || 120,
+  CHARTS_HISTORY_RATE_WINDOW_MS: parseInt(process.env.CHARTS_HISTORY_RATE_WINDOW_MS) || 60000,
+  CHARTS_HISTORY_RATE_MAX: parseInt(process.env.CHARTS_HISTORY_RATE_MAX) || 60,
 
   // Features
   PRICE_CHECK_INTERVAL_MS: parseInt(process.env.PRICE_CHECK_INTERVAL_MS) || 60000,

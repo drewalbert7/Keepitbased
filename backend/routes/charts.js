@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
+const rateLimit = require('express-rate-limit');
 const logger = require('../utils/logger');
 const config = require('../config');
 const { getRedisClient } = require('../utils/redis');
@@ -8,6 +9,38 @@ const { getRedisClient } = require('../utils/redis');
 const POLYGON_API_URL = 'https://api.polygon.io';
 const getMarketDataApiKey = () => config.POLYGON_API_KEY || config.MASSIVE_API_KEY;
 const redisClient = getRedisClient();
+const upstreamInflight = new Map();
+const metrics = {
+  quoteRequests: 0,
+  quoteCacheHits: 0,
+  historyRequests: 0,
+  historyCacheHits: 0,
+  upstreamRequests: 0,
+  upstreamCoalescedHits: 0,
+  startedAt: new Date().toISOString()
+};
+
+const quoteRateLimiter = rateLimit({
+  windowMs: Number(config.CHARTS_QUOTE_RATE_WINDOW_MS || 60000),
+  max: Number(config.CHARTS_QUOTE_RATE_MAX || 120),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many quote requests, please retry shortly' },
+  handler: (_req, res) => {
+    return res.status(429).json({ message: 'Too many quote requests, please retry shortly' });
+  }
+});
+
+const historyRateLimiter = rateLimit({
+  windowMs: Number(config.CHARTS_HISTORY_RATE_WINDOW_MS || 60000),
+  max: Number(config.CHARTS_HISTORY_RATE_MAX || 60),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many history requests, please retry shortly' },
+  handler: (_req, res) => {
+    return res.status(429).json({ message: 'Too many history requests, please retry shortly' });
+  }
+});
 
 const PERIOD_TO_DAYS = {
   '1d': 1,
@@ -41,13 +74,29 @@ const intervalToAgg = (interval) => {
   }
 };
 
+const stableSerialize = (input) => {
+  if (Array.isArray(input)) return `[${input.map(stableSerialize).join(',')}]`;
+  if (!input || typeof input !== 'object') return JSON.stringify(input);
+  const keys = Object.keys(input).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableSerialize(input[k])}`).join(',')}}`;
+};
+
+const buildUpstreamKey = (endpoint, params) => `${endpoint}?${stableSerialize(params || {})}`;
+
 const makeMassiveRequest = async (endpoint, params = {}) => {
   const apiKey = getMarketDataApiKey();
   if (!apiKey) {
     throw new Error('MASSIVE_API_KEY (or POLYGON_API_KEY) is not configured');
   }
 
-  const response = await axios.get(`${POLYGON_API_URL}${endpoint}`, {
+  const requestKey = buildUpstreamKey(endpoint, params);
+  if (upstreamInflight.has(requestKey)) {
+    metrics.upstreamCoalescedHits += 1;
+    return upstreamInflight.get(requestKey);
+  }
+
+  metrics.upstreamRequests += 1;
+  const requestPromise = axios.get(`${POLYGON_API_URL}${endpoint}`, {
     params: {
       ...params,
       apiKey
@@ -58,9 +107,13 @@ const makeMassiveRequest = async (endpoint, params = {}) => {
       'User-Agent': 'KeepItBased/1.0'
     },
     timeout: 20000
-  });
+  }).then((response) => response.data)
+    .finally(() => {
+      upstreamInflight.delete(requestKey);
+    });
 
-  return response.data;
+  upstreamInflight.set(requestKey, requestPromise);
+  return requestPromise;
 };
 
 const historyCacheTtlByInterval = {
@@ -229,14 +282,16 @@ const isUsMarketHours = () => {
 };
 
 // Get historical data for charts
-router.get('/history/:symbol', async (req, res) => {
+router.get('/history/:symbol', historyRateLimiter, async (req, res) => {
   try {
+    metrics.historyRequests += 1;
     const { symbol } = req.params;
     const { period = '1y', interval = '1d' } = req.query;
     const upperSymbol = symbol.toUpperCase();
     const cacheKey = `charts:history:${upperSymbol}:${period}:${interval}`;
     const cachedHistory = await safeGetCache(cacheKey);
     if (cachedHistory) {
+      metrics.historyCacheHits += 1;
       return res.json(cachedHistory);
     }
 
@@ -281,13 +336,15 @@ router.get('/history/:symbol', async (req, res) => {
 });
 
 // Get current quote with detailed info
-router.get('/quote/:symbol', async (req, res) => {
+router.get('/quote/:symbol', quoteRateLimiter, async (req, res) => {
   try {
+    metrics.quoteRequests += 1;
     const { symbol } = req.params;
     const upper = symbol.toUpperCase();
     const cacheKey = `charts:quote:${upper}`;
     const cachedQuote = await safeGetCache(cacheKey);
     if (cachedQuote) {
+      metrics.quoteCacheHits += 1;
       return res.json(cachedQuote);
     }
 
@@ -549,6 +606,29 @@ router.get('/health', async (req, res) => {
       timestamp: new Date().toISOString()
     });
   }
+});
+
+router.get('/metrics', (req, res) => {
+  const quoteHitRate = metrics.quoteRequests > 0
+    ? Number((metrics.quoteCacheHits / metrics.quoteRequests).toFixed(4))
+    : 0;
+  const historyHitRate = metrics.historyRequests > 0
+    ? Number((metrics.historyCacheHits / metrics.historyRequests).toFixed(4))
+    : 0;
+
+  res.json({
+    startedAt: metrics.startedAt,
+    quoteRequests: metrics.quoteRequests,
+    quoteCacheHits: metrics.quoteCacheHits,
+    quoteCacheHitRate: quoteHitRate,
+    historyRequests: metrics.historyRequests,
+    historyCacheHits: metrics.historyCacheHits,
+    historyCacheHitRate: historyHitRate,
+    upstreamRequests: metrics.upstreamRequests,
+    upstreamCoalescedHits: metrics.upstreamCoalescedHits,
+    inflightUpstreamRequests: upstreamInflight.size,
+    timestamp: new Date().toISOString()
+  });
 });
 
 module.exports = router;

@@ -7,7 +7,8 @@ import {
   HomeIcon, 
   UserCircleIcon,
   ArrowRightOnRectangleIcon,
-  CurrencyDollarIcon
+  CurrencyDollarIcon,
+  CpuChipIcon
 } from '@heroicons/react/24/outline';
 
 const Navigation: React.FC = () => {
@@ -22,6 +23,7 @@ const Navigation: React.FC = () => {
     { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
     { name: 'Stock Charts', href: '/charts', icon: ChartBarIcon },
     { name: 'Crypto Charts', href: '/crypto', icon: CurrencyDollarIcon },
+    { name: 'AI Agent', href: '/ai-agent', icon: CpuChipIcon },
     { name: 'Alerts', href: '/alerts', icon: BellIcon },
     { name: 'Profile', href: '/profile', icon: UserCircleIcon },
   ];

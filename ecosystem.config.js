@@ -35,6 +35,13 @@ module.exports = {
       exec_mode: 'fork',
       env: {
         PORT: 5001,
+        LLM_PROVIDER: process.env.LLM_PROVIDER,
+        LLM_MODEL: process.env.LLM_MODEL,
+        OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+        OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+        GROK_API_KEY: process.env.GROK_API_KEY,
+        XAI_API_KEY: process.env.XAI_API_KEY,
+        GROK_BASE_URL: process.env.GROK_BASE_URL,
         PATH: process.env.PATH
       },
       error_file: './logs/stock-service-err.log',

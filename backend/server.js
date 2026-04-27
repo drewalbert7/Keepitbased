@@ -31,6 +31,7 @@ const userRoutes = require('./routes/users');
 const chartRoutes = require('./routes/charts');
 const cryptoRoutes = require('./routes/crypto');
 const healthRoutes = require('./routes/health');
+const agentRoutes = require('./routes/agent');
 
 const PriceMonitor = require('./services/priceMonitor');
 const AlertService = require('./services/alertService');
@@ -90,6 +91,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/charts', chartRoutes);
 app.use('/api/crypto', cryptoRoutes);
 app.use('/api/health', healthRoutes);
+app.use('/api/agent', agentRoutes);
 
 // Serve static files from React build
 app.use(express.static(path.join(__dirname, '../frontend/build')));

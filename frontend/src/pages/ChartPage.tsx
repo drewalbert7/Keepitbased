@@ -39,6 +39,7 @@ export const ChartPage: React.FC = () => {
   };
 
   const quoteStatus = getSourceStatus(quoteSource);
+  const trackedSymbols = useMemo(() => [selectedSymbol], [selectedSymbol]);
 
   const getStaleThresholdSeconds = (source: string) => {
     if (source === 'snapshot') return 10;
@@ -56,7 +57,7 @@ export const ChartPage: React.FC = () => {
 
   // Real-time quotes
   const { connectionStatus, isConnected, pollingIntervalMs } = useRealTimeQuotes({
-    symbols: [selectedSymbol],
+    symbols: trackedSymbols,
     onQuoteUpdate: handleQuoteUpdate
   });
 
@@ -95,7 +96,7 @@ export const ChartPage: React.FC = () => {
     { value: 'all', label: 'All', interval: '1mo' },
   ];
 
-  const loadStockData = useCallback(async (symbol: string, newPeriod?: string, newInterval?: string) => {
+  const loadStockData = async (symbol: string, newPeriod?: string, newInterval?: string) => {
     setIsLoading(true);
     setDataErrorMessage('');
     try {
@@ -138,11 +139,11 @@ export const ChartPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [interval, period]);
+  };
 
   useEffect(() => {
     loadStockData(selectedSymbol);
-  }, [selectedSymbol, loadStockData]);
+  }, [selectedSymbol]);
 
   const handleSymbolSelect = useCallback((symbol: string) => {
     setSelectedSymbol(symbol);
@@ -168,9 +169,9 @@ export const ChartPage: React.FC = () => {
             </div>
             
             {/* Controls */}
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-2 items-center">
               {/* Connection Status */}
-              <div className="flex items-center space-x-2 rounded-lg bg-gray-800/70 px-3 py-1.5 border border-gray-700">
+              <div className="flex items-center justify-center space-x-2 rounded-lg bg-gray-800/70 px-3 py-1.5 border border-gray-700 h-9">
                 <div className={`w-2 h-2 rounded-full ${
                   isConnected ? 'bg-green-500' : connectionStatus === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
                 }`} />
@@ -179,7 +180,7 @@ export const ChartPage: React.FC = () => {
                 </span>
               </div>
 
-              <label className="flex items-center space-x-2 rounded-lg bg-gray-800/70 px-3 py-1.5 border border-gray-700">
+              <label className="flex items-center justify-center space-x-2 rounded-lg bg-gray-800/70 px-3 py-1.5 border border-gray-700 h-9">
                 <input
                   type="checkbox"
                   checked={showVolume}
@@ -189,7 +190,7 @@ export const ChartPage: React.FC = () => {
                 <span className="text-sm">Volume</span>
               </label>
               
-              <label className="flex items-center space-x-2 rounded-lg bg-gray-800/70 px-3 py-1.5 border border-gray-700">
+              <label className="flex items-center justify-center space-x-2 rounded-lg bg-gray-800/70 px-3 py-1.5 border border-gray-700 h-9">
                 <input
                   type="checkbox"
                   checked={showIndicators}
@@ -199,22 +200,22 @@ export const ChartPage: React.FC = () => {
                 <span className="text-sm">Indicators</span>
               </label>
 
-              <div className="px-2 py-1 rounded text-xs bg-gray-800 border border-gray-700 text-gray-300">
+              <div className="px-2 py-1 rounded text-xs bg-gray-800 border border-gray-700 text-gray-300 text-center h-9 flex items-center justify-center">
                 Data: {quoteSource}
               </div>
-              <div className={`px-2 py-1 rounded text-xs border ${quoteStatus.className}`}>
+              <div className={`px-2 py-1 rounded text-xs border text-center h-9 flex items-center justify-center ${quoteStatus.className}`}>
                 {quoteStatus.label}
               </div>
-              <div className="px-2 py-1 rounded text-xs bg-gray-800 border border-gray-700 text-gray-300">
+              <div className="px-2 py-1 rounded text-xs bg-gray-800 border border-gray-700 text-gray-300 text-center h-9 flex items-center justify-center">
                 {updateCadenceLabel}
               </div>
-              <div className={`w-32 text-center px-2 py-1 rounded text-xs border tabular-nums ${isDataStale ? 'bg-red-900/40 text-red-300 border-red-700' : 'bg-gray-800 text-gray-300 border-gray-700'}`}>
+              <div className={`text-center px-2 py-1 rounded text-xs border tabular-nums h-9 flex items-center justify-center ${isDataStale ? 'bg-red-900/40 text-red-300 border-red-700' : 'bg-gray-800 text-gray-300 border-gray-700'}`}>
                 {staleLabel}
               </div>
               <button
                 onClick={() => loadStockData(selectedSymbol)}
                 disabled={isLoading}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-blue-700 bg-blue-600/80 hover:bg-blue-500 disabled:opacity-50"
+                className="px-3 py-1.5 h-9 rounded-lg text-xs font-semibold border border-blue-700 bg-blue-600/80 hover:bg-blue-500 disabled:opacity-50"
               >
                 Refresh
               </button>
