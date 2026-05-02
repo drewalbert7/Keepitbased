@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
@@ -21,7 +21,8 @@ import {
 } from '../services/aiAgentService';
 import { addWatchlistSymbol, removeWatchlistSymbol } from '../services/watchlistApi';
 import { useSocket } from '../contexts/SocketContext';
-import { mergeWatchlistPriceUpdates } from '../utils/watchlistDerived';
+import { chartQuoteToPriceUpdatePayload, mergeWatchlistPriceUpdates } from '../utils/watchlistDerived';
+import { getStockQuote, type QuoteData } from '../services/chartService';
 
 const seedMessages: AgentMessage[] = [
   {
@@ -86,18 +87,70 @@ export const AIAgentPage: React.FC = () => {
     return currentPlan;
   }, [currentPlan]);
 
+  const watchlistRef = useRef(watchlistCtx);
+  watchlistRef.current = watchlistCtx;
+
+  const watchlistStockSignature = useMemo(() => {
+    if (!watchlistCtx?.items?.length) return '';
+    const syms = new Set<string>();
+    for (const i of watchlistCtx.items) {
+      if (i.assetType === 'stock') syms.add(i.symbol.toUpperCase());
+    }
+    return Array.from(syms).sort().join(',');
+  }, [watchlistCtx?.items]);
+
   const loadWatchlist = useCallback(async () => {
     setWatchlistLoading(true);
     setWatchlistError(null);
     try {
       const data = await fetchAgentWatchlistContext(agentPreferences.maxPositionSizePct);
-      setWatchlistCtx(data);
+      const stockSymbols = Array.from(
+        new Set(data.items.filter((i) => i.assetType === 'stock').map((i) => i.symbol.toUpperCase()))
+      );
+      let merged = data;
+      if (stockSymbols.length) {
+        const results = await Promise.all(stockSymbols.map((s) => getStockQuote(s).catch(() => null)));
+        const payloads = results
+          .filter((q): q is QuoteData => q !== null)
+          .map(chartQuoteToPriceUpdatePayload);
+        if (payloads.length) {
+          merged = mergeWatchlistPriceUpdates(data, payloads, Date.now()) ?? data;
+        }
+      }
+      setWatchlistCtx(merged);
     } catch {
       setWatchlistError('Could not load watchlist prices.');
     } finally {
       setWatchlistLoading(false);
     }
   }, [agentPreferences.maxPositionSizePct]);
+
+  useEffect(() => {
+    if (!watchlistStockSignature) return;
+    let cancelled = false;
+
+    const runBatch = async () => {
+      const ctx = watchlistRef.current;
+      const symbols =
+        ctx?.items?.filter((i) => i.assetType === 'stock').map((i) => i.symbol.toUpperCase()) ?? [];
+      const unique = Array.from(new Set(symbols));
+      if (!unique.length) return;
+      const results = await Promise.all(unique.map((s) => getStockQuote(s).catch(() => null)));
+      if (cancelled) return;
+      const payloads = results
+        .filter((q): q is QuoteData => q !== null)
+        .map(chartQuoteToPriceUpdatePayload);
+      if (!payloads.length) return;
+      setWatchlistCtx((prev) => mergeWatchlistPriceUpdates(prev, payloads, Date.now()));
+    };
+
+    void runBatch();
+    const handle = window.setInterval(() => void runBatch(), 10_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(handle);
+    };
+  }, [watchlistStockSignature]);
 
   const loadXPulse = useCallback(async () => {
     setXPulseLoading(true);
@@ -524,9 +577,9 @@ export const AIAgentPage: React.FC = () => {
                 </div>
               </label>
               <p className="text-xs text-slate-500 sm:max-w-xs sm:pb-1">
-                Quotes stream in over the socket when the server finishes a price cycle (~1&nbsp;min snapshot from
-                Massive/Polygon) and the table reconciles on a slower refresh. This is snapshot data, not broker
-                order-book depth.
+                Stock rows use the same <strong>Charts</strong> quote API as the Stock Charts page (polled here about
+                every 10s). Server Redis/socket snapshots still merge in when available. Snapshot data only — not broker
+                depth.
               </p>
             </div>
 

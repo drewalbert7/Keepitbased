@@ -2,7 +2,23 @@
  * Mirrors backend `agentWatchlistContext.js` sizing / gap math so WebSocket price
  * patches can refresh dip bands without waiting for the next HTTP poll.
  */
+import type { QuoteData } from '../services/chartService';
 import type { WatchlistContextResponse, WatchlistSizing } from '../services/aiAgentService';
+
+/** Shape a Chart service quote like a `priceUpdate` row for `mergeWatchlistPriceUpdates`. */
+export function chartQuoteToPriceUpdatePayload(q: QuoteData): Record<string, unknown> {
+  const ts = Date.parse(q.timestamp);
+  return {
+    type: 'stock',
+    symbol: String(q.symbol || '').toUpperCase(),
+    price: q.price,
+    changePercent: q.changePercent,
+    timestamp: Number.isFinite(ts) ? ts : Date.now(),
+    dayHigh: q.high,
+    dayLow: q.low,
+    volume: q.volume
+  };
+}
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
