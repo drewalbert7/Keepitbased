@@ -83,6 +83,27 @@ def format_dashboard_watchlist_digest(ctx: Optional[Any]) -> str:
     return "\n".join(lines)
 
 
+def _watchlist_row_active(row: Any) -> bool:
+    """Treat missing active as on (legacy rows); False / 0 = paused."""
+    if not isinstance(row, dict):
+        return False
+    v = row.get("active")
+    return v is not False and v != 0
+
+
+def _active_symbols_from_watchlist_payload(state: OpportunityState) -> Set[str]:
+    """Symbols from Node `watchlistContext` the same request already passed — no internal API needed."""
+    wl = state.get("watchlist_context") or {}
+    items = wl.get("items") if isinstance(wl.get("items"), list) else []
+    out: Set[str] = set()
+    for it in items:
+        if _watchlist_row_active(it):
+            sym = str(it.get("symbol") or "").upper().strip()
+            if sym:
+                out.add(sym)
+    return out
+
+
 def _infer_asset_type(symbol: str, prompt: str = '') -> str:
     s = str(symbol or '').upper()
     if s in _CRYPTO_HINT:
@@ -146,7 +167,11 @@ def user_context_loader(state: OpportunityState) -> OpportunityState:
         return out
 
     if not active_symbols_set:
-        return {**out, "symbols": [], "error": "watchlist_empty"}
+        fallback = _active_symbols_from_watchlist_payload(state)
+        if fallback:
+            active_symbols_set = fallback
+        else:
+            return {**out, "symbols": [], "error": "watchlist_empty"}
 
     cap = 10
     dash_order = list(state.get("symbols") or [])
@@ -221,6 +246,8 @@ def context_loader(state: OpportunityState) -> OpportunityState:
         dash: List[str] = []
         for it in raw_items:
             if not isinstance(it, dict):
+                continue
+            if not _watchlist_row_active(it):
                 continue
             sym = str(it.get("symbol") or "").upper().strip()
             if sym and sym not in dash:
@@ -338,9 +365,10 @@ def response_formatter(state: OpportunityState) -> OpportunityState:
         return {
             "output": {"schemaVersion": "v1", "topCandidates": []},
             "reply": (
-                "Watchlist-only mode needs at least one stock on your **Dashboard** watchlist (and matching "
-                "monitoring rules). Ensure **AGENT_INTERNAL_SECRET** matches between Node and this Python "
-                "service so your watchlist can load."
+                "Watchlist-only mode found **no active** dashboard symbols to scan. "
+                "Add tickers (or unpause rows), or turn off **Watchlist only** for a broader universe. "
+                "If your table shows rows but this persists, check **NODE_BACKEND_URL** from Python to Node "
+                "and optionally **AGENT_INTERNAL_SECRET** for internal alert syncing."
             ),
         }
     if err:
@@ -350,8 +378,18 @@ def response_formatter(state: OpportunityState) -> OpportunityState:
         }
 
     candidates = state.get("candidates", [])
+    scanned = state.get("symbols") or []
+    scanned_txt = ", ".join(str(s).upper() for s in scanned[:12])
+    if scanned_txt and len(scanned) > 12:
+        scanned_txt += ", …"
+    prefix = (
+        f"Analyzed **{len(scanned)}** active watchlist symbol(s): {scanned_txt}. "
+        if scanned_txt
+        else ""
+    )
     reply = (
-        f"Scanned opportunities and found {len(candidates)} candidate(s). "
+        f"{prefix}"
+        f"Surfaced {len(candidates)} ranked candidate(s). "
         "Review scores, risk flags, and suggested limit bands before taking action."
     )
 

@@ -202,9 +202,17 @@ const proxyOpportunityScan = async ({ prompt, mode, preferences, userId, watchli
   return response.data;
 };
 
-const buildAgentOutput = (prompt, preferences, primarySymbol) => {
-  const universe = [primarySymbol, 'MSFT', 'NVDA', 'AMZN', 'TSLA'];
-  const pool = Array.from(new Set(universe)).slice(0, 10);
+const buildAgentOutput = (prompt, preferences, primarySymbol, watchlistSymbols = null) => {
+  let pool;
+  if (watchlistSymbols && Array.isArray(watchlistSymbols) && watchlistSymbols.length) {
+    pool = Array.from(new Set(watchlistSymbols.map((s) => String(s).toUpperCase()).filter(Boolean))).slice(
+      0,
+      10
+    );
+  } else {
+    const universe = [primarySymbol, 'MSFT', 'NVDA', 'AMZN', 'TSLA'];
+    pool = Array.from(new Set(universe)).slice(0, 10);
+  }
   const p = prompt.toLowerCase();
 
   const topCandidates = pool.map((symbol, index) => {
@@ -353,7 +361,14 @@ router.post('/chat', auth, agentRateLimiter, [
 
     if (!output) {
       plan = buildPlan(prompt);
-      output = buildAgentOutput(prompt, preferencesUsed, plan.proposedAlert.symbol);
+      let watchlistSymbols = null;
+      if (preferencesUsed.watchlistOnly && watchlistContext?.items?.length) {
+        watchlistSymbols = watchlistContext.items
+          .filter((row) => Boolean(row.active))
+          .map((row) => String(row.symbol || '').trim())
+          .filter(Boolean);
+      }
+      output = buildAgentOutput(prompt, preferencesUsed, plan.proposedAlert.symbol, watchlistSymbols);
       reply = `${plan.summary}\n\nDraft alert: ${plan.proposedAlert.symbol} (${plan.proposedAlert.assetType}) with ${plan.proposedAlert.smallThreshold}% / ${plan.proposedAlert.mediumThreshold}% / ${plan.proposedAlert.largeThreshold}% thresholds.\n\nNext step: review and apply this plan to your live alerts.`;
       runMetadata = {
         runId: `local-${Date.now()}`,

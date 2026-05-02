@@ -455,9 +455,10 @@ export const AIAgentPage: React.FC = () => {
         <div className="mb-6 rounded-xl border border-amber-500/35 bg-amber-950/30 px-4 py-3 text-sm text-amber-100">
           <p className="font-medium font-mono">Watchlist grounding needs configuration</p>
           <p className="mt-1 text-amber-200/90">
-            Set the same <code className="rounded bg-kib-bg px-1 border border-amber-500/30">AGENT_INTERNAL_SECRET</code> in the Node
-            API and Python agent service, keep <code className="rounded bg-kib-bg px-1 border border-amber-500/30">NODE_BACKEND_URL</code>{' '}
-            pointed at Node, and add symbols to your watchlist — or turn off <strong>Watchlist only</strong> in the controls.
+            Prefer setting <code className="rounded bg-kib-bg px-1 border border-amber-500/30">AGENT_INTERNAL_SECRET</code> on{' '}
+            Node and Python for full internal alerting. The agent still receives your dashboard watchlist from this session;
+            verify <code className="rounded bg-kib-bg px-1 border border-amber-500/30">NODE_BACKEND_URL</code> reaches Node
+            and you have active symbols — or disable <strong>Watchlist only</strong> for a broader universe.
           </p>
           <p className="mt-2">
             <Link to="/opportunity-signals" className="font-medium text-kib-cyber underline">
@@ -508,6 +509,17 @@ export const AIAgentPage: React.FC = () => {
                 className="text-xs px-2 py-1 rounded bg-kib-card border border-kib-line hover:bg-slate-800/80"
               >
                 TSLA Volatility Plan
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setInput(
+                    'Analyze my active dashboard watchlist: rank symbols with your scoring weights, use live quotes, and summarize the strongest dip-band opportunities vs baselines.'
+                  )
+                }
+                className="text-xs px-2 py-1 rounded bg-kib-card border border-emerald-500/25 hover:bg-emerald-950/40"
+              >
+                Analyze watchlist
               </button>
             </div>
             <div className="flex gap-3">
