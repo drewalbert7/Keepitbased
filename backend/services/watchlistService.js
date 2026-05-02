@@ -89,7 +89,7 @@ async function warmStockQuote(symbol) {
   if (!priceData) return false;
   const redis = getRedisClient();
   await redis.setEx(
-    `price:${priceData.type}:${priceData.symbol}`,
+    `price:${String(priceData.type).toLowerCase()}:${String(priceData.symbol).toUpperCase()}`,
     300,
     JSON.stringify(priceData)
   );

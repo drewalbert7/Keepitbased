@@ -37,7 +37,9 @@ class AlertService {
   async checkAlert(alert) {
     try {
       // Get current price from Redis cache
-      const cachedPrice = await this.redis.get(`price:${alert.asset_type}:${alert.symbol}`);
+      const cachedPrice = await this.redis.get(
+        `price:${String(alert.asset_type).toLowerCase()}:${String(alert.symbol).toUpperCase()}`
+      );
       
       if (!cachedPrice) {
         return; // No price data available
@@ -190,7 +192,9 @@ class AlertService {
       } = thresholds;
 
       // Get current price as baseline
-      const cachedPrice = await this.redis.get(`price:${assetType}:${symbol}`);
+      const cachedPrice = await this.redis.get(
+        `price:${String(assetType).toLowerCase()}:${String(symbol).toUpperCase()}`
+      );
       let baselinePrice = null;
       
       if (cachedPrice) {

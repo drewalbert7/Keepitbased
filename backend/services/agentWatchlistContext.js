@@ -1,6 +1,7 @@
 const { getRedisClient } = require('../utils/redis');
 const logger = require('../utils/logger');
 const { watchlistService } = require('./watchlistService');
+const PriceMonitor = require('./priceMonitor');
 
 /**
  * Enrich user alerts with cached prices and staged buy-sizing hints vs dip thresholds.
@@ -93,6 +94,55 @@ function nextThresholdGap(dropPct, smallTh, mediumTh, largeTh) {
   return null;
 }
 
+/** Match keys used by PriceMonitor / watchlist warm (lowercase asset, uppercase symbol). */
+function redisPriceKey(assetType, symbol) {
+  return `price:${String(assetType).toLowerCase()}:${String(symbol || '').toUpperCase()}`;
+}
+
+/**
+ * Read Redis cache; on miss, pull a snapshot from Massive/Polygon (same as charts) and cache.
+ * Avoids empty dashboard rows when cron has not run yet or cache expired.
+ */
+async function getPricePayloadForRow(redis, assetType, symbol) {
+  const key = redisPriceKey(assetType, symbol);
+  try {
+    const raw = await redis.get(key);
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch (e) {
+    logger.warn(`watchlist-context redis get ${key}`, e.message);
+  }
+
+  const typ = String(assetType).toLowerCase();
+  const sym = String(symbol || '').toUpperCase();
+  if (!sym) return null;
+
+  const pm = new PriceMonitor(null);
+  try {
+    let pd = null;
+    if (typ === 'stock') {
+      pd = await pm.getStockPrice(sym);
+    } else if (typ === 'crypto') {
+      pd = await pm.getCryptoPrice(sym);
+    } else {
+      return null;
+    }
+    if (pd && pd.price != null && Number.isFinite(Number(pd.price))) {
+      const cacheKey = redisPriceKey(pd.type || typ, pd.symbol || sym);
+      try {
+        await redis.setEx(cacheKey, 300, JSON.stringify(pd));
+      } catch (redisErr) {
+        logger.warn(`watchlist-context cache set failed ${cacheKey}: ${redisErr.message}`);
+      }
+      return pd;
+    }
+  } catch (e) {
+    logger.warn(`watchlist-context on-demand quote failed ${typ}:${sym}`, e.message);
+  }
+  return null;
+}
+
 /**
  * @param {object} params
  * @param {import('../services/alertService')} params.alertService
@@ -128,9 +178,8 @@ async function buildAgentWatchlistContext({ alertService, userId, maxPositionPct
     let prevClose = null;
 
     try {
-      const raw = await redis.get(`price:${assetType}:${symbol}`);
-      if (raw) {
-        const priceData = JSON.parse(raw);
+      const priceData = await getPricePayloadForRow(redis, assetType, symbol);
+      if (priceData) {
         currentPrice = Number(priceData.price);
         const ts = priceData.timestamp || priceData.ts;
         if (ts) {
@@ -141,6 +190,10 @@ async function buildAgentWatchlistContext({ alertService, userId, maxPositionPct
         }
         if (priceData.change24h != null && Number.isFinite(Number(priceData.change24h))) {
           dayChangeAbs = Number(priceData.change24h);
+        }
+        const at = String(assetType).toLowerCase();
+        if (at === 'crypto' && dayChangePct == null && priceData.change24h != null) {
+          dayChangePct = Number(priceData.change24h);
         }
         if (priceData.dayHigh != null && Number.isFinite(Number(priceData.dayHigh))) {
           dayHigh = Number(priceData.dayHigh);
@@ -155,7 +208,7 @@ async function buildAgentWatchlistContext({ alertService, userId, maxPositionPct
           prevClose = Number(priceData.prevClose);
         }
       } else {
-        priceUnavailableReason = 'not_in_cache';
+        priceUnavailableReason = 'quote_unavailable';
       }
     } catch (e) {
       logger.warn(`watchlist-context price read failed for ${assetType}:${symbol}`, e.message);

@@ -249,12 +249,22 @@ class PriceMonitor {
       const pricePromises = [];
       
       for (const symbolWithType of allSymbols) {
-        const [type, symbol] = symbolWithType.split(':');
-        
-        if (type === 'CRYPTO') {
+        const sep = symbolWithType.indexOf(':');
+        if (sep < 1) continue;
+        const type = symbolWithType.slice(0, sep);
+        const symbol = symbolWithType.slice(sep + 1);
+        const t = String(type).toUpperCase();
+
+        if (t === 'CRYPTO') {
           pricePromises.push(this.getCryptoPrice(symbol));
-        } else if (type === 'STOCK') {
+        } else if (t === 'STOCK') {
           pricePromises.push(this.getStockPrice(symbol));
+        } else {
+          this.logWithCooldown(
+            `unknown-watchlist-token-${symbolWithType}`,
+            'warn',
+            `Skipping watchlist price token with unknown type prefix: ${symbolWithType}`
+          );
         }
       }
       
@@ -266,12 +276,16 @@ class PriceMonitor {
           const priceData = result.value;
           prices.push(priceData);
 
-          // Store in Redis for caching
-          this.redis.setEx(
-            `price:${priceData.type}:${priceData.symbol}`,
-            300, // 5 minutes TTL
-            JSON.stringify(priceData)
-          );
+          // Store in Redis for caching (await — fire-and-forget was dropping writes under load)
+          try {
+            await this.redis.setEx(
+              `price:${String(priceData.type).toLowerCase()}:${String(priceData.symbol).toUpperCase()}`,
+              300,
+              JSON.stringify(priceData)
+            );
+          } catch (redisErr) {
+            logger.warn(`Redis setEx failed for ${priceData.type}:${priceData.symbol}: ${redisErr.message}`);
+          }
 
           this.checkPriceDrops(priceData);
           try {
@@ -459,7 +473,9 @@ class PriceMonitor {
 
   async getCachedPrice(type, symbol) {
     try {
-      const cached = await this.redis.get(`price:${type}:${symbol}`);
+      const cached = await this.redis.get(
+        `price:${String(type).toLowerCase()}:${String(symbol).toUpperCase()}`
+      );
       return cached ? JSON.parse(cached) : null;
     } catch (error) {
       logger.error(`Error getting cached price for ${type}:${symbol}:`, error);
