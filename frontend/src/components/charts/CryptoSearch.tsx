@@ -146,7 +146,7 @@ export const CryptoSearch: React.FC<CryptoSearchProps> = ({
     <div className="relative" ref={searchRef}>
       <div className="relative">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          <MagnifyingGlassIcon className="h-5 w-5 text-robinhood-gray-400" />
+          <MagnifyingGlassIcon className="h-5 w-5 text-kib-muted" />
         </div>
         <input
           ref={inputRef}
@@ -162,21 +162,21 @@ export const CryptoSearch: React.FC<CryptoSearchProps> = ({
 
       {/* Dropdown */}
       {isOpen && (
-        <div className="absolute z-50 mt-1 w-full max-w-md bg-white border border-robinhood-gray-200 rounded-lg shadow-lg max-h-96 overflow-y-auto">
+        <div className="absolute z-50 mt-1 w-full max-w-md bg-kib-card border border-kib-line rounded-lg shadow-terminal-lg max-h-96 overflow-y-auto backdrop-blur-sm">
           {isLoading ? (
-            <div className="p-4 text-center text-robinhood-gray-500">
-              <div className="animate-spin h-5 w-5 border-2 border-robinhood-green border-t-transparent rounded-full mx-auto mb-2"></div>
+            <div className="p-4 text-center text-slate-500">
+              <div className="animate-spin h-5 w-5 border-2 border-kib-line border-t-kib-cyber rounded-full mx-auto mb-2"></div>
               Loading crypto pairs...
             </div>
           ) : filteredPairs.length === 0 ? (
-            <div className="p-4 text-center text-robinhood-gray-500">
+            <div className="p-4 text-center text-slate-500">
               No pairs found matching "{query}"
             </div>
           ) : (
             <>
               {!query && (
-                <div className="p-3 border-b border-robinhood-gray-200">
-                  <div className="text-xs font-semibold text-robinhood-gray-500 uppercase tracking-wide">
+                <div className="p-3 border-b border-kib-line">
+                  <div className="text-xs font-semibold font-mono text-kib-muted uppercase tracking-wide">
                     Popular Pairs
                   </div>
                 </div>
@@ -185,23 +185,23 @@ export const CryptoSearch: React.FC<CryptoSearchProps> = ({
                 {filteredPairs.map((pair, index) => (
                   <button
                     key={pair.symbol}
-                    className={`w-full px-4 py-3 text-left hover:bg-robinhood-gray-50 transition-colors ${
-                      index === selectedIndex ? 'bg-robinhood-gray-50' : ''
+                    className={`w-full px-4 py-3 text-left hover:bg-kib-raise transition-colors ${
+                      index === selectedIndex ? 'bg-kib-raise/90' : ''
                     } ${
-                      pair.symbol === currentPair ? 'bg-green-50 border-r-2 border-robinhood-green' : ''
+                      pair.symbol === currentPair ? 'bg-emerald-950/40 border-r-2 border-robinhood-green' : ''
                     }`}
                     onClick={() => handleSelectPair(pair)}
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="font-medium text-robinhood-gray-900">
+                        <div className="font-medium text-kib-fg">
                           {pair.displayName}
                         </div>
-                        <div className="text-sm text-robinhood-gray-500">
+                        <div className="text-sm text-slate-500">
                           {pair.base} / {pair.quote}
                         </div>
                       </div>
-                      <div className="text-xs text-robinhood-gray-400">
+                      <div className="text-xs font-mono text-slate-500">
                         {pair.symbol}
                       </div>
                     </div>

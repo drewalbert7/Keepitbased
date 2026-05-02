@@ -235,6 +235,11 @@ export interface WatchlistContextItem {
   dropPctFromBaseline: number | null;
   nextThresholdGap: { next: string; pctRemaining: number } | null;
   sizing: WatchlistSizing;
+  /** Polygon day session (regular) when cached */
+  dayHigh?: number | null;
+  dayLow?: number | null;
+  volume?: number | null;
+  prevClose?: number | null;
 }
 
 export interface WatchlistContextResponse {

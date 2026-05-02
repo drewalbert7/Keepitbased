@@ -1,6 +1,6 @@
 # KeepItBased Professional Implementation Plan
 
-Last updated: 2026-05-02 (dashboard watchlist table + deploy checkpoint)
+Last updated: 2026-05-02 (backlog: streaming quotes deferred to execution-agent phase)
 
 ## Agent planning principles (non-negotiables)
 
@@ -12,6 +12,7 @@ Last updated: 2026-05-02 (dashboard watchlist table + deploy checkpoint)
 
 ## Roadmap position (reality check)
 
+- **Now:** **Research & alert agent** — opportunity scout, watchlist context, deterministic signals, tooling toward recommendations (not execution-grade market data yet).
 - **Phase 0** (charts / regression): in progress.
 - **Phase 1** (LangGraph foundation): **partially done**—Opportunity Scout graph + Grok path live; **persistence and eval harness** are the current close-the-gap work.
 - **Phases 2–5:** unchanged from below; tooling and policy expand after the skeleton is observable and testable.
@@ -34,6 +35,7 @@ Last updated: 2026-05-02 (dashboard watchlist table + deploy checkpoint)
 ### Backlog (non-blocking)
 
 - [ ] **Upgrade market-data API tier** — Move Massive/Polygon (or chosen vendor) to a plan with **full historical depth** and complete stock/crypto entitlements for charts and agent tools. Starter tiers often cap equity history (~12–24 months), which limits long-range charts and backtests.
+- [ ] **True streaming market data — defer until Execution agent** — Current stack uses **snapshot** REST pulls, chart **polling** (~3–10s when snapshot-backed), and watchlist **`PriceMonitor` ~1 min** cadence → Redis → Socket **`priceUpdate`** (push of batch snapshots, not exchange tick-by-tick). When integrating an **execution agent** (orders, slips, NBBO-aware logic), plan: vendor **WebSocket** trade/quote streams, correct **entitlements**, a small ingestion/fan-out service, and socket scaling — out of scope for the **research + alert** agent milestone.
 
 ## 1) Program Goals
 

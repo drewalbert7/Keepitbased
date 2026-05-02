@@ -8,7 +8,6 @@ const HomePage: React.FC = () => {
   const [currentPrice, setCurrentPrice] = useState(236.45);
   const [isAnimating, setIsAnimating] = useState(false);
 
-  // Simulate price movement for demo
   useEffect(() => {
     if (isAuthenticated) {
       navigate('/dashboard');
@@ -17,7 +16,7 @@ const HomePage: React.FC = () => {
 
     const interval = setInterval(() => {
       setIsAnimating(true);
-      setCurrentPrice(prev => {
+      setCurrentPrice((prev) => {
         const change = (Math.random() - 0.5) * 5;
         return Math.max(200, Math.min(300, prev + change));
       });
@@ -28,26 +27,36 @@ const HomePage: React.FC = () => {
   }, [isAuthenticated, navigate]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-robinhood-gray-50 via-white to-robinhood-gray-100">
-      {/* Header */}
-      <header className="relative z-10">
+    <div className="min-h-screen relative kib-mesh-bg overflow-x-hidden">
+      {/* Subtle vignette */}
+      <div
+        className="pointer-events-none fixed inset-0 z-0 opacity-60"
+        style={{
+          background: 'radial-gradient(ellipse 70% 60% at 50% 0%, transparent 0%, #030712 75%)'
+        }}
+      />
+
+      <header className="relative z-10 border-b border-kib-line/80 bg-kib-surface/75 backdrop-blur-md">
         <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
-            <div className="flex items-center">
-              <Link to="/" className="text-2xl font-bold text-robinhood-gray-900">
-                KeepItBased
+            <div className="flex items-center gap-3">
+              <span className="hidden sm:inline-flex font-mono text-[10px] text-kib-cyber/80 border border-kib-cyber/40 px-1.5 py-0.5 rounded tracking-widest uppercase">
+                v1_live
+              </span>
+              <Link to="/" className="font-mono text-xl font-semibold text-kib-fg tracking-tight">
+                <span className="text-kib-cyber">{'>'}</span> KeepItBased
               </Link>
             </div>
             <div className="flex items-center space-x-4">
               <a
                 href="https://app.keepitbased.com/login"
-                className="text-robinhood-gray-600 hover:text-robinhood-gray-900 font-medium transition-colors duration-200"
+                className="text-kib-muted hover:text-kib-cyber font-medium transition-colors duration-200 text-sm"
               >
                 Sign In
               </a>
               <a
                 href="https://app.keepitbased.com/register"
-                className="bg-robinhood-green hover:bg-green-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200"
+                className="btn-primary py-2 px-4 text-sm font-semibold shadow-terminal"
               >
                 Get Started
               </a>
@@ -56,83 +65,91 @@ const HomePage: React.FC = () => {
         </nav>
       </header>
 
-      {/* Hero Section */}
-      <div className="relative overflow-hidden">
+      <div className="relative z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="relative pt-20 pb-16 sm:pb-24">
-            <div className="lg:grid lg:grid-cols-12 lg:gap-8">
+          <div className="relative pt-16 pb-16 sm:pb-24">
+            <div className="lg:grid lg:grid-cols-12 lg:gap-8 items-center">
               <div className="sm:text-center md:max-w-2xl md:mx-auto lg:col-span-6 lg:text-left lg:flex lg:items-center">
                 <div>
-                  <h1 className="text-4xl font-bold text-robinhood-gray-900 sm:text-5xl md:text-6xl">
+                  <p className="font-mono text-xs text-kib-cyber mb-4 tracking-[0.2em] uppercase">
+                    Signal stack · Stocks & Crypto
+                  </p>
+                  <h1 className="text-4xl font-bold text-kib-fg sm:text-5xl md:text-6xl leading-tight">
                     Never Miss a
-                    <span className="block text-robinhood-green">Buy the Dip</span>
+                    <span className="block hero-gradient pb-1">Buy the Dip</span>
                     Opportunity
                   </h1>
-                  <p className="mt-6 text-xl text-robinhood-gray-600 sm:max-w-xl">
-                    Get instant alerts when your favorite stocks and crypto hit your buy zones. 
-                    Smart notifications for smarter investments.
+                  <p className="mt-6 text-xl text-kib-muted sm:max-w-xl">
+                    Get instant alerts when your favorite stocks and crypto hit your buy zones. Structured signals for
+                    disciplined entries — not hype.
                   </p>
                   <div className="mt-8 sm:max-w-lg sm:mx-auto sm:text-center lg:text-left">
                     <div className="flex flex-col sm:flex-row gap-4">
-                      <a 
+                      <a
                         href="https://app.keepitbased.com/register"
-                        className="btn-primary text-center text-lg py-4 px-8 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
+                        className="btn-primary text-center text-lg py-4 px-8 inline-flex items-center justify-center gap-2"
                       >
+                        <span className="font-mono text-sm opacity-80">$ </span>
                         Start Investing Smarter
                       </a>
                       <a
                         href="https://app.keepitbased.com/charts"
-                        className="btn-secondary text-center text-lg py-4 px-8 hover:shadow-lg transform hover:scale-105 transition-all duration-200"
+                        className="btn-secondary text-center text-lg py-4 px-8 inline-flex items-center justify-center"
                       >
                         View Charts
                       </a>
                     </div>
-                    <p className="mt-4 text-sm text-robinhood-gray-500">
-                      Free forever. No hidden fees. No commitments.
+                    <p className="mt-4 text-sm font-mono text-kib-muted/90">
+                      <span className="text-robinhood-green mr-2">●</span>
+                      Free forever · No hidden fees · No commitments.
                     </p>
                   </div>
                 </div>
               </div>
-              
-              {/* Mock Phone/Dashboard Preview */}
+
               <div className="mt-12 relative lg:mt-0 lg:col-span-6 lg:flex lg:items-center lg:justify-end">
                 <div className="relative mx-auto w-full max-w-md lg:max-w-none">
-                  <div className="relative bg-white rounded-3xl shadow-2xl p-8 border border-robinhood-gray-200">
+                  <div className="absolute -inset-1 rounded-[2rem] bg-gradient-to-br from-kib-cyber/20 via-transparent to-robinhood-green/10 blur-xl opacity-80" />
+                  <div className="relative rounded-3xl p-8 border border-kib-cyber/25 bg-kib-card shadow-terminal-lg backdrop-blur-sm">
+                    <div className="absolute top-4 right-4 font-mono text-[10px] text-kib-cyber/70">SIG_OK</div>
                     <div className="text-center mb-6">
-                      <h3 className="text-lg font-semibold text-robinhood-gray-900">AAPL Alert</h3>
-                      <p className="text-sm text-robinhood-gray-600">Apple Inc.</p>
+                      <h3 className="text-lg font-semibold font-mono text-kib-fg">AAPL</h3>
+                      <p className="text-xs text-kib-muted uppercase tracking-wider">Apple Inc.</p>
                     </div>
-                    
+
                     <div className="space-y-4">
-                      <div className="bg-gradient-to-r from-robinhood-green/10 to-robinhood-green/5 rounded-xl p-4 border-l-4 border-robinhood-green">
+                      <div className="rounded-xl p-4 border border-robinhood-green/30 bg-[linear-gradient(135deg,rgba(0,200,5,0.12),transparent)]">
                         <div className="flex items-center justify-between">
                           <div>
-                            <p className="text-sm font-medium text-robinhood-gray-600">Current Price</p>
-                            <p className={`text-2xl font-bold transition-all duration-500 ${isAnimating ? 'scale-110' : ''}`}>
+                            <p className="text-xs font-mono text-kib-muted uppercase">Last px</p>
+                            <p
+                              className={`text-2xl font-bold tabular-nums font-mono text-kib-fg transition-all duration-500 ${isAnimating ? 'scale-110 text-kib-cyber' : ''}`}
+                            >
                               ${currentPrice.toFixed(2)}
                             </p>
                           </div>
                           <div className="text-right">
-                            <p className="text-sm font-medium text-robinhood-gray-600">Drop</p>
-                            <p className="text-lg font-bold text-robinhood-green">-12.5%</p>
+                            <p className="text-xs font-mono text-kib-muted uppercase">Δ session</p>
+                            <p className="text-lg font-bold font-mono text-robinhood-green">-12.5%</p>
                           </div>
                         </div>
                       </div>
-                      
-                      <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+
+                      <div className="rounded-xl p-4 border border-amber-500/35 bg-kib-raise/90">
                         <div className="flex items-center">
-                          <div className="w-3 h-3 bg-yellow-400 rounded-full mr-3 animate-pulse"></div>
-                          <p className="text-sm font-medium text-yellow-800">
-                            🟡 Medium Buy Signal Triggered
-                          </p>
+                          <div className="w-2 h-2 bg-amber-400 rounded-full mr-3 animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
+                          <p className="text-sm font-mono font-medium text-amber-200">MEDIUM_BUY_SIGNAL</p>
                         </div>
-                        <p className="text-xs text-yellow-700 mt-1">
-                          Price dropped below your 10% threshold
+                        <p className="text-xs text-amber-200/75 mt-2 font-mono">
+                          px &lt; threshold_10pct // baseline_watch
                         </p>
                       </div>
-                      
-                      <button className="w-full bg-robinhood-green hover:bg-green-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200">
-                        View in App
+
+                      <button
+                        type="button"
+                        className="w-full py-3 px-4 rounded-lg font-mono text-sm font-semibold text-kib-bg bg-kib-cyber hover:bg-kib-glow transition-colors shadow-[0_0_16px_rgba(34,211,238,0.25)]"
+                      >
+                        open_app ──▶
                       </button>
                     </div>
                   </div>
@@ -141,302 +158,251 @@ const HomePage: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Stats Section */}
-      <div className="bg-robinhood-gray-900 text-white py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-            <div>
-              <p className="text-3xl font-bold text-robinhood-green">10K+</p>
-              <p className="text-robinhood-gray-400">Active Users</p>
-            </div>
-            <div>
-              <p className="text-3xl font-bold text-robinhood-green">50M+</p>
-              <p className="text-robinhood-gray-400">Alerts Sent</p>
-            </div>
-            <div>
-              <p className="text-3xl font-bold text-robinhood-green">2.5K+</p>
-              <p className="text-robinhood-gray-400">Assets Tracked</p>
-            </div>
-            <div>
-              <p className="text-3xl font-bold text-robinhood-green">94%</p>
-              <p className="text-robinhood-gray-400">Success Rate</p>
+        {/* Stats */}
+        <div className="border-y border-kib-line bg-kib-surface/90 py-14">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-10 text-center">
+              {[
+                ['10K+', 'active_users'],
+                ['50M+', 'alerts_sent'],
+                ['2.5K+', 'assets_tracked'],
+                ['94%', 'signal_accuracy']
+              ].map(([n, lab]) => (
+                <div key={lab}>
+                  <p className="text-3xl font-bold font-mono text-kib-cyber tabular-nums">{n}</p>
+                  <p className="text-xs font-mono text-kib-muted uppercase tracking-wider mt-2">{lab.replace('_', ' ')}</p>
+                </div>
+              ))}
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Features Section */}
-      <div className="py-20 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center">
-            <h2 className="text-3xl font-bold text-robinhood-gray-900 sm:text-4xl">
-              Smart Alerts for Smart Investors
-            </h2>
-            <p className="mt-4 text-xl text-robinhood-gray-600">
-              Three levels of buy signals to match your investment strategy
-            </p>
-          </div>
-          
-          <div className="mt-16 grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
-            {/* Small Dip Alert */}
-            <div className="relative group">
-              <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-2xl p-8 border-2 border-yellow-200 hover:border-yellow-300 transition-all duration-300 group-hover:shadow-lg">
-                <div className="w-12 h-12 bg-yellow-400 rounded-xl flex items-center justify-center mb-6">
-                  <span className="text-2xl">🟡</span>
-                </div>
-                <h3 className="text-xl font-bold text-robinhood-gray-900 mb-3">Small Dip Alert</h3>
-                <p className="text-robinhood-gray-600 mb-4">
-                  Get notified when prices drop 5% from your baseline. Perfect for regular accumulation.
-                </p>
-                <ul className="space-y-2 text-sm text-robinhood-gray-600">
-                  <li className="flex items-center">
-                    <svg className="w-4 h-4 text-yellow-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    5% price drop threshold
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="w-4 h-4 text-yellow-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    Email & push notifications
-                  </li>
-                </ul>
-              </div>
-            </div>
-            
-            {/* Medium Dip Alert */}
-            <div className="relative group">
-              <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-2xl p-8 border-2 border-orange-200 hover:border-orange-300 transition-all duration-300 group-hover:shadow-lg transform group-hover:scale-105">
-                <div className="w-12 h-12 bg-orange-400 rounded-xl flex items-center justify-center mb-6">
-                  <span className="text-2xl">🟠</span>
-                </div>
-                <h3 className="text-xl font-bold text-robinhood-gray-900 mb-3">Medium Dip Alert</h3>
-                <p className="text-robinhood-gray-600 mb-4">
-                  Significant 10% drops signal strong buying opportunities with higher potential returns.
-                </p>
-                <ul className="space-y-2 text-sm text-robinhood-gray-600">
-                  <li className="flex items-center">
-                    <svg className="w-4 h-4 text-orange-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    10% price drop threshold
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="w-4 h-4 text-orange-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    Priority notifications
-                  </li>
-                </ul>
-                <div className="absolute -top-3 -right-3 bg-robinhood-green text-white text-xs font-bold px-3 py-1 rounded-full">
-                  POPULAR
-                </div>
-              </div>
-            </div>
-            
-            {/* Large Dip Alert */}
-            <div className="relative group">
-              <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-2xl p-8 border-2 border-red-200 hover:border-red-300 transition-all duration-300 group-hover:shadow-lg">
-                <div className="w-12 h-12 bg-red-400 rounded-xl flex items-center justify-center mb-6">
-                  <span className="text-2xl">🔴</span>
-                </div>
-                <h3 className="text-xl font-bold text-robinhood-gray-900 mb-3">Large Dip Alert</h3>
-                <p className="text-robinhood-gray-600 mb-4">
-                  Major 15%+ crashes create exceptional buying opportunities for long-term investors.
-                </p>
-                <ul className="space-y-2 text-sm text-robinhood-gray-600">
-                  <li className="flex items-center">
-                    <svg className="w-4 h-4 text-red-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    15% price drop threshold
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="w-4 h-4 text-red-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    Instant alerts
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* How It Works Section */}
-      <div className="py-20 bg-robinhood-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center">
-            <h2 className="text-3xl font-bold text-robinhood-gray-900 sm:text-4xl">
-              How KeepItBased Works
-            </h2>
-            <p className="mt-4 text-xl text-robinhood-gray-600">
-              Set up your alerts in minutes and never miss a dip again
-            </p>
-          </div>
-          
-          <div className="mt-16">
-            <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
-              <div className="text-center">
-                <div className="bg-robinhood-green/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <svg className="w-8 h-8 text-robinhood-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                  </svg>
-                </div>
-                <h3 className="text-xl font-bold text-robinhood-gray-900 mb-3">1. Add Your Favorites</h3>
-                <p className="text-robinhood-gray-600">
-                  Search and add stocks and crypto you want to track. Set your custom thresholds for each asset.
-                </p>
-              </div>
-              
-              <div className="text-center">
-                <div className="bg-robinhood-green/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <svg className="w-8 h-8 text-robinhood-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-5 5v-5zM4.02 18.85C2.32 17.4 1.15 15.32 1 13c-.5-5.5 4.5-10 10-10s10.5 4.5 10 10c-.15 2.32-1.32 4.4-3.02 5.85" />
-                  </svg>
-                </div>
-                <h3 className="text-xl font-bold text-robinhood-gray-900 mb-3">2. We Monitor 24/7</h3>
-                <p className="text-robinhood-gray-600">
-                  Our system continuously tracks prices across all major exchanges and alerts you when opportunities arise.
-                </p>
-              </div>
-              
-              <div className="text-center">
-                <div className="bg-robinhood-green/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <svg className="w-8 h-8 text-robinhood-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <h3 className="text-xl font-bold text-robinhood-gray-900 mb-3">3. Get Instant Alerts</h3>
-                <p className="text-robinhood-gray-600">
-                  Receive beautiful email alerts and push notifications the moment your buy opportunities hit.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Testimonial Section */}
-      <div className="py-20 bg-white">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center">
-            <h2 className="text-3xl font-bold text-robinhood-gray-900 sm:text-4xl mb-16">
-              Trusted by Smart Investors
-            </h2>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="bg-robinhood-gray-50 rounded-2xl p-8">
-              <div className="flex items-center mb-4">
-                <div className="w-12 h-12 bg-robinhood-green rounded-full flex items-center justify-center text-white font-bold text-lg mr-4">
-                  S
-                </div>
-                <div>
-                  <p className="font-semibold text-robinhood-gray-900">Sarah Chen</p>
-                  <p className="text-sm text-robinhood-gray-600">Day Trader</p>
-                </div>
-              </div>
-              <p className="text-robinhood-gray-700 italic">
-                "KeepItBased has completely changed how I invest. I caught TSLA's 18% dip last month and made incredible returns. The alerts are always on time!"
+        {/* Features */}
+        <div className="py-20 relative">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center">
+              <h2 className="text-3xl font-bold text-kib-fg sm:text-4xl">Smart Alerts for Smart Investors</h2>
+              <p className="mt-4 text-lg text-kib-muted font-mono text-sm uppercase tracking-[0.15em]">
+                Three configurable trigger tiers
               </p>
-              <div className="flex text-robinhood-green mt-4">
-                {'★'.repeat(5)}
-              </div>
             </div>
-            
-            <div className="bg-robinhood-gray-50 rounded-2xl p-8">
-              <div className="flex items-center mb-4">
-                <div className="w-12 h-12 bg-robinhood-green rounded-full flex items-center justify-center text-white font-bold text-lg mr-4">
-                  M
-                </div>
-                <div>
-                  <p className="font-semibold text-robinhood-gray-900">Mike Rodriguez</p>
-                  <p className="text-sm text-robinhood-gray-600">Long-term Investor</p>
-                </div>
-              </div>
-              <p className="text-robinhood-gray-700 italic">
-                "As a busy professional, I can't watch the markets all day. KeepItBased ensures I never miss a buying opportunity. It's like having a personal market assistant."
-              </p>
-              <div className="flex text-robinhood-green mt-4">
-                {'★'.repeat(5)}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      {/* CTA Section */}
-      <div className="bg-gradient-to-r from-robinhood-green to-green-600 py-20">
-        <div className="max-w-4xl mx-auto text-center px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-white sm:text-4xl">
-            Start Buying the Dip Like a Pro
-          </h2>
-          <p className="mt-6 text-xl text-green-100">
-            Join thousands of investors who never miss a buying opportunity
-          </p>
-          <div className="mt-10">
-            <a
-              href="https://app.keepitbased.com/register"
-              className="bg-white text-robinhood-green font-bold text-lg py-4 px-10 rounded-xl hover:bg-green-50 transition-colors duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 inline-block"
-            >
-              Get Started Free
-            </a>
-          </div>
-          <p className="mt-6 text-sm text-green-100">
-            No credit card required • Free forever • Cancel anytime
-          </p>
-        </div>
-      </div>
+            <div className="mt-16 grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="group relative rounded-2xl p-8 border border-amber-500/25 bg-kib-card hover:border-amber-400/45 transition-all duration-300 hover:shadow-[0_0_32px_rgba(251,191,36,0.06)]">
+                <div className="w-12 h-12 rounded-lg flex items-center justify-center mb-6 bg-amber-500/15 border border-amber-500/30 font-mono text-amber-300 text-lg">
+                  L1
+                </div>
+                <h3 className="text-xl font-semibold text-kib-fg mb-3">Small Dip Alert</h3>
+                <p className="text-kib-muted mb-4">
+                  Notified when price drops ~5% from your baseline — steady accumulation cadence.
+                </p>
+                <ul className="space-y-2 text-sm text-kib-muted font-mono">
+                  <li className="flex items-center gap-2">
+                    <span className="text-amber-400">▸</span> threshold: 5%
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="text-amber-400">▸</span> email + push
+                  </li>
+                </ul>
+              </div>
 
-      {/* Footer */}
-      <footer className="bg-robinhood-gray-900 text-white py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            <div>
-              <h3 className="font-bold text-lg mb-4">Product</h3>
-              <ul className="space-y-2 text-robinhood-gray-400">
-                <li><a href="https://app.keepitbased.com/charts" className="hover:text-white transition-colors">Charts</a></li>
-                <li><a href="https://app.keepitbased.com/dashboard" className="hover:text-white transition-colors">Dashboard</a></li>
-                <li><a href="https://app.keepitbased.com/portfolio" className="hover:text-white transition-colors">Portfolio</a></li>
-              </ul>
+              <div className="group relative rounded-2xl p-8 border border-orange-400/35 bg-kib-card hover:border-orange-300/55 transition-all duration-300 hover:shadow-[0_0_36px_rgba(251,146,60,0.1)] lg:scale-[1.02]">
+                <div className="absolute -top-3 -right-3 font-mono text-[10px] font-bold px-3 py-1 rounded-full bg-kib-cyber text-kib-bg border border-kib-glow">
+                  HOT
+                </div>
+                <div className="w-12 h-12 rounded-lg flex items-center justify-center mb-6 bg-orange-500/15 border border-orange-400/35 font-mono text-orange-300 text-lg">
+                  L2
+                </div>
+                <h3 className="text-xl font-semibold text-kib-fg mb-3">Medium Dip Alert</h3>
+                <p className="text-kib-muted mb-4">
+                  ~10% drawdown signals stronger mean-reversion potential with priority routing.
+                </p>
+                <ul className="space-y-2 text-sm text-kib-muted font-mono">
+                  <li className="flex items-center gap-2">
+                    <span className="text-orange-400">▸</span> threshold: 10%
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="text-orange-400">▸</span> priority notify
+                  </li>
+                </ul>
+              </div>
+
+              <div className="group relative rounded-2xl p-8 border border-red-500/30 bg-kib-card hover:border-red-400/45 transition-all duration-300 hover:shadow-[0_0_32px_rgba(248,113,113,0.08)] sm:col-span-2 lg:col-span-1">
+                <div className="w-12 h-12 rounded-lg flex items-center justify-center mb-6 bg-red-500/15 border border-red-400/35 font-mono text-red-300 text-lg">
+                  L3
+                </div>
+                <h3 className="text-xl font-semibold text-kib-fg mb-3">Large Dip Alert</h3>
+                <p className="text-kib-muted mb-4">
+                  Major 15%+ dislocations flagged for conviction-sized entries with instant paths.
+                </p>
+                <ul className="space-y-2 text-sm text-kib-muted font-mono">
+                  <li className="flex items-center gap-2">
+                    <span className="text-red-400">▸</span> threshold: 15%+
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="text-red-400">▸</span> instant_alert
+                  </li>
+                </ul>
+              </div>
             </div>
-            <div>
-              <h3 className="font-bold text-lg mb-4">Company</h3>
-              <ul className="space-y-2 text-robinhood-gray-400">
-                <li><a href="#" className="hover:text-white transition-colors">About</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Careers</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Blog</a></li>
-              </ul>
-            </div>
-            <div>
-              <h3 className="font-bold text-lg mb-4">Support</h3>
-              <ul className="space-y-2 text-robinhood-gray-400">
-                <li><a href="#" className="hover:text-white transition-colors">Help Center</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Contact</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">API</a></li>
-              </ul>
-            </div>
-            <div>
-              <h3 className="font-bold text-lg mb-4">Legal</h3>
-              <ul className="space-y-2 text-robinhood-gray-400">
-                <li><a href="#" className="hover:text-white transition-colors">Privacy</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Terms</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Disclosures</a></li>
-              </ul>
-            </div>
-          </div>
-          <div className="border-t border-robinhood-gray-800 mt-12 pt-8 text-center">
-            <p className="text-robinhood-gray-400">
-              © 2024 KeepItBased. All rights reserved. Never miss a dip again.
-            </p>
           </div>
         </div>
-      </footer>
+
+        {/* How */}
+        <div className="py-20 bg-kib-surface/80 border-y border-kib-line">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center">
+              <h2 className="text-3xl font-bold text-kib-fg sm:text-4xl">How KeepItBased Works</h2>
+              <p className="mt-4 text-kib-muted">Deploy your watch pipeline in minutes</p>
+            </div>
+
+            <div className="mt-16 grid grid-cols-1 gap-12 md:grid-cols-3">
+              {[
+                {
+                  step: '01',
+                  title: 'Add Your Favorites',
+                  body: 'Search tickers and set custom thresholds per symbol.',
+                  icon: '+'
+                },
+                {
+                  step: '02',
+                  title: 'We Monitor 24/7',
+                  body: 'Price streams and alert engine run continuously.',
+                  icon: '~'
+                },
+                {
+                  step: '03',
+                  title: 'Get Instant Alerts',
+                  body: 'Email and push the moment triggers fire.',
+                  icon: '▸'
+                }
+              ].map((s) => (
+                <div key={s.step} className="text-center">
+                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl mb-6 font-mono text-kib-cyber bg-kib-card border border-kib-cyber/35 shadow-terminal">
+                    {s.step}
+                  </div>
+                  <p className="font-mono text-xs text-kib-cyber/80 mb-2">{s.icon} init</p>
+                  <h3 className="text-xl font-semibold text-kib-fg mb-3">{s.title}</h3>
+                  <p className="text-kib-muted">{s.body}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Testimonials */}
+        <div className="py-20">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 className="text-center text-3xl font-bold text-kib-fg sm:text-4xl mb-14">Trusted by Smart Investors</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {[
+                {
+                  initials: 'S',
+                  name: 'Sarah Chen',
+                  role: 'Day Trader',
+                  quote:
+                    "\"KeepItBased changed how I size dips. The TSLA -18% week didn’t sneak past — alerts hit before I opened Twitter.\""
+                },
+                {
+                  initials: 'M',
+                  name: 'Mike Rodriguez',
+                  role: 'Long-term Investor',
+                  quote:
+                    "\"I can’t watch tape all day. This is the disciplined nudge layer I needed — no noise, just thresholds.\""
+                }
+              ].map((t) => (
+                <div key={t.name} className="rounded-2xl p-8 border border-kib-line bg-kib-card hover:border-kib-cyber/25 transition-colors">
+                  <div className="flex items-center mb-4">
+                    <div className="w-12 h-12 rounded-lg flex items-center justify-center font-mono font-bold text-kib-bg bg-gradient-to-br from-kib-cyber to-teal-600 mr-4">
+                      {t.initials}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-kib-fg">{t.name}</p>
+                      <p className="text-sm font-mono text-kib-muted">{t.role}</p>
+                    </div>
+                  </div>
+                  <p className="text-slate-300 italic leading-relaxed">{t.quote}</p>
+                  <div className="flex text-robinhood-green mt-4 tracking-widest">★★★★★</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* CTA */}
+        <div className="relative py-20 overflow-hidden border-t border-kib-cyber/20">
+          <div className="absolute inset-0 bg-gradient-to-br from-teal-900/40 via-kib-card to-kib-bg" />
+          <div className="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_30%_50%,rgba(34,211,238,0.2),transparent_55%)]" />
+          <div className="relative max-w-4xl mx-auto text-center px-4 sm:px-6 lg:px-8">
+            <h2 className="text-3xl font-bold text-kib-fg sm:text-4xl font-mono tracking-tight">execute_on_opportunity()</h2>
+            <p className="mt-6 text-lg text-kib-muted">Join investors who refuse to chase green candles.</p>
+            <div className="mt-10">
+              <a
+                href="https://app.keepitbased.com/register"
+                className="btn-primary inline-block text-lg py-4 px-10 rounded-xl shadow-terminal-lg font-semibold"
+              >
+                Get Started Free
+              </a>
+            </div>
+            <p className="mt-6 text-sm font-mono text-kib-muted">no_card_required · cancel_anytime</p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <footer className="bg-kib-surface border-t border-kib-line py-12">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+              {[
+                {
+                  title: 'Product',
+                  links: [
+                    ['Charts', 'https://app.keepitbased.com/charts'],
+                    ['Dashboard', 'https://app.keepitbased.com/dashboard']
+                  ]
+                },
+                {
+                  title: 'Company',
+                  links: [
+                    ['About', '#'],
+                    ['Careers', '#']
+                  ]
+                },
+                {
+                  title: 'Support',
+                  links: [
+                    ['Help', '#'],
+                    ['Contact', '#']
+                  ]
+                },
+                {
+                  title: 'Legal',
+                  links: [
+                    ['Privacy', '#'],
+                    ['Terms', '#']
+                  ]
+                }
+              ].map((col) => (
+                <div key={col.title}>
+                  <h3 className="font-mono font-semibold text-kib-fg text-sm uppercase tracking-wider mb-4">{col.title}</h3>
+                  <ul className="space-y-2 text-sm text-kib-muted">
+                    {col.links.map(([label, href]) => (
+                      <li key={label}>
+                        <a href={href} className="hover:text-kib-cyber transition-colors">
+                          {label}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-kib-line mt-12 pt-8 text-center font-mono text-xs text-kib-muted">
+              © {new Date().getFullYear()} KeepItBased · <span className="text-robinhood-green">online</span> · never_miss_a_dip
+            </div>
+          </div>
+        </footer>
+      </div>
     </div>
   );
 };

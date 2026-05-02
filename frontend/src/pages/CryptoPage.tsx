@@ -213,8 +213,8 @@ export const CryptoPage: React.FC = () => {
       <div className="mb-8">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-robinhood-gray-900">Crypto Charts</h1>
-            <p className="text-robinhood-gray-600 mt-2">Real-time cryptocurrency trading charts powered by Polygon</p>
+            <h1 className="text-3xl font-bold text-kib-fg">Crypto Charts</h1>
+            <p className="text-kib-muted mt-2">Real-time cryptocurrency trading charts powered by Polygon</p>
           </div>
           
           {/* Connection Status */}
@@ -223,12 +223,12 @@ export const CryptoPage: React.FC = () => {
               isConnected ? 'bg-robinhood-green animate-pulse' : 
               connectionStatus === 'connecting' ? 'bg-yellow-500' : 'bg-robinhood-red'
             }`} />
-            <span className="text-sm text-robinhood-gray-600 font-medium">
+            <span className="text-sm text-kib-muted font-medium">
               {isConnected ? 'Live Data' : 
                connectionStatus === 'connecting' ? 'Connecting...' : 'Disconnected'}
             </span>
             {isConnected && (
-              <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
+              <span className="text-xs text-emerald-300 bg-emerald-950/45 border border-emerald-500/30 px-2 py-1 rounded-full font-mono">
                 Live ticker
               </span>
             )}
@@ -247,7 +247,7 @@ export const CryptoPage: React.FC = () => {
           <div className="flex items-center space-x-4">
             {/* WebSocket Error */}
             {wsError && (
-              <div className="text-xs text-robinhood-red px-2 py-1 bg-red-50 rounded" title={wsError}>
+              <div className="text-xs text-red-300 px-2 py-1 bg-red-950/40 border border-red-500/35 rounded font-mono" title={wsError}>
                 Connection Error
               </div>
             )}
@@ -257,9 +257,9 @@ export const CryptoPage: React.FC = () => {
                 type="checkbox"
                 checked={showVolume}
                 onChange={(e) => setShowVolume(e.target.checked)}
-                className="rounded text-robinhood-green focus:ring-robinhood-green"
+                className="rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
               />
-              <span className="text-sm text-robinhood-gray-700">Volume</span>
+              <span className="text-sm text-slate-300">Volume</span>
             </label>
             
             <label className="flex items-center space-x-2">
@@ -267,9 +267,9 @@ export const CryptoPage: React.FC = () => {
                 type="checkbox"
                 checked={showIndicators}
                 onChange={(e) => setShowIndicators(e.target.checked)}
-                className="rounded text-robinhood-green focus:ring-robinhood-green"
+                className="rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
               />
-              <span className="text-sm text-robinhood-gray-700">Indicators</span>
+              <span className="text-sm text-slate-300">Indicators</span>
             </label>
           </div>
         </div>
@@ -293,7 +293,7 @@ export const CryptoPage: React.FC = () => {
                         disabled={isLoading}
                         className={`px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
                           interval === option.value
-                            ? 'bg-white text-slate-900 shadow-sm'
+                            ? 'bg-kib-cyber text-kib-bg shadow-terminal font-mono'
                             : 'text-slate-300 hover:bg-slate-600'
                         } disabled:opacity-50 disabled:cursor-not-allowed`}
                       >
@@ -376,23 +376,23 @@ export const CryptoPage: React.FC = () => {
           {currentTicker && (
             <div className="card">
               <div className="space-y-4">
-                <div className="border-b border-robinhood-gray-200 pb-4">
-                  <h3 className="text-xl font-bold text-robinhood-gray-900">{formatPairName(currentTicker.symbol)}</h3>
-                  <p className="text-robinhood-gray-500 text-sm">
+                <div className="border-b border-kib-line pb-4">
+                  <h3 className="text-xl font-bold text-kib-fg">{formatPairName(currentTicker.symbol)}</h3>
+                  <p className="text-slate-500 text-sm">
                     {getIntervalLabel(interval)} • {getTimeRangeLabel(timeRange)} • Polygon
                   </p>
                 </div>
                 
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
-                    <span className="text-robinhood-gray-600 font-medium">Price</span>
-                    <span className="font-bold text-lg text-robinhood-gray-900">
+                    <span className="text-kib-muted font-medium">Price</span>
+                    <span className="font-bold text-lg text-kib-fg">
                       {formatCryptoPrice(currentTicker.price)}
                     </span>
                   </div>
                   
                   <div className="flex justify-between items-center">
-                    <span className="text-robinhood-gray-600 font-medium">Change</span>
+                    <span className="text-kib-muted font-medium">Change</span>
                     <span className={`font-bold ${
                       currentTicker.change >= 0 ? 'price-positive' : 'price-negative'
                     }`}>
@@ -402,43 +402,43 @@ export const CryptoPage: React.FC = () => {
                   </div>
                   
                   <div className="flex justify-between">
-                    <span className="text-robinhood-gray-600">24h High</span>
-                    <span className="font-semibold text-robinhood-gray-800">{formatCryptoPrice(currentTicker.high)}</span>
+                    <span className="text-kib-muted">24h High</span>
+                    <span className="font-semibold text-slate-200">{formatCryptoPrice(currentTicker.high)}</span>
                   </div>
                   
                   <div className="flex justify-between">
-                    <span className="text-robinhood-gray-600">24h Low</span>
-                    <span className="font-semibold text-robinhood-gray-800">{formatCryptoPrice(currentTicker.low)}</span>
+                    <span className="text-kib-muted">24h Low</span>
+                    <span className="font-semibold text-slate-200">{formatCryptoPrice(currentTicker.low)}</span>
                   </div>
                   
                   <div className="flex justify-between">
-                    <span className="text-robinhood-gray-600">24h Volume</span>
-                    <span className="font-semibold text-robinhood-gray-800">{formatCryptoVolume(currentTicker.volume)}</span>
+                    <span className="text-kib-muted">24h Volume</span>
+                    <span className="font-semibold text-slate-200">{formatCryptoVolume(currentTicker.volume)}</span>
                   </div>
 
                   <div className="flex justify-between">
-                    <span className="text-robinhood-gray-600">VWAP</span>
-                    <span className="font-semibold text-robinhood-gray-800">{formatCryptoPrice(currentTicker.vwap)}</span>
+                    <span className="text-kib-muted">VWAP</span>
+                    <span className="font-semibold text-slate-200">{formatCryptoPrice(currentTicker.vwap)}</span>
                   </div>
 
                   <div className="flex justify-between">
-                    <span className="text-robinhood-gray-600">Bid</span>
+                    <span className="text-kib-muted">Bid</span>
                     <span className="price-positive font-semibold">{formatCryptoPrice(currentTicker.bid)}</span>
                   </div>
 
                   <div className="flex justify-between">
-                    <span className="text-robinhood-gray-600">Ask</span>
+                    <span className="text-kib-muted">Ask</span>
                     <span className="price-negative font-semibold">{formatCryptoPrice(currentTicker.ask)}</span>
                   </div>
 
                   <div className="flex justify-between">
-                    <span className="text-robinhood-gray-600">Spread</span>
-                    <span className="font-semibold text-robinhood-gray-800">{formatCryptoPrice(currentTicker.spread)}</span>
+                    <span className="text-kib-muted">Spread</span>
+                    <span className="font-semibold text-slate-200">{formatCryptoPrice(currentTicker.spread)}</span>
                   </div>
 
                   <div className="flex justify-between">
-                    <span className="text-robinhood-gray-600">24h Trades</span>
-                    <span className="font-semibold text-robinhood-gray-800">{currentTicker.trades.toLocaleString()}</span>
+                    <span className="text-kib-muted">24h Trades</span>
+                    <span className="font-semibold text-slate-200">{currentTicker.trades.toLocaleString()}</span>
                   </div>
                 </div>
               </div>
@@ -448,32 +448,32 @@ export const CryptoPage: React.FC = () => {
           {/* Crosshair Data */}
           {crosshairData && (
             <div className="card">
-              <h4 className="text-lg font-semibold text-robinhood-gray-900 mb-4">Crosshair Data</h4>
+              <h4 className="text-lg font-semibold text-kib-fg mb-4">Crosshair Data</h4>
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-robinhood-gray-600">Time</span>
-                  <span className="font-medium text-robinhood-gray-800">{new Date(crosshairData.time * 1000).toLocaleString()}</span>
+                  <span className="text-kib-muted">Time</span>
+                  <span className="font-medium text-slate-200">{new Date(crosshairData.time * 1000).toLocaleString()}</span>
                 </div>
                 
                 {crosshairData.candle && (
                   <>
                     <div className="flex justify-between">
-                      <span className="text-robinhood-gray-600">Open</span>
-                      <span className="font-semibold text-robinhood-gray-800">{formatCryptoPrice(crosshairData.candle.open)}</span>
+                      <span className="text-kib-muted">Open</span>
+                      <span className="font-semibold text-slate-200">{formatCryptoPrice(crosshairData.candle.open)}</span>
                     </div>
                     
                     <div className="flex justify-between">
-                      <span className="text-robinhood-gray-600">High</span>
+                      <span className="text-kib-muted">High</span>
                       <span className="price-positive font-semibold">{formatCryptoPrice(crosshairData.candle.high)}</span>
                     </div>
                     
                     <div className="flex justify-between">
-                      <span className="text-robinhood-gray-600">Low</span>
+                      <span className="text-kib-muted">Low</span>
                       <span className="price-negative font-semibold">{formatCryptoPrice(crosshairData.candle.low)}</span>
                     </div>
                     
                     <div className="flex justify-between">
-                      <span className="text-robinhood-gray-600">Close</span>
+                      <span className="text-kib-muted">Close</span>
                       <span className={`font-bold ${
                         crosshairData.candle.close >= crosshairData.candle.open ? 'price-positive' : 'price-negative'
                       }`}>
@@ -485,8 +485,8 @@ export const CryptoPage: React.FC = () => {
                 
                 {crosshairData.volume && (
                   <div className="flex justify-between">
-                    <span className="text-robinhood-gray-600">Volume</span>
-                    <span className="font-semibold text-robinhood-gray-800">{formatCryptoVolume(crosshairData.volume)}</span>
+                    <span className="text-kib-muted">Volume</span>
+                    <span className="font-semibold text-slate-200">{formatCryptoVolume(crosshairData.volume)}</span>
                   </div>
                 )}
               </div>
@@ -495,38 +495,38 @@ export const CryptoPage: React.FC = () => {
 
           {/* Market Statistics */}
           <div className="card">
-            <h4 className="text-lg font-semibold text-robinhood-gray-900 mb-4">Market Info</h4>
+            <h4 className="text-lg font-semibold text-kib-fg mb-4">Market Info</h4>
             <div className="space-y-3 text-sm">
               <div className="flex justify-between">
-                <span className="text-robinhood-gray-600">Interval</span>
-                <span className="font-semibold text-robinhood-gray-800">{getIntervalLabel(interval)}</span>
+                <span className="text-kib-muted">Interval</span>
+                <span className="font-semibold text-slate-200">{getIntervalLabel(interval)}</span>
               </div>
               
               <div className="flex justify-between">
-                <span className="text-robinhood-gray-600">Time Range</span>
-                <span className="font-semibold text-robinhood-gray-800">{getTimeRangeLabel(timeRange)}</span>
+                <span className="text-kib-muted">Time Range</span>
+                <span className="font-semibold text-slate-200">{getTimeRangeLabel(timeRange)}</span>
               </div>
               
               <div className="flex justify-between">
-                <span className="text-robinhood-gray-600">Candles</span>
-                <span className="font-semibold text-robinhood-gray-800">{chartData.length.toLocaleString()}</span>
+                <span className="text-kib-muted">Candles</span>
+                <span className="font-semibold text-slate-200">{chartData.length.toLocaleString()}</span>
               </div>
               
               <div className="flex justify-between">
-                <span className="text-robinhood-gray-600">Exchange</span>
-                <span className="font-semibold text-robinhood-gray-800">Polygon</span>
+                <span className="text-kib-muted">Exchange</span>
+                <span className="font-semibold text-slate-200">Polygon</span>
               </div>
 
               <div className="flex justify-between">
-                <span className="text-robinhood-gray-600">Data Source</span>
+                <span className="text-kib-muted">Data Source</span>
                 <span className={`font-semibold ${isConnected ? 'text-green-600' : 'text-gray-600'}`}>
                   {isConnected ? 'Live polling' : 'REST API'}
                 </span>
               </div>
 
               <div className="flex justify-between">
-                <span className="text-robinhood-gray-600">Last Update</span>
-                <span className="font-semibold text-robinhood-gray-800">
+                <span className="text-kib-muted">Last Update</span>
+                <span className="font-semibold text-slate-200">
                   {isConnected ? 'Real-time' : new Date(lastDataUpdate).toLocaleTimeString()}
                 </span>
               </div>

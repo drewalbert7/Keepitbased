@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 import logging
 import os
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from .llm_client import LlmClient
 from .agent_internal_tools import create_user_alert, fetch_user_alerts
@@ -121,16 +121,20 @@ def market_data_loader(state: OpportunityState) -> OpportunityState:
 
 def user_context_loader(state: OpportunityState) -> OpportunityState:
     """
-    When watchlistOnly is true, restrict symbols to the user's active alerts (Node `/api/internal/agent/alerts`).
-    Requires AGENT_INTERNAL_SECRET on Python + Node.
+    When watchlistOnly is true, scopes candidate tickers to the user's **Main** watchlist
+    via Node GET `/api/internal/agent/alerts` (already filtered to Main there) and **active**
+    alerts only — aligned with dashboard monitoring.
+
+    Order: explicit prompt tickers (that are active + on Main) → dashboard row order filtered
+    to active → sorted(active) capped at 10. Never return a subset skewed by a hardcoded index
+    list missing real watchlist names.
     """
     prefs = state.get("preferences") or {}
     watchlist_only = prefs.get("watchlistOnly", True)
     uid = int(state.get("user_id") or 0)
-    raw_symbols = list(state.get("symbols") or [])
 
     alerts = fetch_user_alerts(uid) if uid > 0 else []
-    active_symbols = {
+    active_symbols_set = {
         str(a.get("symbol", "")).upper()
         for a in alerts
         if a.get("active") is True or a.get("active") == 1
@@ -141,28 +145,96 @@ def user_context_loader(state: OpportunityState) -> OpportunityState:
     if not watchlist_only or uid <= 0:
         return out
 
-    if not active_symbols:
+    if not active_symbols_set:
         return {**out, "symbols": [], "error": "watchlist_empty"}
 
-    filtered = [s for s in raw_symbols if str(s).upper() in active_symbols]
-    if filtered:
-        out["symbols"] = filtered
+    cap = 10
+    dash_order = list(state.get("symbols") or [])
+    ps = [
+        str(s).upper()
+        for s in (state.get("prompt_symbols") or [])
+        if str(s).strip()
+    ]
+
+    if ps:
+        chosen = []
+        seen: Set[str] = set()
+        for s in ps:
+            if s in active_symbols_set and s not in seen:
+                seen.add(s)
+                chosen.append(s)
+            if len(chosen) >= cap:
+                break
+        if chosen:
+            out["symbols"] = chosen
+            return out
+
+    dash_active = []
+    dash_seen: Set[str] = set()
+    for s in dash_order:
+        u = str(s).upper()
+        if u in active_symbols_set and u not in dash_seen:
+            dash_seen.add(u)
+            dash_active.append(u)
+        if len(dash_active) >= cap:
+            break
+
+    if dash_active:
+        out["symbols"] = dash_active
         return out
 
-    out["symbols"] = sorted(active_symbols)[:10]
+    out["symbols"] = sorted(active_symbols_set)[:cap]
+    return out
+
+
+def _extract_prompt_tickers(prompt: str) -> List[str]:
+    """NYSE-style tickers in ALL CAPS inside the prompt (best-effort)."""
+    matches = re.findall(r"\b[A-Z]{1,5}\b", prompt or "")
+    out: List[str] = []
+    for token in matches:
+        if token not in out:
+            out.append(token)
     return out
 
 
 def context_loader(state: OpportunityState) -> OpportunityState:
-    prompt = (state.get("prompt") or "")
-    matches = re.findall(r"\b[A-Z]{1,5}\b", prompt)
+    """
+    Seed symbol universe for downstream nodes.
+
+    When watchlistOnly is true, prefer the **dashboard Main watchlist** from Node
+    (`watchlistContext.items`) — same rows as GET /api/agent/watchlist-context with
+    integrated quotes/sizing. Do **not** fall back to a hardcoded mega-cap list, or
+    we would miss symbols that are on the user's list but not in that default set.
+
+    When watchlistOnly is false, use tickers mentioned in the prompt, else a small
+    default liquid set for exploratory scans.
+    """
+    prompt = state.get("prompt") or ""
+    prefs = state.get("preferences") or {}
+    watchlist_only = bool(prefs.get("watchlistOnly", True))
+
+    prompt_symbols = _extract_prompt_tickers(prompt)
+
+    if watchlist_only:
+        wl_ctx = state.get("watchlist_context") or {}
+        raw_items = wl_ctx.get("items") if isinstance(wl_ctx.get("items"), list) else []
+        dash: List[str] = []
+        for it in raw_items:
+            if not isinstance(it, dict):
+                continue
+            sym = str(it.get("symbol") or "").upper().strip()
+            if sym and sym not in dash:
+                dash.append(sym)
+        symbols = dash[:25]
+        return {"symbols": symbols[:10], "prompt_symbols": prompt_symbols}
+
     symbols = []
-    for token in matches:
+    for token in prompt_symbols:
         if token not in symbols:
             symbols.append(token)
     if not symbols:
         symbols = ["AAPL", "MSFT", "NVDA", "AMZN", "TSLA"]
-    return {"symbols": symbols[:10]}
+    return {"symbols": symbols[:10], "prompt_symbols": prompt_symbols}
 
 
 def opportunity_scout(state: OpportunityState) -> OpportunityState:

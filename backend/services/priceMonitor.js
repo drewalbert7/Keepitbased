@@ -105,15 +105,26 @@ class PriceMonitor {
       const close = Number(ticker.day?.c ?? ticker.lastTrade?.p ?? open);
       const change = close - open;
       const changePercent = open ? (change / open) * 100 : 0;
+      const h = ticker.day?.h != null ? Number(ticker.day.h) : NaN;
+      const l = ticker.day?.l != null ? Number(ticker.day.l) : NaN;
+      const v = ticker.day?.v != null ? Number(ticker.day.v) : NaN;
+      const prevC = ticker.prevDay?.c != null ? Number(ticker.prevDay.c) : NaN;
 
-      return {
+      const out = {
         symbol: symbol,
         price: close,
         change24h: change,
         changePercent,
         timestamp: Date.now(),
-        type: 'stock'
+        type: 'stock',
+        sourceUsed: 'polygon_snapshot'
       };
+      if (Number.isFinite(h)) out.dayHigh = h;
+      if (Number.isFinite(l)) out.dayLow = l;
+      if (Number.isFinite(v)) out.volume = v;
+      if (Number.isFinite(prevC)) out.prevClose = prevC;
+
+      return out;
     } catch (error) {
       if (error.response?.status === 403 && !this.polygonStocksUnavailable) {
         this.polygonStocksUnavailable = true;

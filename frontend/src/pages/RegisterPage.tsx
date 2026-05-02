@@ -54,18 +54,20 @@ const RegisterPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
+    <div className="relative z-10 min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8 rounded-2xl border border-kib-line bg-kib-card/80 backdrop-blur-sm p-8 sm:p-10 shadow-terminal-lg">
         <div className="text-center">
-          <h1 className="text-4xl font-bold text-robinhood-gray-900 mb-2">KeepItBased</h1>
-          <h2 className="text-2xl font-semibold text-robinhood-gray-700">Create your account</h2>
-          <p className="mt-2 text-robinhood-gray-600">Start getting buy alerts today</p>
+          <h1 className="text-4xl font-bold font-mono text-kib-fg mb-2 tracking-tight">
+            <span className="text-kib-cyber">{'>'}</span> KeepItBased
+          </h1>
+          <h2 className="text-2xl font-semibold text-slate-300">Create your account</h2>
+          <p className="mt-2 text-kib-muted">Start getting buy alerts today</p>
         </div>
         
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label htmlFor="firstName" className="block text-sm font-medium text-robinhood-gray-700">
+              <label htmlFor="firstName" className="block text-sm font-medium text-slate-300">
                 First name
               </label>
               <input
@@ -81,7 +83,7 @@ const RegisterPage: React.FC = () => {
             </div>
             
             <div>
-              <label htmlFor="lastName" className="block text-sm font-medium text-robinhood-gray-700">
+              <label htmlFor="lastName" className="block text-sm font-medium text-slate-300">
                 Last name
               </label>
               <input
@@ -98,7 +100,7 @@ const RegisterPage: React.FC = () => {
           </div>
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-robinhood-gray-700">
+            <label htmlFor="email" className="block text-sm font-medium text-slate-300">
               Email address
             </label>
             <input
@@ -115,7 +117,7 @@ const RegisterPage: React.FC = () => {
           </div>
           
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-robinhood-gray-700">
+            <label htmlFor="password" className="block text-sm font-medium text-slate-300">
               Password
             </label>
             <input
@@ -132,7 +134,7 @@ const RegisterPage: React.FC = () => {
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-robinhood-gray-700">
+            <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-300">
               Confirm password
             </label>
             <input
@@ -159,9 +161,9 @@ const RegisterPage: React.FC = () => {
           </div>
 
           <div className="text-center">
-            <p className="text-sm text-robinhood-gray-600">
+            <p className="text-sm text-kib-muted">
               Already have an account?{' '}
-              <Link to="/login" className="font-medium text-robinhood-green hover:text-green-600">
+              <Link to="/login" className="font-medium text-kib-cyber hover:text-kib-glow">
                 Sign in
               </Link>
             </p>

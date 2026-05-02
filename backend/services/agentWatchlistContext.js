@@ -122,6 +122,10 @@ async function buildAgentWatchlistContext({ alertService, userId, maxPositionPct
     let priceUnavailableReason = null;
     let dayChangePct = null;
     let dayChangeAbs = null;
+    let dayHigh = null;
+    let dayLow = null;
+    let volume = null;
+    let prevClose = null;
 
     try {
       const raw = await redis.get(`price:${assetType}:${symbol}`);
@@ -137,6 +141,18 @@ async function buildAgentWatchlistContext({ alertService, userId, maxPositionPct
         }
         if (priceData.change24h != null && Number.isFinite(Number(priceData.change24h))) {
           dayChangeAbs = Number(priceData.change24h);
+        }
+        if (priceData.dayHigh != null && Number.isFinite(Number(priceData.dayHigh))) {
+          dayHigh = Number(priceData.dayHigh);
+        }
+        if (priceData.dayLow != null && Number.isFinite(Number(priceData.dayLow))) {
+          dayLow = Number(priceData.dayLow);
+        }
+        if (priceData.volume != null && Number.isFinite(Number(priceData.volume))) {
+          volume = Number(priceData.volume);
+        }
+        if (priceData.prevClose != null && Number.isFinite(Number(priceData.prevClose))) {
+          prevClose = Number(priceData.prevClose);
         }
       } else {
         priceUnavailableReason = 'not_in_cache';
@@ -162,7 +178,7 @@ async function buildAgentWatchlistContext({ alertService, userId, maxPositionPct
 
     const gap = nextThresholdGap(dropPctFromBaseline, smallTh, mediumTh, largeTh);
 
-    items.push({
+    const itemPayload = {
       alertId: row.id,
       symbol,
       assetType,
@@ -189,7 +205,12 @@ async function buildAgentWatchlistContext({ alertService, userId, maxPositionPct
         suggestedPortfolioPct: sizing.suggestedPortfolioPct,
         rationale: sizing.rationale
       }
-    });
+    };
+    if (dayHigh != null) itemPayload.dayHigh = dayHigh;
+    if (dayLow != null) itemPayload.dayLow = dayLow;
+    if (volume != null) itemPayload.volume = volume;
+    if (prevClose != null) itemPayload.prevClose = prevClose;
+    items.push(itemPayload);
   }
 
   const policyNote =

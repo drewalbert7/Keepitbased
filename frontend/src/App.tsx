@@ -38,7 +38,7 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 const AppRoutes: React.FC = () => {
   return (
     <Router>
-      <div className="min-h-screen bg-robinhood-gray-50">
+      <div className="relative min-h-screen bg-kib-bg text-kib-fg kib-mesh-bg">
         <Navigation />
         <main>
           <Routes>
@@ -99,21 +99,22 @@ const AppRoutes: React.FC = () => {
           toastOptions={{
             duration: 4000,
             style: {
-              background: '#ffffff',
-              color: '#1e293b',
+              background: '#0c1526',
+              color: '#e8f4f8',
               borderRadius: '12px',
-              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+              border: '1px solid rgba(34, 211, 238, 0.2)',
+              boxShadow: '0 0 28px rgba(34, 211, 238, 0.12), 0 8px 24px rgba(0, 0, 0, 0.4)',
             },
             success: {
               iconTheme: {
-                primary: '#22c55e',
-                secondary: '#ffffff',
+                primary: '#00c805',
+                secondary: '#0c1526',
               },
             },
             error: {
               iconTheme: {
                 primary: '#ff5000',
-                secondary: '#ffffff',
+                secondary: '#0c1526',
               },
             },
           }}

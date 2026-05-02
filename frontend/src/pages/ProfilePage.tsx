@@ -80,34 +80,34 @@ const ProfilePage: React.FC = () => {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-robinhood-gray-900">Profile</h1>
-        <p className="text-robinhood-gray-600 mt-2">Manage your account settings</p>
+        <h1 className="text-3xl font-bold text-kib-fg">Profile</h1>
+        <p className="text-kib-muted mt-2">Manage your account settings</p>
       </div>
       
       <div className="space-y-6">
         {/* User Information */}
         <div className="card">
-          <h2 className="text-xl font-semibold text-robinhood-gray-900 mb-4">Account Information</h2>
+          <h2 className="text-xl font-semibold text-kib-fg mb-4">Account Information</h2>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-robinhood-gray-700">First Name</label>
-              <div className="mt-1 text-robinhood-gray-900">{user?.firstName}</div>
+              <label className="block text-sm font-medium text-slate-300">First Name</label>
+              <div className="mt-1 text-kib-fg">{user?.firstName}</div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-robinhood-gray-700">Last Name</label>
-              <div className="mt-1 text-robinhood-gray-900">{user?.lastName}</div>
+              <label className="block text-sm font-medium text-slate-300">Last Name</label>
+              <div className="mt-1 text-kib-fg">{user?.lastName}</div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-robinhood-gray-700">Email</label>
-              <div className="mt-1 text-robinhood-gray-900">{user?.email}</div>
+              <label className="block text-sm font-medium text-slate-300">Email</label>
+              <div className="mt-1 text-kib-fg">{user?.email}</div>
             </div>
           </div>
         </div>
 
         {/* Notifications */}
         <div className="card">
-          <h2 className="text-xl font-semibold text-robinhood-gray-900 mb-2">Notifications</h2>
-          <p className="text-sm text-robinhood-gray-600 mb-4">
+          <h2 className="text-xl font-semibold text-kib-fg mb-2">Notifications</h2>
+          <p className="text-sm text-kib-muted mb-4">
             Opportunity toasts fire when price action matches your alert baseline (deduped hourly). Signals are always saved for review.
           </p>
           <div className="space-y-3">
@@ -116,9 +116,9 @@ const ProfilePage: React.FC = () => {
                 type="checkbox"
                 checked={notifPrefs.email}
                 onChange={(e) => setNotifPrefs((p) => ({ ...p, email: e.target.checked }))}
-                className="rounded border-gray-300 text-robinhood-green focus:ring-robinhood-green"
+                className="rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
               />
-              <span className="text-robinhood-gray-800">
+              <span className="text-kib-fg">
                 Email alerts (price alerts + opportunity signal emails)
               </span>
             </label>
@@ -127,9 +127,9 @@ const ProfilePage: React.FC = () => {
                 type="checkbox"
                 checked={notifPrefs.push}
                 onChange={(e) => setNotifPrefs((p) => ({ ...p, push: e.target.checked }))}
-                className="rounded border-gray-300 text-robinhood-green focus:ring-robinhood-green"
+                className="rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
               />
-              <span className="text-robinhood-gray-800">Push notifications</span>
+              <span className="text-kib-fg">Push notifications</span>
             </label>
             <label className="flex items-center gap-3 cursor-pointer">
               <input
@@ -138,9 +138,9 @@ const ProfilePage: React.FC = () => {
                 onChange={(e) =>
                   setNotifPrefs((p) => ({ ...p, opportunityToasts: e.target.checked }))
                 }
-                className="rounded border-gray-300 text-robinhood-green focus:ring-robinhood-green"
+                className="rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
               />
-              <span className="text-robinhood-gray-800">In-app opportunity toasts</span>
+              <span className="text-kib-fg">In-app opportunity toasts</span>
             </label>
             <button
               type="button"
@@ -155,13 +155,13 @@ const ProfilePage: React.FC = () => {
 
         {/* Security Settings */}
         <div className="card">
-          <h2 className="text-xl font-semibold text-robinhood-gray-900 mb-4">Security</h2>
+          <h2 className="text-xl font-semibold text-kib-fg mb-4">Security</h2>
           
           {passwordMessage && (
-            <div className={`mb-4 p-3 rounded-md ${
-              passwordMessage.type === 'success' 
-                ? 'bg-green-50 border border-green-200 text-green-800' 
-                : 'bg-red-50 border border-red-200 text-red-800'
+            <div className={`mb-4 p-3 rounded-md font-mono text-sm ${
+              passwordMessage.type === 'success'
+                ? 'bg-emerald-950/40 border border-emerald-500/35 text-emerald-200'
+                : 'bg-red-950/40 border border-red-500/35 text-red-200'
             }`}>
               {passwordMessage.text}
             </div>
@@ -177,7 +177,7 @@ const ProfilePage: React.FC = () => {
           ) : (
             <form onSubmit={handlePasswordChange} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-robinhood-gray-700">
+                <label className="block text-sm font-medium text-slate-300">
                   Current Password
                 </label>
                 <input
@@ -190,7 +190,7 @@ const ProfilePage: React.FC = () => {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-robinhood-gray-700">
+                <label className="block text-sm font-medium text-slate-300">
                   New Password
                 </label>
                 <input
@@ -204,7 +204,7 @@ const ProfilePage: React.FC = () => {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-robinhood-gray-700">
+                <label className="block text-sm font-medium text-slate-300">
                   Confirm New Password
                 </label>
                 <input

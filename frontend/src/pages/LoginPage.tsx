@@ -60,18 +60,20 @@ const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
+    <div className="relative z-10 min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8 rounded-2xl border border-kib-line bg-kib-card/80 backdrop-blur-sm p-8 sm:p-10 shadow-terminal-lg">
         <div className="text-center">
-          <h1 className="text-4xl font-bold text-robinhood-gray-900 mb-2">KeepItBased</h1>
-          <h2 className="text-2xl font-semibold text-robinhood-gray-700">
+          <h1 className="text-4xl font-bold font-mono text-kib-fg mb-2 tracking-tight">
+            <span className="text-kib-cyber">{'>'}</span> KeepItBased
+          </h1>
+          <h2 className="text-2xl font-semibold text-slate-300">
             {showRecovery ? (
               showRecovery === 'username' ? 'Recover Username' : 'Reset Password'
             ) : (
               'Sign in to your account'
             )}
           </h2>
-          <p className="mt-2 text-robinhood-gray-600">
+          <p className="mt-2 text-kib-muted">
             {showRecovery ? (
               showRecovery === 'username' 
                 ? 'Enter your email to receive your username' 
@@ -85,7 +87,7 @@ const LoginPage: React.FC = () => {
         {showRecovery ? (
           <form className="mt-8 space-y-6" onSubmit={handleRecoverySubmit}>
             <div>
-              <label htmlFor="recovery-email" className="block text-sm font-medium text-robinhood-gray-700">
+              <label htmlFor="recovery-email" className="block text-sm font-medium text-slate-300">
                 Email address
               </label>
               <input
@@ -130,7 +132,7 @@ const LoginPage: React.FC = () => {
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
             <div className="space-y-4">
               <div>
-                <label htmlFor="email" className="block text-sm font-medium text-robinhood-gray-700">
+                <label htmlFor="email" className="block text-sm font-medium text-slate-300">
                   Email address
                 </label>
                 <input
@@ -147,7 +149,7 @@ const LoginPage: React.FC = () => {
               </div>
               
               <div>
-                <label htmlFor="password" className="block text-sm font-medium text-robinhood-gray-700">
+                <label htmlFor="password" className="block text-sm font-medium text-slate-300">
                   Password
                 </label>
                 <input
@@ -180,15 +182,15 @@ const LoginPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowRecovery('username')}
-                  className="text-sm text-robinhood-green hover:text-green-600 underline"
+                  className="text-sm text-kib-cyber hover:text-kib-glow underline"
                 >
                   Forgot Username?
                 </button>
-                <span className="text-robinhood-gray-400">•</span>
+                <span className="text-slate-500">•</span>
                 <button
                   type="button"
                   onClick={() => setShowRecovery('password')}
-                  className="text-sm text-robinhood-green hover:text-green-600 underline"
+                  className="text-sm text-kib-cyber hover:text-kib-glow underline"
                 >
                   Forgot Password?
                 </button>
@@ -196,9 +198,9 @@ const LoginPage: React.FC = () => {
 
               {/* Sign Up Link */}
               <div className="text-center">
-                <p className="text-sm text-robinhood-gray-600">
+                <p className="text-sm text-kib-muted">
                   Don't have an account?{' '}
-                  <Link to="/register" className="font-medium text-robinhood-green hover:text-green-600">
+                  <Link to="/register" className="font-medium text-kib-cyber hover:text-kib-glow">
                     Sign up
                   </Link>
                 </p>

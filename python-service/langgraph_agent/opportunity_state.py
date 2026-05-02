@@ -11,6 +11,7 @@ class OpportunityState(TypedDict, total=False):
 
     intent: str
     symbols: List[str]
+    prompt_symbols: List[str]
     user_alert_context: List[Dict[str, Any]]
     market_snapshots: Dict[str, Any]
     candidates: List[Dict[str, Any]]

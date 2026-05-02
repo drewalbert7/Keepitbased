@@ -1,11 +1,24 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: 'class',
   content: [
     "./src/**/*.{js,jsx,ts,tsx}",
   ],
   theme: {
     extend: {
       colors: {
+        kib: {
+          bg: '#030712',
+          surface: '#070d18',
+          card: '#0c1526',
+          raise: '#111f33',
+          line: '#1e3a52',
+          edge: '#2d4a62',
+          fg: '#e8f4f8',
+          muted: '#8da4b8',
+          cyber: '#22d3ee',
+          glow: '#5eead4',
+        },
         primary: {
           50: '#f0fdf4',
           100: '#dcfce7',
@@ -38,6 +51,11 @@ module.exports = {
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['"JetBrains Mono"', '"IBM Plex Mono"', 'ui-monospace', 'monospace'],
+      },
+      boxShadow: {
+        'terminal': '0 0 24px rgba(34, 211, 238, 0.08), inset 0 1px 0 rgba(34, 211, 238, 0.06)',
+        'terminal-lg': '0 0 40px rgba(34, 211, 238, 0.12), 0 0 80px rgba(0, 200, 5, 0.04)',
       },
       animation: {
         'fade-in': 'fadeIn 0.5s ease-in-out',
