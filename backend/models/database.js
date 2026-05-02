@@ -94,6 +94,10 @@ async function initializeDatabase() {
       )
     `);
 
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_user_watchlists_user_name ON user_watchlists(user_id, name)
+    `);
+
     // Price history table (for charts)
     await client.query(`
       CREATE TABLE IF NOT EXISTS price_history (
@@ -127,6 +131,83 @@ async function initializeDatabase() {
     
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_price_history_symbol ON price_history(symbol, asset_type, timestamp DESC);
+    `);
+
+    // Agent audit: one row per /api/agent/chat invocation + paired messages
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS agent_runs (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        external_run_id VARCHAR(128),
+        source VARCHAR(32) NOT NULL DEFAULT 'chat',
+        prompt TEXT,
+        mode VARCHAR(32),
+        preferences JSONB,
+        reply TEXT,
+        output JSONB,
+        run_metadata JSONB,
+        provider_used VARCHAR(32),
+        fallback_used BOOLEAN,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS agent_messages (
+        id SERIAL PRIMARY KEY,
+        run_id INTEGER NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
+        seq SMALLINT NOT NULL,
+        role VARCHAR(16) NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+        content TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(run_id, seq)
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_agent_runs_user_id ON agent_runs(user_id);
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_agent_runs_created_at ON agent_runs(created_at DESC);
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_agent_messages_run_id ON agent_messages(run_id);
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS agent_audit_events (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        action VARCHAR(80) NOT NULL,
+        detail JSONB DEFAULT '{}',
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_agent_audit_user_created
+      ON agent_audit_events(user_id, created_at DESC);
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS opportunity_signals (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        symbol VARCHAR(20) NOT NULL,
+        asset_type VARCHAR(10) NOT NULL CHECK (asset_type IN ('crypto', 'stock')),
+        flags JSONB NOT NULL DEFAULT '[]',
+        reasons JSONB NOT NULL DEFAULT '[]',
+        vs_baseline_pct DECIMAL(12,4),
+        price DECIMAL(20,8) NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_opportunity_signals_user_created
+      ON opportunity_signals(user_id, created_at DESC);
     `);
 
     // Add migration for reset token columns (safely add if they don't exist)

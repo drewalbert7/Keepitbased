@@ -4,7 +4,7 @@ module.exports = {
       name: 'keepitbased-api',
       script: './backend/server.js',
       instances: 1,
-      exec_mode: 'cluster',
+      exec_mode: 'fork',
       env: {
         NODE_ENV: 'production',
         PORT: 3001,
@@ -20,11 +20,14 @@ module.exports = {
       log_file: './logs/api-combined.log',
       time: true,
       watch: false,
+      autorestart: true,
       max_memory_restart: '1G',
       node_args: '--max-old-space-size=1024',
+      kill_timeout: 8000,
       restart_delay: 4000,
-      max_restarts: 10,
-      min_uptime: '10s'
+      exp_backoff_restart_delay: 150,
+      max_restarts: 15,
+      min_uptime: '15s'
     },
     {
       name: 'stock-service',

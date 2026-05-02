@@ -22,6 +22,7 @@ export const ChartPage: React.FC = () => {
   const [technicalData, setTechnicalData] = useState<TechnicalData['data']>([]);
   const [staleSeconds, setStaleSeconds] = useState<number>(0);
   const [dataErrorMessage, setDataErrorMessage] = useState<string>('');
+  const [dataInfoMessage, setDataInfoMessage] = useState<string>('');
 
   const formatCompact = useCallback(
     (value: number) => Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(value),
@@ -99,42 +100,96 @@ export const ChartPage: React.FC = () => {
   const loadStockData = async (symbol: string, newPeriod?: string, newInterval?: string) => {
     setIsLoading(true);
     setDataErrorMessage('');
+    setDataInfoMessage('');
     try {
       const actualPeriod = newPeriod || period;
       const actualInterval = newInterval || interval;
 
-      // Load chart data, quote, and stock info in parallel
-      const [historyData, quote, info, technical] = await Promise.all([
-        getStockHistory(symbol, actualPeriod, actualInterval),
-        getStockQuote(symbol),
-        getStockInfo(symbol).catch(() => null), // Stock info is optional
-        getTechnicalData(symbol, actualPeriod).catch(() => null)
+      // History drives the chart — do not fail the whole page if quote/info/technical fail.
+      let historyData;
+      try {
+        historyData = await getStockHistory(symbol, actualPeriod, actualInterval);
+      } catch (histErr: unknown) {
+        const status = (histErr as { response?: { status?: number } })?.response?.status;
+        if (status === 403) {
+          setDataErrorMessage('Massive entitlement does not include this symbol/timeframe yet.');
+        } else if (status === 404) {
+          setDataErrorMessage(`Symbol ${symbol} was not found.`);
+        } else if (status === 429) {
+          setDataErrorMessage('Rate limit reached. Please retry in a moment.');
+        } else {
+          setDataErrorMessage('Could not load price history. Check connection and retry.');
+        }
+        toast.error(`Failed to load chart data for ${symbol}`);
+        setChartData([]);
+        return;
+      }
+
+      const upper = symbol.toUpperCase();
+      const [quoteResult, infoResult, technicalResult] = await Promise.allSettled([
+        getStockQuote(upper),
+        getStockInfo(upper),
+        getTechnicalData(upper, actualPeriod)
       ]);
 
+      const quote =
+        quoteResult.status === 'fulfilled'
+          ? quoteResult.value
+          : null;
+      const info = infoResult.status === 'fulfilled' ? infoResult.value : null;
+      const technical =
+        technicalResult.status === 'fulfilled' ? technicalResult.value : null;
+
+      if (quoteResult.status === 'rejected') {
+        console.warn('Quote failed (chart still loads from history):', quoteResult.reason);
+      }
+
       setChartData(historyData.data);
-      setQuoteData(quote);
       setStockInfo(info);
+
+      const rows = historyData.data || [];
+      const lastBar = rows.length > 0 ? rows[rows.length - 1] : null;
+
+      if (quote) {
+        setQuoteData(quote);
+        setQuoteSource(quote.sourceUsed || 'snapshot');
+        setQuoteLastUpdated(quote.lastUpdated || quote.timestamp || new Date().toISOString());
+      } else if (lastBar) {
+        setQuoteData({
+          symbol: upper,
+          price: lastBar.close,
+          open: lastBar.open,
+          high: lastBar.high,
+          low: lastBar.low,
+          volume: lastBar.volume ?? 0,
+          change: lastBar.close - lastBar.open,
+          changePercent: lastBar.open ? ((lastBar.close - lastBar.open) / lastBar.open) * 100 : 0,
+          marketCap: 0,
+          companyName: upper,
+          timestamp: new Date(lastBar.time * 1000).toISOString(),
+          sourceUsed: 'history_bar',
+          partialData: true,
+          lastUpdated: new Date().toISOString()
+        });
+        setQuoteSource('history_bar');
+        setQuoteLastUpdated(new Date().toISOString());
+        setDataErrorMessage('Live quote unavailable; showing last bar close.');
+      } else {
+        setQuoteData(null);
+      }
+
       setTechnicalData(technical?.data || []);
       setHistorySource(historyData.sourceUsed || 'massive_aggs');
-      setQuoteSource(quote.sourceUsed || 'snapshot');
-      setQuoteLastUpdated(quote.lastUpdated || quote.timestamp || new Date().toISOString());
       setHistoryLastUpdated(historyData.lastUpdated || historyData.timestamp || new Date().toISOString());
-      
+      if (historyData.coverage?.note) {
+        setDataInfoMessage(historyData.coverage.note);
+      }
+
       if (newPeriod) setPeriod(newPeriod);
       if (newInterval) setInterval(newInterval);
-      
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error loading stock data:', error);
-      const status = error?.response?.status;
-      if (status === 403) {
-        setDataErrorMessage('Massive entitlement does not include this symbol/timeframe yet.');
-      } else if (status === 404) {
-        setDataErrorMessage(`Symbol ${symbol} was not found.`);
-      } else if (status === 429) {
-        setDataErrorMessage('Rate limit reached. Please retry in a moment.');
-      } else {
-        setDataErrorMessage('Temporary market-data error. Please retry.');
-      }
+      setDataErrorMessage('Temporary market-data error. Please retry.');
       toast.error(`Failed to load data for ${symbol}`);
     } finally {
       setIsLoading(false);
@@ -282,6 +337,11 @@ export const ChartPage: React.FC = () => {
                     {historyLastUpdated ? ` • history ${new Date(historyLastUpdated).toLocaleTimeString()}` : ''}
                   </div>
                 </div>
+                {dataInfoMessage && (
+                  <div className="px-4 py-2 text-xs text-amber-200/90 bg-amber-950/40 border-b border-amber-800/50">
+                    {dataInfoMessage}
+                  </div>
+                )}
                 {chartData.length > 0 ? (
                   <SimpleChart
                     data={chartData}

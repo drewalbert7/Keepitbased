@@ -78,7 +78,7 @@ const cryptoSecurityHeaders = helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      connectSrc: ["'self'", "https://api.polygon.io"],
+      connectSrc: ["'self'", "https://api.polygon.io", "https://api.massive.com"],
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "https:"],

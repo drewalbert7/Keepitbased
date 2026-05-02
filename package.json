@@ -15,7 +15,11 @@
     "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
     "pm2:start": "pm2 start ecosystem.config.js",
     "pm2:stop": "pm2 stop all",
-    "pm2:restart": "pm2 restart all"
+    "pm2:restart": "pm2 restart all",
+    "deploy": "bash scripts/deploy-production.sh",
+    "health:api": "curl -sf http://127.0.0.1:3001/api/health && echo",
+    "smoke:opportunity": "bash scripts/smoke-opportunity-agent.sh",
+    "golden:opportunity": "node scripts/runGoldenOpportunities.js"
   },
   "dependencies": {
     "concurrently": "^8.2.2",

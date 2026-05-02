@@ -123,33 +123,40 @@ const createCommonChecks = () => {
     return { status: 'ok', message: 'JWT_SECRET is properly configured' };
   });
 
-  // Port availability
-  validator.addCheck('Port Availability', async () => {
-    const net = require('net');
-    
-    return new Promise((resolve) => {
-      const server = net.createServer();
-      
-      server.listen(config.PORT, () => {
-        server.close();
-        resolve({ status: 'ok', message: `Port ${config.PORT} is available` });
+  // Port pre-flight: only in development (or when forced). In production it races with
+  // PM2/nginx restarts and caused false failures + crash loops; real conflicts surface on listen().
+  const runPortPrecheck =
+    process.env.RUN_PORT_AVAILABILITY_CHECK === 'true'
+    || (config.NODE_ENV !== 'production' && process.env.RUN_PORT_AVAILABILITY_CHECK !== 'false');
+
+  if (runPortPrecheck) {
+    validator.addCheck('Port Availability', async () => {
+      const net = require('net');
+
+      return new Promise((resolve) => {
+        const server = net.createServer();
+
+        server.listen(config.PORT, () => {
+          server.close();
+          resolve({ status: 'ok', message: `Port ${config.PORT} is available` });
+        });
+
+        server.on('error', (err) => {
+          if (err.code === 'EADDRINUSE') {
+            resolve({
+              status: 'error',
+              message: `Port ${config.PORT} is already in use`
+            });
+          } else {
+            resolve({
+              status: 'error',
+              message: `Port check failed: ${err.message}`
+            });
+          }
+        });
       });
-      
-      server.on('error', (err) => {
-        if (err.code === 'EADDRINUSE') {
-          resolve({ 
-            status: 'error', 
-            message: `Port ${config.PORT} is already in use` 
-          });
-        } else {
-          resolve({ 
-            status: 'error', 
-            message: `Port check failed: ${err.message}` 
-          });
-        }
-      });
-    });
-  }, true);
+    }, false);
+  }
 
   // Database connectivity
   validator.addCheck('Database Connection', async () => {
@@ -171,12 +178,37 @@ const createCommonChecks = () => {
     }
   });
 
-  // Python Service connectivity
+  // Python Service connectivity + LangGraph / LLM readiness (no LLM API calls)
   validator.addCheck('Python Service Connection', async () => {
     try {
       const axios = require('axios');
-      await axios.get(`${config.PYTHON_SERVICE_URL}/health`, { timeout: 5000 });
-      return { status: 'ok', message: `Python service available at ${config.PYTHON_SERVICE_URL}` };
+      const { data } = await axios.get(`${config.PYTHON_SERVICE_URL}/health`, { timeout: 5000 });
+      const agent = data?.agent || {};
+      const bits = [`Python service OK at ${config.PYTHON_SERVICE_URL}`];
+      if (agent.opportunityGraphReady === false) {
+        bits.push('opportunity graph not initialized');
+      }
+      const wantLangGraph = String(process.env.ENABLE_LANGGRAPH_AGENT || '').toLowerCase() === 'true';
+      if (wantLangGraph && agent.opportunityGraphReady === false) {
+        return {
+          status: 'warning',
+          message: `${bits.join('; ')} — ENABLE_LANGGRAPH_AGENT is true but Opportunity graph is unavailable`
+        };
+      }
+      const prov = agent.llmProviderConfigured;
+      if (prov === 'grok' && !agent.grokKeyPresent) {
+        return {
+          status: 'warning',
+          message: `${bits.join('; ')}; LLM_PROVIDER=grok but no GROK/XAI API key set on Python service`
+        };
+      }
+      if (prov === 'openai' && !agent.openaiKeyPresent) {
+        return {
+          status: 'warning',
+          message: `${bits.join('; ')}; LLM_PROVIDER=openai but no OPENAI_API_KEY set on Python service`
+        };
+      }
+      return { status: 'ok', message: bits.join('; ') };
     } catch (error) {
       return { 
         status: 'warning', 

@@ -1,14 +1,13 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { 
-  ChartBarIcon, 
-  BellIcon, 
-  HomeIcon, 
+import {
+  ChartBarIcon,
+  HomeIcon,
   UserCircleIcon,
   ArrowRightOnRectangleIcon,
   CurrencyDollarIcon,
-  CpuChipIcon
+  InboxIcon
 } from '@heroicons/react/24/outline';
 
 const Navigation: React.FC = () => {
@@ -23,12 +22,11 @@ const Navigation: React.FC = () => {
     { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
     { name: 'Stock Charts', href: '/charts', icon: ChartBarIcon },
     { name: 'Crypto Charts', href: '/crypto', icon: CurrencyDollarIcon },
-    { name: 'AI Agent', href: '/ai-agent', icon: CpuChipIcon },
-    { name: 'Alerts', href: '/alerts', icon: BellIcon },
-    { name: 'Profile', href: '/profile', icon: UserCircleIcon },
+    { name: 'Signals', href: '/opportunity-signals', icon: InboxIcon },
+    { name: 'Profile', href: '/profile', icon: UserCircleIcon }
   ];
 
-  const isActive = (href: string) => location.pathname === href;
+  const isActive = (href: string) => location.pathname === href || (href === '/dashboard' && location.pathname === '/ai-agent');
 
   return (
     <nav className="gradient-bg shadow-lg">

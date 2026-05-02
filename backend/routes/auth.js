@@ -10,6 +10,7 @@ const { sanitizeInput, validateEmail, validatePassword, handleValidationErrors }
 const logger = require('../utils/logger');
 const config = require('../config');
 const emailService = require('../services/emailService');
+const { mergeNotificationPreferences } = require('../utils/notificationPreferences');
 
 // Development mode flag for graceful fallback
 const isDevelopment = process.env.NODE_ENV === 'development';
@@ -78,7 +79,8 @@ router.post('/register', sanitizeInput, registrationRateLimit, [
         id: user.id,
         email: user.email,
         firstName: user.first_name,
-        lastName: user.last_name
+        lastName: user.last_name,
+        notificationPreferences: mergeNotificationPreferences(null)
       }
     });
   } catch (error) {
@@ -145,7 +147,7 @@ router.post('/login', sanitizeInput, authRateLimit, [
         email: user.email,
         firstName: user.first_name,
         lastName: user.last_name,
-        notificationPreferences: user.notification_preferences || { email: true, push: true }
+        notificationPreferences: mergeNotificationPreferences(user.notification_preferences)
       }
     });
   } catch (error) {
@@ -172,7 +174,7 @@ router.get('/me', auth, async (req, res) => {
       email: user.email,
       firstName: user.first_name,
       lastName: user.last_name,
-      notificationPreferences: user.notification_preferences,
+      notificationPreferences: mergeNotificationPreferences(user.notification_preferences),
       createdAt: user.created_at
     });
   } catch (error) {

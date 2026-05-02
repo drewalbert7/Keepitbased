@@ -6,8 +6,8 @@ const logger = require('../utils/logger');
 const config = require('../config');
 const { publicCryptoSecurity } = require('../middleware/cryptoSecurity');
 
-const POLYGON_API_URL = 'https://api.polygon.io';
 const getMarketDataApiKey = () => config.POLYGON_API_KEY || config.MASSIVE_API_KEY;
+const getMarketDataBaseUrl = () => config.MARKET_DATA_API_URL;
 const LOG_COOLDOWN_MS = 5 * 60 * 1000;
 const recentLogs = new Map();
 
@@ -49,7 +49,7 @@ const makePolygonRequest = async (endpoint, params = {}) => {
   try {
     ensurePolygonApiKey();
     const apiKey = getMarketDataApiKey();
-    const response = await axios.get(`${POLYGON_API_URL}${endpoint}`, {
+    const response = await axios.get(`${getMarketDataBaseUrl()}${endpoint}`, {
       params: {
         ...params,
         apiKey

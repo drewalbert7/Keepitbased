@@ -8,12 +8,11 @@ import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
-import Dashboard from './pages/Dashboard';
-import AlertsPage from './pages/AlertsPage';
 import ProfilePage from './pages/ProfilePage';
 import { ChartPage } from './pages/ChartPage';
 import { CryptoPage } from './pages/CryptoPage';
 import AIAgentPage from './pages/AIAgentPage';
+import OpportunitySignalsPage from './pages/OpportunitySignalsPage';
 import LoadingSpinner from './components/ui/LoadingSpinner';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -62,17 +61,11 @@ const AppRoutes: React.FC = () => {
             <Route path="/dashboard" element={
               <ProtectedRoute>
                 <SocketProvider>
-                  <Dashboard />
+                  <AIAgentPage />
                 </SocketProvider>
               </ProtectedRoute>
             } />
-            <Route path="/alerts" element={
-              <ProtectedRoute>
-                <SocketProvider>
-                  <AlertsPage />
-                </SocketProvider>
-              </ProtectedRoute>
-            } />
+            <Route path="/ai-agent" element={<Navigate to="/dashboard" replace />} />
             <Route path="/profile" element={
               <ProtectedRoute>
                 <ProfilePage />
@@ -92,9 +85,11 @@ const AppRoutes: React.FC = () => {
                 </SocketProvider>
               </ProtectedRoute>
             } />
-            <Route path="/ai-agent" element={
+            <Route path="/opportunity-signals" element={
               <ProtectedRoute>
-                <AIAgentPage />
+                <SocketProvider>
+                  <OpportunitySignalsPage />
+                </SocketProvider>
               </ProtectedRoute>
             } />
           </Routes>

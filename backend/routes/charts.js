@@ -6,8 +6,48 @@ const logger = require('../utils/logger');
 const config = require('../config');
 const { getRedisClient } = require('../utils/redis');
 
-const POLYGON_API_URL = 'https://api.polygon.io';
 const getMarketDataApiKey = () => config.POLYGON_API_KEY || config.MASSIVE_API_KEY;
+
+const marketDataHeaders = (apiKey) => ({
+  Authorization: `Bearer ${apiKey}`,
+  'X-Polygon-API-Key': apiKey,
+  'User-Agent': 'KeepItBased/1.0'
+});
+
+/**
+ * Fetch OHLC aggregate bars and follow next_url until exhausted (Massive/Polygon paginate past limit).
+ */
+const fetchAggregateBarsMerged = async (endpoint, params = {}) => {
+  const apiKey = getMarketDataApiKey();
+  if (!apiKey) {
+    throw new Error('MASSIVE_API_KEY (or POLYGON_API_KEY) is not configured');
+  }
+
+  const base = config.MARKET_DATA_API_URL;
+  const merged = [];
+  let nextUrl = `${base}${endpoint}`;
+  let firstPage = true;
+  let pages = 0;
+  const maxPages = 60;
+
+  while (nextUrl && pages < maxPages) {
+    metrics.upstreamRequests += 1;
+    const response = await axios.get(nextUrl, {
+      params: firstPage ? { ...params, apiKey } : undefined,
+      headers: marketDataHeaders(apiKey),
+      timeout: 25000
+    });
+    firstPage = false;
+    const body = response.data;
+    if (Array.isArray(body.results)) {
+      merged.push(...body.results);
+    }
+    nextUrl = body.next_url || null;
+    pages += 1;
+  }
+
+  return merged;
+};
 const redisClient = getRedisClient();
 const upstreamInflight = new Map();
 const metrics = {
@@ -42,19 +82,76 @@ const historyRateLimiter = rateLimit({
   }
 });
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
 const PERIOD_TO_DAYS = {
   '1d': 1,
   '5d': 5,
   '1mo': 30,
   '3mo': 90,
   '6mo': 180,
+  // ytd handled in resolveHistoryRange (not calendar 365d)
   'ytd': 365,
   '1y': 365,
   '2y': 730,
   '5y': 1825,
   '10y': 3650,
-  'all': 3650,
-  'max': 3650
+  'all': 7300,
+  'max': 7300
+};
+
+/** US equity session calendar start for year-to-date ranges */
+const resolveHistoryRange = (period) => {
+  const to = new Date();
+  if (period === 'ytd') {
+    const year = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      year: 'numeric'
+    }).format(to);
+    const y = Number(year);
+    const from = new Date(Date.UTC(y, 0, 1, 12, 0, 0));
+    return { from, to };
+  }
+  const days = PERIOD_TO_DAYS[period] || 365;
+  const from = new Date(to.getTime() - days * MS_PER_DAY);
+  return { from, to };
+};
+
+/**
+ * Long aggregate windows can hit per-response caps; chunk requests and merge by bar timestamp.
+ */
+const fetchAggregatesChunked = async (ticker, multiplier, timespan, from, to) => {
+  const chunkDays =
+    timespan === 'minute' ? 7 : timespan === 'hour' ? 45 : 380;
+  const byT = new Map();
+  let chunkStart = new Date(from.getTime());
+
+  while (chunkStart.getTime() <= to.getTime()) {
+    const chunkEndMs = Math.min(
+      chunkStart.getTime() + chunkDays * MS_PER_DAY - 1,
+      to.getTime()
+    );
+    const chunkEnd = new Date(chunkEndMs);
+
+    const fromStr = chunkStart.toISOString().slice(0, 10);
+    const toStr = chunkEnd.toISOString().slice(0, 10);
+
+    const endpoint = `/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/${multiplier}/${timespan}/${fromStr}/${toStr}`;
+    const batch = await fetchAggregateBarsMerged(endpoint, {
+      adjusted: true,
+      sort: 'asc',
+      limit: 50000
+    });
+
+    for (const bar of batch) {
+      if (bar && bar.t != null) byT.set(bar.t, bar);
+    }
+
+    const nextStart = new Date(chunkEnd.getTime() + MS_PER_DAY);
+    chunkStart = nextStart;
+  }
+
+  return Array.from(byT.values()).sort((a, b) => a.t - b.t);
 };
 
 const intervalToAgg = (interval) => {
@@ -96,16 +193,12 @@ const makeMassiveRequest = async (endpoint, params = {}) => {
   }
 
   metrics.upstreamRequests += 1;
-  const requestPromise = axios.get(`${POLYGON_API_URL}${endpoint}`, {
+  const requestPromise = axios.get(`${config.MARKET_DATA_API_URL}${endpoint}`, {
     params: {
       ...params,
       apiKey
     },
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'X-Polygon-API-Key': apiKey,
-      'User-Agent': 'KeepItBased/1.0'
-    },
+    headers: marketDataHeaders(apiKey),
     timeout: 20000
   }).then((response) => response.data)
     .finally(() => {
@@ -288,25 +381,36 @@ router.get('/history/:symbol', historyRateLimiter, async (req, res) => {
     const { symbol } = req.params;
     const { period = '1y', interval = '1d' } = req.query;
     const upperSymbol = symbol.toUpperCase();
-    const cacheKey = `charts:history:${upperSymbol}:${period}:${interval}`;
+    const cacheKey = `charts:history:v2:${upperSymbol}:${period}:${interval}`;
     const cachedHistory = await safeGetCache(cacheKey);
     if (cachedHistory) {
       metrics.historyCacheHits += 1;
       return res.json(cachedHistory);
     }
 
-    const days = PERIOD_TO_DAYS[period] || 365;
     const { multiplier, timespan } = intervalToAgg(interval);
-    const to = new Date();
-    const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
+    const { from, to } = resolveHistoryRange(period);
 
-    const response = await makeMassiveRequest(
-      `/v2/aggs/ticker/${encodeURIComponent(symbol.toUpperCase())}/range/${multiplier}/${timespan}/${from.toISOString().slice(0, 10)}/${to.toISOString().slice(0, 10)}`,
-      { adjusted: true, sort: 'asc', limit: 50000 }
+    const rawBars = await fetchAggregatesChunked(
+      symbol.toUpperCase(),
+      multiplier,
+      timespan,
+      from,
+      to
     );
+    const data = rawBars.map(sanitizeCandle).filter(Boolean);
 
-    const results = response.results || [];
-    const data = results.map(sanitizeCandle).filter(Boolean);
+    const requestedFromMs = from.getTime();
+    const requestedToMs = to.getTime();
+    const firstSec = data.length ? data[0].time : null;
+    const lastSec = data.length ? data[data.length - 1].time : null;
+    const firstMs = firstSec != null ? firstSec * 1000 : null;
+
+    let coverageNote;
+    if (data.length && firstMs != null && firstMs - requestedFromMs > 60 * MS_PER_DAY) {
+      coverageNote =
+        'Oldest bar is newer than the requested range start. Many Massive/Polygon plans cap equity history (often ~24 months). Upgrade the market-data subscription for deeper history.';
+    }
 
     const payload = {
       symbol: upperSymbol,
@@ -316,7 +420,17 @@ router.get('/history/:symbol', historyRateLimiter, async (req, res) => {
       timestamp: new Date().toISOString(),
       sourceUsed: 'massive_aggs',
       partialData: data.length === 0,
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      coverage: {
+        requestedFrom: from.toISOString(),
+        requestedTo: to.toISOString(),
+        barsReturned: data.length,
+        oldestBar:
+          firstSec != null ? new Date(firstSec * 1000).toISOString() : null,
+        newestBar:
+          lastSec != null ? new Date(lastSec * 1000).toISOString() : null,
+        ...(coverageNote ? { note: coverageNote } : {})
+      }
     };
 
     await safeSetCache(cacheKey, payload, getHistoryCacheTtl(interval));

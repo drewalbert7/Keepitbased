@@ -9,6 +9,18 @@ export type AuthActionResult =
 
 function authErrorMessage(error: unknown, fallback: string): string {
   if (axios.isAxiosError(error)) {
+    if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
+      return 'Cannot reach the server. Check your connection or try again shortly.';
+    }
+    const status = error.response?.status;
+    if (status === 502 || status === 503 || status === 504) {
+      return 'Sign-in service is temporarily unavailable. Please try again in a few minutes.';
+    }
+    if (status === 429) {
+      const data = error.response?.data as { message?: string };
+      if (typeof data?.message === 'string') return data.message;
+      return 'Too many attempts. Please wait before trying again.';
+    }
     const data = error.response?.data as { message?: string; errors?: Array<{ msg?: string }> };
     if (typeof data?.message === 'string') return data.message;
     if (Array.isArray(data?.errors) && data.errors.length > 0) {

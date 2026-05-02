@@ -66,7 +66,20 @@ def set_cached_data(key, data, ttl=300):  # 5 minutes TTL
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()})
+    grok_key = bool(os.getenv("GROK_API_KEY") or os.getenv("XAI_API_KEY"))
+    openai_key = bool(os.getenv("OPENAI_API_KEY"))
+    llm_provider = (os.getenv("LLM_PROVIDER") or "").strip().lower()
+    return jsonify({
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "agent": {
+            "opportunityGraphReady": OPPORTUNITY_GRAPH is not None,
+            "buyAlertGraphReady": BUY_ALERT_GRAPH is not None,
+            "llmProviderConfigured": llm_provider or None,
+            "grokKeyPresent": grok_key,
+            "openaiKeyPresent": openai_key,
+        },
+    })
 
 @app.route('/stock/<symbol>/quote', methods=['GET'])
 def get_quote(symbol):
@@ -329,6 +342,7 @@ def get_opportunities():
         mode = body.get("mode", "recommend_only")
         preferences = body.get("preferences", {})
         user_id = body.get("userId", 0)
+        watchlist_context = body.get("watchlistContext")
         as_of = datetime.now(timezone.utc).isoformat()
         run_id = str(uuid.uuid4())
         node_started = time.perf_counter()
@@ -340,6 +354,8 @@ def get_opportunities():
                 "preferences": preferences,
                 "user_id": user_id,
                 "as_of": as_of,
+                "run_id": run_id,
+                "watchlist_context": watchlist_context,
             }
         )
         node_elapsed_ms = int((time.perf_counter() - node_started) * 1000)

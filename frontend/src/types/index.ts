@@ -7,6 +7,8 @@ export interface User {
   notificationPreferences?: {
     email: boolean;
     push: boolean;
+    /** In-app toast when deterministic opportunity signals fire (Socket `opportunitySignal`). Default true. */
+    opportunityToasts?: boolean;
   };
   createdAt: string;
 }

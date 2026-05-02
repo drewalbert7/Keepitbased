@@ -44,6 +44,15 @@ const config = {
   ALPHA_VANTAGE_API_KEY: process.env.ALPHA_VANTAGE_API_KEY || 'demo',
   MASSIVE_API_KEY: process.env.MASSIVE_API_KEY || '',
   POLYGON_API_KEY: process.env.POLYGON_API_KEY || process.env.MASSIVE_API_KEY || '',
+
+  /** X / Twitter API v2 app-only bearer — read recent tweets from monitored accounts */
+  X_API_BEARER_TOKEN: process.env.X_API_BEARER_TOKEN || '',
+  /**
+   * REST host for Polygon-compatible aggregates (same paths as Massive docs).
+   * Use https://api.massive.com if your key comes from the Massive dashboard;
+   * legacy Polygon keys often still work on https://api.polygon.io
+   */
+  MARKET_DATA_API_URL: (process.env.MARKET_DATA_API_URL || 'https://api.polygon.io').replace(/\/$/, ''),
   COINAPI_KEY: process.env.COINAPI_KEY || '',
   
   // Email
@@ -59,6 +68,19 @@ const config = {
   CHARTS_QUOTE_RATE_MAX: parseInt(process.env.CHARTS_QUOTE_RATE_MAX) || 120,
   CHARTS_HISTORY_RATE_WINDOW_MS: parseInt(process.env.CHARTS_HISTORY_RATE_WINDOW_MS) || 60000,
   CHARTS_HISTORY_RATE_MAX: parseInt(process.env.CHARTS_HISTORY_RATE_MAX) || 60,
+
+  /** POST /api/agent/apply — per-user alert creation */
+  AGENT_APPLY_RATE_WINDOW_MS: parseInt(process.env.AGENT_APPLY_RATE_WINDOW_MS) || 60000,
+  AGENT_APPLY_RATE_MAX: parseInt(process.env.AGENT_APPLY_RATE_MAX) || 15,
+  /** GET /api/agent/audit */
+  AGENT_AUDIT_RATE_WINDOW_MS: parseInt(process.env.AGENT_AUDIT_RATE_WINDOW_MS) || 60000,
+  AGENT_AUDIT_RATE_MAX: parseInt(process.env.AGENT_AUDIT_RATE_MAX) || 60,
+  /** GET /api/internal/agent/alerts (Python tools) */
+  INTERNAL_AGENT_READ_WINDOW_MS: parseInt(process.env.INTERNAL_AGENT_READ_WINDOW_MS) || 60000,
+  INTERNAL_AGENT_READ_MAX: parseInt(process.env.INTERNAL_AGENT_READ_MAX) || 120,
+  /** POST /api/internal/agent/alerts */
+  INTERNAL_AGENT_WRITE_WINDOW_MS: parseInt(process.env.INTERNAL_AGENT_WRITE_WINDOW_MS) || 60000,
+  INTERNAL_AGENT_WRITE_MAX: parseInt(process.env.INTERNAL_AGENT_WRITE_MAX) || 30,
 
   // Features
   PRICE_CHECK_INTERVAL_MS: parseInt(process.env.PRICE_CHECK_INTERVAL_MS) || 60000,

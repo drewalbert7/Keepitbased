@@ -266,6 +266,96 @@ class EmailService {
       logger.error('Error sending password reset email:', error);
     }
   }
+
+  isConfigured() {
+    return Boolean(
+      process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS
+    );
+  }
+
+  /**
+   * Watchlist / PriceMonitor deterministic opportunity signal (not legacy alert rules).
+   */
+  async sendOpportunitySignalEmail(toAddress, payload) {
+    if (!this.isConfigured()) {
+      logger.warn('Opportunity email skipped: SMTP not configured');
+      return;
+    }
+    try {
+      const {
+        symbol,
+        assetType,
+        flags = [],
+        reasons = [],
+        vsBaselinePct,
+        price,
+        timestamp
+      } = payload;
+      const flagStr = Array.isArray(flags) ? flags.join(', ') : String(flags);
+      const reasonLines = Array.isArray(reasons)
+        ? reasons.map((r) => `<li>${String(r)}</li>`).join('')
+        : '';
+      const vs =
+        vsBaselinePct != null && Number.isFinite(Number(vsBaselinePct))
+          ? `${Number(vsBaselinePct).toFixed(2)}%`
+          : '—';
+
+      const html = `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #0f766e 0%, #115e59 100%); padding: 24px; text-align: center; border-radius: 10px 10px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 22px;">KeepItBased — Opportunity signal</h1>
+          </div>
+          <div style="background: white; padding: 28px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.08);">
+            <p style="font-size: 18px; margin: 0 0 16px;">
+              <strong>${String(assetType || '').toUpperCase()} ${String(symbol || '').toUpperCase()}</strong>
+            </p>
+            <p style="margin: 8px 0;"><strong>Price:</strong> $${Number(price).toFixed(4)}</p>
+            <p style="margin: 8px 0;"><strong>Vs baseline:</strong> ${vs}</p>
+            <p style="margin: 8px 0;"><strong>Flags:</strong> ${flagStr}</p>
+            ${
+              reasonLines
+                ? `<ul style="margin: 12px 0; padding-left: 20px;">${reasonLines}</ul>`
+                : ''
+            }
+            <div style="text-align: center; margin-top: 24px;">
+              <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/opportunity-signals"
+                 style="background: linear-gradient(135deg, #0f766e 0%, #115e59 100%);
+                        color: white; padding: 12px 24px; text-decoration: none;
+                        border-radius: 8px; font-weight: 600; display: inline-block;">
+                View signals inbox
+              </a>
+            </div>
+            <p style="margin-top: 24px; font-size: 13px; color: #64748b;">
+              ${timestamp ? new Date(timestamp).toLocaleString() : new Date().toLocaleString()}
+            </p>
+            <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8; text-align: center;">
+              <p style="margin: 0 0 8px;">
+                You're receiving this because email alerts are enabled for your KeepItBased account.
+              </p>
+              <p style="margin: 0;">
+                <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile" style="color: #0f766e;">Manage notifications</a>
+                ·
+                <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/opportunity-signals" style="color: #0f766e;">Signals inbox</a>
+              </p>
+              <p style="margin: 12px 0 0; font-size: 11px; color: #cbd5e1;">
+                Not investment advice. Past performance does not guarantee future results.
+              </p>
+            </div>
+          </div>
+        </div>
+      `;
+
+      await this.transporter.sendMail({
+        from: `"KeepItBased" <${process.env.SMTP_USER}>`,
+        to: toAddress,
+        subject: `Opportunity: ${String(symbol || '').toUpperCase()} (${flagStr})`,
+        html
+      });
+      logger.info(`Opportunity signal email sent to ${toAddress} for ${symbol}`);
+    } catch (error) {
+      logger.error('Error sending opportunity signal email:', error);
+    }
+  }
 }
 
 module.exports = new EmailService();

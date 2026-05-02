@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
 const RegisterPage: React.FC = () => {
+  const navigate = useNavigate();
   const { register, loading } = useAuth();
   const [formData, setFormData] = useState({
     firstName: '',
@@ -41,6 +42,7 @@ const RegisterPage: React.FC = () => {
       toast.error(result.message);
     } else {
       toast.success('Account created successfully!');
+      navigate('/dashboard', { replace: true });
     }
   };
 

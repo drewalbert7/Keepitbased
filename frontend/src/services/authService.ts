@@ -90,6 +90,7 @@ class AuthService {
     notificationPreferences?: {
       email: boolean;
       push: boolean;
+      opportunityToasts?: boolean;
     };
   }): Promise<User> {
     const response = await axios.put<User>('/users/profile', userData);

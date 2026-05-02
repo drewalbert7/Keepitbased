@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 import { authService } from '../services/authService';
 
 const ProfilePage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
@@ -12,6 +13,40 @@ const ProfilePage: React.FC = () => {
   });
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const [notifPrefs, setNotifPrefs] = useState({
+    email: true,
+    push: true,
+    opportunityToasts: true
+  });
+  const [notifSaving, setNotifSaving] = useState(false);
+
+  useEffect(() => {
+    if (!user?.notificationPreferences) return;
+    const n = user.notificationPreferences;
+    setNotifPrefs({
+      email: n.email !== false,
+      push: n.push !== false,
+      opportunityToasts: n.opportunityToasts !== false
+    });
+  }, [user]);
+
+  const handleSaveNotifications = async () => {
+    setNotifSaving(true);
+    try {
+      const updated = await authService.updateProfile({ notificationPreferences: notifPrefs });
+      updateUser({ notificationPreferences: updated.notificationPreferences });
+      toast.success('Notification preferences saved');
+    } catch (error: unknown) {
+      const msg =
+        typeof error === 'object' && error !== null && 'response' in error
+          ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
+      toast.error(msg || 'Could not save preferences');
+    } finally {
+      setNotifSaving(false);
+    }
+  };
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,6 +101,55 @@ const ProfilePage: React.FC = () => {
               <label className="block text-sm font-medium text-robinhood-gray-700">Email</label>
               <div className="mt-1 text-robinhood-gray-900">{user?.email}</div>
             </div>
+          </div>
+        </div>
+
+        {/* Notifications */}
+        <div className="card">
+          <h2 className="text-xl font-semibold text-robinhood-gray-900 mb-2">Notifications</h2>
+          <p className="text-sm text-robinhood-gray-600 mb-4">
+            Opportunity toasts fire when price action matches your alert baseline (deduped hourly). Signals are always saved for review.
+          </p>
+          <div className="space-y-3">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={notifPrefs.email}
+                onChange={(e) => setNotifPrefs((p) => ({ ...p, email: e.target.checked }))}
+                className="rounded border-gray-300 text-robinhood-green focus:ring-robinhood-green"
+              />
+              <span className="text-robinhood-gray-800">
+                Email alerts (price alerts + opportunity signal emails)
+              </span>
+            </label>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={notifPrefs.push}
+                onChange={(e) => setNotifPrefs((p) => ({ ...p, push: e.target.checked }))}
+                className="rounded border-gray-300 text-robinhood-green focus:ring-robinhood-green"
+              />
+              <span className="text-robinhood-gray-800">Push notifications</span>
+            </label>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={notifPrefs.opportunityToasts}
+                onChange={(e) =>
+                  setNotifPrefs((p) => ({ ...p, opportunityToasts: e.target.checked }))
+                }
+                className="rounded border-gray-300 text-robinhood-green focus:ring-robinhood-green"
+              />
+              <span className="text-robinhood-gray-800">In-app opportunity toasts</span>
+            </label>
+            <button
+              type="button"
+              onClick={handleSaveNotifications}
+              disabled={notifSaving}
+              className="btn-primary mt-2 disabled:opacity-50"
+            >
+              {notifSaving ? 'Saving…' : 'Save notification preferences'}
+            </button>
           </div>
         </div>
 

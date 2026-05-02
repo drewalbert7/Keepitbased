@@ -1,0 +1,17 @@
+[
+  {
+    "name": "large_cap_tech_dip",
+    "prompt": "Scan large-cap tech for disciplined dip-buy opportunities this week; prefer liquid names.",
+    "preferences": { "topN": 2, "confidenceFloor": 0.45 }
+  },
+  {
+    "name": "high_volatility_defensive",
+    "prompt": "In elevated volatility, highlight defensive equity entries with clear risk notes.",
+    "preferences": { "topN": 3, "confidenceFloor": 0.5 }
+  },
+  {
+    "name": "crypto_major_pullback",
+    "prompt": "Review major crypto pairs for pullback setups versus short-term momentum.",
+    "preferences": { "topN": 2, "confidenceFloor": 0.4 }
+  }
+]

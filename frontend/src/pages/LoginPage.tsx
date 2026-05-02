@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { authService } from '../services/authService';
 import toast from 'react-hot-toast';
 
 const LoginPage: React.FC = () => {
+  const navigate = useNavigate();
   const { login, loading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -25,6 +26,7 @@ const LoginPage: React.FC = () => {
       toast.error(result.message);
     } else {
       toast.success('Welcome back!');
+      navigate('/dashboard', { replace: true });
     }
   };
 

@@ -1,6 +1,39 @@
 # KeepItBased Professional Implementation Plan
 
-Last updated: 2026-04-27 (LangGraph + Grok checkpoint saved)
+Last updated: 2026-05-02 (dashboard watchlist table + deploy checkpoint)
+
+## Agent planning principles (non-negotiables)
+
+- **Grounding:** Prices, percentages, and sizes shown to users must come from **tools / computed data**, never from model recall. The LLM explains, ranks, and drafts text; **quotes and thresholds are tool-backed or deterministic**.
+- **Eval early:** Keep a **minimal golden / smoke eval** (schema + a few fixed prompts) updated in parallel with graph changes—do not wait until Phase 5 for the first regression harness.
+- **Bandwidth rule:** **Phase 0 chart hardening** continues on a separate track from **agent milestones**. If shipping the agent wins a sprint, defer non-blocking chart polish; if charts are blocking demos or prod stability, prioritize jitter fixes first.
+- **Watchlist triggers:** Define **inputs** (last price, baseline/fair band, short-window return, vol proxy) and **dedupe/cooldown** (per user+symbol+trigger class, time bucket) before wiring schedulers—avoid duplicate or spam notifications.
+- **Cost / abuse:** Track LLM usage per run where possible; enforce existing rate limits; optional per-user caps / backoff for chat and opportunity scans in production.
+
+## Roadmap position (reality check)
+
+- **Phase 0** (charts / regression): in progress.
+- **Phase 1** (LangGraph foundation): **partially done**—Opportunity Scout graph + Grok path live; **persistence and eval harness** are the current close-the-gap work.
+- **Phases 2–5:** unchanged from below; tooling and policy expand after the skeleton is observable and testable.
+
+## Resume Here Next Session
+
+- **Where we left off:** **Dashboard** (`/dashboard`) is the main AI surface: chat on top, **watchlist below as a stock-app-style table** (Symbol, **Last** live quote + age, **Day %**, Baseline, vs baseline, Next dip, Signal tier + rationale `title`, Size %, Remove). Backend **`agentWatchlistContext`** exposes optional **`dayChangePct`** / **`dayChangeAbs`** from Redis quote snapshots; **`GET/POST/DELETE /api/watchlist`** syncs **Main** list with **`user_watchlists`** / alerts; **`PriceMonitor`** polls watchlist symbols. **`/api/agent/chat`** attaches **`watchlistContext`** for Python **`POST /agent/opportunities`**; LangGraph **`response_formatter`** prepends watchlist digest (Node fallback if graph unavailable).
+- **Latest verified state:** **`npm run deploy`** completed successfully (frontend production build + **`pm2 reload keepitbased-api`**); **`curl http://127.0.0.1:3001/api/health`** OK. Opportunity path still: **`POST /agent/opportunities`** can return `providerUsed=grok`; Node **`/api/agent/chat`** is the frontend gateway.
+- **Immediate next action:** **Phase 4** — ship **agent runs / audit timeline** in the UI, or tighten **Redis-backed rate limits** for horizontal scaling. Already shipped: **per-user limits** on **`POST /api/agent/apply`**, **`GET /api/agent/audit`**, internal agent routes (see **`backend/config`**).
+- **Working checklist (order):**
+  1. ~~Verify provider routing / graph readiness on startup (via Python `/health` + logs; no LLM spend).~~
+  2. ~~Implement run + message persistence + write path from `/api/agent/chat`.~~
+  3. ~~**Integrate** watchlist opportunity evaluator with price polling (`PriceMonitor` + Redis dedupe + Socket `opportunitySignal` to `user_{id}`).~~
+  4. ~~Smoke script: `npm run smoke:opportunity` (Python `POST /agent/opportunities`).~~
+  5. ~~In-app notification: Socket.IO toast on `opportunitySignal` (authenticated handshake); **persist** `opportunity_signals` + **prefs** `opportunityToasts`.~~
+  6. ~~**GET /api/agent/runs** for recent persisted chat runs (audit / future UI).~~
+  7. ~~**GET /api/opportunity-signals** + golden suite **`npm run golden:opportunity`**.~~
+  8. ~~**Dashboard watchlist table** (stock-app columns + live quote age); **`scripts/deploy-production.sh`** / **`npm run deploy`**.~~
+
+### Backlog (non-blocking)
+
+- [ ] **Upgrade market-data API tier** — Move Massive/Polygon (or chosen vendor) to a plan with **full historical depth** and complete stock/crypto entitlements for charts and agent tools. Starter tiers often cap equity history (~12–24 months), which limits long-range charts and backtests.
 
 ## 1) Program Goals
 
@@ -242,9 +275,9 @@ For each phase:
 
 ## 10) Next Session Kickoff Checklist
 
-1. Verify `/api/agent/chat` and `/agent/opportunities` return `providerUsed=grok` on startup.
-2. Begin persistence layer for agent runs (run table + message table + retention policy).
-3. Add watchlist-opportunity trigger evaluator (sale conditions + overreaction flags).
+1. Verify `/api/agent/chat` and `/agent/opportunities` return `providerUsed=grok` on startup — **startup:** Python `/health` `agent.*` + Node logs when `ENABLE_LANGGRAPH_AGENT=true`; **full routing** still requires an actual scan (uses LLM quota).
+2. ~~Persistence layer for agent runs (`agent_runs` + `agent_messages`) + write path from `/api/agent/chat`.~~ Retention policy / pruning job still optional.
+3. **Integrate** watchlist-opportunity evaluator (`backend/services/watchlistOpportunityEvaluator.js`) with polling + dedupe — pure logic is in place.
 4. Define notification transport contract (in-app first, then optional email/push).
 5. Draft initial golden prompt set (normal market, high-volatility, news-shock scenarios).
 

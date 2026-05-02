@@ -232,6 +232,15 @@ class AlertService {
     }
   }
 
+  /** Total alerts (all states) for quota checks. */
+  async countUserAlerts(userId) {
+    const result = await db.query(
+      `SELECT COUNT(*)::int AS c FROM user_alerts WHERE user_id = $1`,
+      [userId]
+    );
+    return result.rows[0]?.c ?? 0;
+  }
+
   async updateAlert(alertId, updates) {
     try {
       // Only allow updating specific fields to prevent SQL injection

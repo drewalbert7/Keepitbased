@@ -1,9 +1,12 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const router = express.Router();
+const config = require('../config');
 const AlertService = require('../services/alertService');
 const auth = require('../middleware/auth');
 const logger = require('../utils/logger');
+const { persistAgentAuditEvent } = require('../services/agentPersistence');
+const { validateAlertSymbol } = require('../utils/alertSymbolValidate');
 
 const alertService = new AlertService();
 
@@ -33,7 +36,12 @@ router.post('/', auth, [
     }
 
     const { symbol, assetType, smallThreshold, mediumThreshold, largeThreshold } = req.body;
-    
+
+    const symCheck = validateAlertSymbol(symbol);
+    if (!symCheck.ok) {
+      return res.status(400).json({ message: symCheck.message });
+    }
+
     const thresholds = {
       small_threshold: smallThreshold || 5,
       medium_threshold: mediumThreshold || 10,
@@ -41,20 +49,50 @@ router.post('/', auth, [
     };
 
     // Validate threshold order
-    if (thresholds.small_threshold >= thresholds.medium_threshold || 
+    if (thresholds.small_threshold >= thresholds.medium_threshold ||
         thresholds.medium_threshold >= thresholds.large_threshold) {
-      return res.status(400).json({ 
-        message: 'Thresholds must be in ascending order: small < medium < large' 
+      return res.status(400).json({
+        message: 'Thresholds must be in ascending order: small < medium < large'
+      });
+    }
+
+    const gapSm = thresholds.medium_threshold - thresholds.small_threshold;
+    const gapMl = thresholds.large_threshold - thresholds.medium_threshold;
+    if (gapSm < 0.5 || gapMl < 0.5) {
+      return res.status(400).json({
+        message: 'Leave at least 0.5% between small/medium and medium/large tiers'
+      });
+    }
+
+    const existingCount = await alertService.countUserAlerts(req.user.id);
+    if (existingCount >= config.MAX_ALERTS_PER_USER) {
+      void persistAgentAuditEvent({
+        userId: req.user.id,
+        action: 'user_alert_quota_blocked',
+        detail: { symbol: symCheck.symbol, count: existingCount }
+      });
+      return res.status(403).json({
+        message: `Maximum ${config.MAX_ALERTS_PER_USER} alerts per account. Remove an alert before adding another.`
       });
     }
 
     const alert = await alertService.createAlert(
-      req.user.id, 
-      symbol.toUpperCase(), 
-      assetType.toLowerCase(), 
+      req.user.id,
+      symCheck.symbol,
+      assetType.toLowerCase(),
       thresholds
     );
-    
+
+    void persistAgentAuditEvent({
+      userId: req.user.id,
+      action: 'user_alert_created',
+      detail: {
+        symbol: symCheck.symbol,
+        assetType: assetType.toLowerCase(),
+        alertId: alert.id
+      }
+    });
+
     res.status(201).json(alert);
   } catch (error) {
     if (error.code === '23505') { // Unique constraint violation

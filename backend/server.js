@@ -32,21 +32,56 @@ const chartRoutes = require('./routes/charts');
 const cryptoRoutes = require('./routes/crypto');
 const healthRoutes = require('./routes/health');
 const agentRoutes = require('./routes/agent');
+const opportunitySignalsRoutes = require('./routes/opportunitySignals');
+const internalAgentRoutes = require('./routes/internalAgent');
+const socialRoutes = require('./routes/social');
+const watchlistRoutes = require('./routes/watchlist');
 
+const jwt = require('jsonwebtoken');
 const PriceMonitor = require('./services/priceMonitor');
 const AlertService = require('./services/alertService');
 const logger = require('./utils/logger');
 
 const app = express();
+
+// Behind nginx/reverse proxy: restore real client IP for rate limits and logs.
+// Set TRUST_PROXY_HOPS=0 to disable (local dev without proxy).
+const trustHops = process.env.TRUST_PROXY_HOPS;
+if (trustHops === '0' || trustHops === 'false') {
+  app.set('trust proxy', false);
+} else {
+  app.set('trust proxy', Number(trustHops) || 1);
+}
+
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
     origin: [
       "http://localhost:3000",
       "https://keepitbased.com",
+      "https://www.keepitbased.com",
+      "https://app.keepitbased.com",
       config.FRONTEND_URL
     ].filter(Boolean),
     methods: ["GET", "POST"]
+  }
+});
+
+// Optional JWT on socket handshake — join per-user room for alerts / opportunity signals.
+io.use((socket, next) => {
+  try {
+    const token =
+      socket.handshake.auth?.token ||
+      (typeof socket.handshake.query?.token === 'string' ? socket.handshake.query.token : null);
+    if (!token) {
+      return next();
+    }
+    const decoded = jwt.verify(token, config.JWT_SECRET);
+    socket.userId = decoded.userId;
+    next();
+  } catch (err) {
+    logger.warn(`Socket handshake JWT skipped or invalid: ${err.message}`);
+    next();
   }
 });
 
@@ -70,6 +105,8 @@ app.use(cors({
   origin: [
     "http://localhost:3000",
     "https://keepitbased.com",
+    "https://www.keepitbased.com",
+    "https://app.keepitbased.com",
     process.env.FRONTEND_URL
   ].filter(Boolean),
   credentials: true
@@ -92,16 +129,25 @@ app.use('/api/charts', chartRoutes);
 app.use('/api/crypto', cryptoRoutes);
 app.use('/api/health', healthRoutes);
 app.use('/api/agent', agentRoutes);
+app.use('/api/internal/agent', internalAgentRoutes);
+app.use('/api/opportunity-signals', opportunitySignalsRoutes);
+app.use('/api/social', socialRoutes);
+app.use('/api/watchlist', watchlistRoutes);
 
 // Serve static files from React build
 app.use(express.static(path.join(__dirname, '../frontend/build')));
 
 // Socket.io connection handling
 io.on('connection', (socket) => {
+  if (socket.userId) {
+    socket.join(`user_${socket.userId}`);
+    logger.info(`Client ${socket.id} authenticated as user ${socket.userId}`);
+  }
   logger.info(`Client connected: ${socket.id}`);
   
   socket.on('subscribe', (symbols) => {
-    logger.info(`Client ${socket.id} subscribing to: ${symbols.join(', ')}`);
+    const list = Array.isArray(symbols) ? symbols : [];
+    logger.info(`Client ${socket.id} subscribing to: ${list.join(', ') || '(defaults)'}`);
     socket.join('price-updates');
   });
   
@@ -158,13 +204,22 @@ async function startServer() {
   try {
     // Run startup validation
     await runStartupValidation();
-    
+
+    server.once('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        logger.error(`Cannot bind port ${PORT}: already in use. Stop the other listener (e.g. old node/pm2) or set PORT.`);
+      } else {
+        logger.error('HTTP server error:', err);
+      }
+      process.exit(1);
+    });
+
     // Start server
     server.listen(PORT, () => {
       logger.info(`🚀 KeepItBased API server running on port ${PORT}`);
       logger.info(`🌍 Environment: ${config.NODE_ENV}`);
       logger.info(`🔧 Configuration validated and loaded`);
-      
+
       // Start initial price fetch
       setTimeout(() => {
         priceMonitor.checkAllPrices();

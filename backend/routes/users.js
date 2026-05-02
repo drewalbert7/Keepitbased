@@ -4,6 +4,7 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const db = require('../models/database');
 const logger = require('../utils/logger');
+const { mergeNotificationPreferences } = require('../utils/notificationPreferences');
 
 // Update user profile
 router.put('/profile', auth, async (req, res) => {
@@ -13,7 +14,17 @@ router.put('/profile', auth, async (req, res) => {
     
     if (firstName) updates.first_name = firstName;
     if (lastName) updates.last_name = lastName;
-    if (notificationPreferences) updates.notification_preferences = JSON.stringify(notificationPreferences);
+    if (notificationPreferences) {
+      const cur = await db.query(
+        'SELECT notification_preferences FROM users WHERE id = $1',
+        [req.user.id]
+      );
+      const merged = mergeNotificationPreferences({
+        ...(cur.rows[0]?.notification_preferences || {}),
+        ...notificationPreferences
+      });
+      updates.notification_preferences = JSON.stringify(merged);
+    }
 
     const setClause = Object.keys(updates)
       .map((key, index) => `${key} = $${index + 2}`)
@@ -38,7 +49,7 @@ router.put('/profile', auth, async (req, res) => {
       email: user.email,
       firstName: user.first_name,
       lastName: user.last_name,
-      notificationPreferences: user.notification_preferences
+      notificationPreferences: mergeNotificationPreferences(user.notification_preferences)
     });
   } catch (error) {
     logger.error('Error updating user profile:', error);

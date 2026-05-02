@@ -1,12 +1,24 @@
 const axios = require('axios');
+const config = require('../config');
 const logger = require('../utils/logger');
 const { getRedisClient } = require('../utils/redis');
 const db = require('../models/database');
+const {
+  evaluateWatchlistOpportunity,
+  floorTimeBucketUtc
+} = require('./watchlistOpportunityEvaluator');
+const { mergeNotificationPreferences } = require('../utils/notificationPreferences');
+const { recordOpportunitySignal } = require('./opportunitySignalsPersistence');
+const emailService = require('./emailService');
+
+const OPPORTUNITY_DEDUPE_TTL_SEC = 3600;
 
 class PriceMonitor {
   constructor(io) {
     this.io = io;
     this.redis = getRedisClient();
+    /** Fallback when Redis SET NX fails — Map key → expiry ms */
+    this.opportunityDedupeMemory = new Map();
     this.lastPrices = new Map();
     this.polygonCryptoUnavailable = false;
     this.polygonStocksUnavailable = false;
@@ -157,7 +169,7 @@ class PriceMonitor {
       throw new Error('POLYGON_API_KEY is not configured');
     }
 
-    const response = await axios.get(`https://api.polygon.io${path}`, {
+    const response = await axios.get(`${config.MARKET_DATA_API_URL}${path}`, {
       params: {
         ...params,
         apiKey
@@ -237,23 +249,27 @@ class PriceMonitor {
       
       const results = await Promise.allSettled(pricePromises);
       const prices = [];
-      
-      results.forEach((result, index) => {
+
+      for (const result of results) {
         if (result.status === 'fulfilled' && result.value) {
           const priceData = result.value;
           prices.push(priceData);
-          
+
           // Store in Redis for caching
           this.redis.setEx(
             `price:${priceData.type}:${priceData.symbol}`,
             300, // 5 minutes TTL
             JSON.stringify(priceData)
           );
-          
-          // Check for price drops
+
           this.checkPriceDrops(priceData);
+          try {
+            await this.emitWatchlistOpportunitySignals(priceData);
+          } catch (oppErr) {
+            logger.warn(`Opportunity signals skipped: ${oppErr.message}`);
+          }
         }
-      });
+      }
       
       // Emit prices to connected clients
       this.io.to('price-updates').emit('priceUpdate', prices);
@@ -292,17 +308,138 @@ class PriceMonitor {
     this.lastPrices.set(key, currentPrice);
   }
 
+  /**
+   * Deterministic opportunity flags vs alert baseline_price; Redis dedupe per user/symbol/hour bucket.
+   */
+  async emitWatchlistOpportunitySignals(priceData) {
+    const assetType = priceData.type === 'stock' ? 'stock' : 'crypto';
+    const symbol = String(priceData.symbol || '').toUpperCase();
+    if (!symbol) return;
+
+    const dayChangePct =
+      assetType === 'stock'
+        ? Number(priceData.changePercent)
+        : Number(priceData.change24h);
+
+    let rows;
+    try {
+      const result = await db.query(
+        `SELECT ua.user_id, ua.baseline_price, u.notification_preferences, u.email
+         FROM user_alerts ua
+         INNER JOIN users u ON u.id = ua.user_id
+         WHERE ua.active = true
+           AND UPPER(TRIM(ua.symbol)) = $1
+           AND ua.asset_type = $2
+           AND ua.baseline_price IS NOT NULL`,
+        [symbol, assetType]
+      );
+      rows = result.rows;
+    } catch (err) {
+      logger.error('emitWatchlistOpportunitySignals query failed:', err);
+      return;
+    }
+
+    if (!rows.length) return;
+
+    for (const row of rows) {
+      const baselinePrice = Number(row.baseline_price);
+      const evalResult = evaluateWatchlistOpportunity({
+        symbol,
+        price: priceData.price,
+        baselinePrice,
+        dayChangePct: Number.isFinite(dayChangePct) ? dayChangePct : null,
+        recentAbsAvgMovePct: null
+      });
+
+      if (!evalResult.evaluated || !evalResult.flags.length) continue;
+
+      const bucket = floorTimeBucketUtc(new Date(), 60);
+      const dedupeRedisKey = `oppdedupe:${row.user_id}:${assetType}:${symbol}:${bucket}`;
+      const allowed = await this.tryOpportunityDedupe(dedupeRedisKey);
+      if (!allowed) continue;
+
+      const payload = {
+        kind: 'opportunity_signal',
+        symbol,
+        assetType,
+        flags: evalResult.flags,
+        reasons: evalResult.reasons,
+        vsBaselinePct: evalResult.vsBaselinePct,
+        price: priceData.price,
+        timestamp: new Date().toISOString()
+      };
+
+      await recordOpportunitySignal({
+        userId: row.user_id,
+        symbol,
+        assetType,
+        flags: evalResult.flags,
+        reasons: evalResult.reasons,
+        vsBaselinePct: evalResult.vsBaselinePct,
+        price: priceData.price
+      });
+
+      const prefs = mergeNotificationPreferences(row.notification_preferences);
+      if (prefs.opportunityToasts) {
+        this.io.to(`user_${row.user_id}`).emit('opportunitySignal', payload);
+      }
+
+      if (prefs.email && row.email && emailService.isConfigured()) {
+        await emailService.sendOpportunitySignalEmail(row.email, payload);
+      }
+
+      logger.info(
+        `Opportunity signal [${evalResult.flags.join(',')}] → user ${row.user_id} ${assetType}:${symbol}` +
+          (prefs.opportunityToasts ? '' : ' (toast muted)')
+      );
+    }
+  }
+
+  async tryOpportunityDedupe(redisKey) {
+    try {
+      const setResult = await this.redis.set(redisKey, '1', {
+        NX: true,
+        EX: OPPORTUNITY_DEDUPE_TTL_SEC
+      });
+      return setResult === 'OK';
+    } catch {
+      const now = Date.now();
+      const ttlMs = OPPORTUNITY_DEDUPE_TTL_SEC * 1000;
+      const until = this.opportunityDedupeMemory.get(redisKey);
+      if (until && until > now) return false;
+      this.opportunityDedupeMemory.set(redisKey, now + ttlMs);
+      return true;
+    }
+  }
+
   async getUserWatchlists() {
     try {
       const result = await db.query(`
-        SELECT DISTINCT symbol, asset_type 
-        FROM user_alerts 
+        SELECT symbols FROM user_watchlists WHERE name = 'Main'
+      `);
+
+      const allSymbols = new Set();
+      for (const row of result.rows) {
+        const raw = row.symbols;
+        const arr = Array.isArray(raw) ? raw : typeof raw === 'string' ? JSON.parse(raw || '[]') : [];
+        for (const t of arr) {
+          if (typeof t === 'string' && t.includes(':')) {
+            allSymbols.add(t);
+          }
+        }
+      }
+
+      if (allSymbols.size > 0) {
+        return [{ symbols: [...allSymbols] }];
+      }
+
+      const legacy = await db.query(`
+        SELECT DISTINCT symbol, asset_type
+        FROM user_alerts
         WHERE active = true
       `);
-      
-      const symbols = result.rows.map(row => `${row.asset_type.toUpperCase()}:${row.symbol}`);
+      const symbols = legacy.rows.map((row) => `${row.asset_type.toUpperCase()}:${row.symbol}`);
       return [{ symbols }];
-      
     } catch (error) {
       logger.error('Error getting user watchlists:', error);
       return [];

@@ -401,7 +401,7 @@ const HomePage: React.FC = () => {
               <h3 className="font-bold text-lg mb-4">Product</h3>
               <ul className="space-y-2 text-robinhood-gray-400">
                 <li><a href="https://app.keepitbased.com/charts" className="hover:text-white transition-colors">Charts</a></li>
-                <li><a href="https://app.keepitbased.com/alerts" className="hover:text-white transition-colors">Alerts</a></li>
+                <li><a href="https://app.keepitbased.com/dashboard" className="hover:text-white transition-colors">Dashboard</a></li>
                 <li><a href="https://app.keepitbased.com/portfolio" className="hover:text-white transition-colors">Portfolio</a></li>
               </ul>
             </div>

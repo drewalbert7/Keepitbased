@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || '';
+/** Must match auth API (`/api`) so production/nginx routes hit Express, not `/charts` 404 → SPA HTML. */
+const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
 
 export interface ChartData {
   time: number;
@@ -9,6 +10,16 @@ export interface ChartData {
   low: number;
   close: number;
   volume: number;
+}
+
+export interface HistoryCoverage {
+  requestedFrom: string;
+  requestedTo: string;
+  barsReturned: number;
+  oldestBar: string | null;
+  newestBar: string | null;
+  /** Set when the feed starts much later than requested (common with 24-month plan caps). */
+  note?: string;
 }
 
 export interface HistoryResponse {
@@ -20,6 +31,7 @@ export interface HistoryResponse {
   sourceUsed?: string;
   partialData?: boolean;
   lastUpdated?: string;
+  coverage?: HistoryCoverage;
 }
 
 export interface QuoteData {
