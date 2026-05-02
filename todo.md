@@ -1,6 +1,6 @@
 # KeepItBased Professional Implementation Plan
 
-Last updated: 2026-05-02 (backlog: streaming quotes deferred to execution-agent phase)
+Last updated: 2026-05-02 (§11 flagged as next-session focus in Resume Here)
 
 ## Agent planning principles (non-negotiables)
 
@@ -21,7 +21,8 @@ Last updated: 2026-05-02 (backlog: streaming quotes deferred to execution-agent 
 
 - **Where we left off:** **Dashboard** (`/dashboard`) is the main AI surface: chat on top, **watchlist below as a stock-app-style table** (Symbol, **Last** live quote + age, **Day %**, Baseline, vs baseline, Next dip, Signal tier + rationale `title`, Size %, Remove). Backend **`agentWatchlistContext`** exposes optional **`dayChangePct`** / **`dayChangeAbs`** from Redis quote snapshots; **`GET/POST/DELETE /api/watchlist`** syncs **Main** list with **`user_watchlists`** / alerts; **`PriceMonitor`** polls watchlist symbols. **`/api/agent/chat`** attaches **`watchlistContext`** for Python **`POST /agent/opportunities`**; LangGraph **`response_formatter`** prepends watchlist digest (Node fallback if graph unavailable).
 - **Latest verified state:** **`npm run deploy`** completed successfully (frontend production build + **`pm2 reload keepitbased-api`**); **`curl http://127.0.0.1:3001/api/health`** OK. Opportunity path still: **`POST /agent/opportunities`** can return `providerUsed=grok`; Node **`/api/agent/chat`** is the frontend gateway.
-- **Immediate next action:** **Phase 4** — ship **agent runs / audit timeline** in the UI, or tighten **Redis-backed rate limits** for horizontal scaling. Already shipped: **per-user limits** on **`POST /api/agent/apply`**, **`GET /api/agent/audit`**, internal agent routes (see **`backend/config`**).
+- **Next session priority:** **`## 11) Multi-source research agent + dip-triggered deployment alerts`** — execute **step by step**: start **Phase A** (schema `DeepAlertOutput` v1, trigger rules, email/frequency prefs) then **Phase B** ingestion MVP (reuse **`xInvestorFeedService`** for X; add news artifact store; EDGAR/CIK + filing stubs before XBRL-heavy work). Merge with existing **`evaluateWatchlistOpportunity`** + **`sendOpportunitySignalEmail`** path in **Phase D** once artifacts exist.
+- **Immediate next action (parallel / smaller):** **Phase 4** — ship **agent runs / audit timeline** in the UI, or tighten **Redis-backed rate limits** for horizontal scaling. Already shipped: **per-user limits** on **`POST /api/agent/apply`**, **`GET /api/agent/audit`**, internal agent routes (see **`backend/config`**).
 - **Working checklist (order):**
   1. ~~Verify provider routing / graph readiness on startup (via Python `/health` + logs; no LLM spend).~~
   2. ~~Implement run + message persistence + write path from `/api/agent/chat`.~~
@@ -31,6 +32,7 @@ Last updated: 2026-05-02 (backlog: streaming quotes deferred to execution-agent 
   6. ~~**GET /api/agent/runs** for recent persisted chat runs (audit / future UI).~~
   7. ~~**GET /api/opportunity-signals** + golden suite **`npm run golden:opportunity`**.~~
   8. ~~**Dashboard watchlist table** (stock-app columns + live quote age); **`scripts/deploy-production.sh`** / **`npm run deploy`**.~~
+  9. **§11 roadmap (next sprint):** work through **`## 11)`** phases A→B→D MVP→C→E→F; check off bullets inside §11 as you complete them.
 
 ### Backlog (non-blocking)
 
@@ -327,3 +329,71 @@ Use this as a hard launch gate. Do not mark launch-ready until each item is revi
 - [ ] Outbound HTTP calls enforce connect/read timeouts.
 - [ ] Real-time/WebSocket infrastructure is state-aware for horizontal scaling.
 - [ ] Incident runbook exists for common outages (DB down, provider down, queue lag, deploy rollback).
+
+## 11) Multi-source research agent + dip-triggered deployment alerts (execution roadmap)
+
+**Product intent:** Extend the agent from **pull-based chat** (and today’s deterministic **price vs baseline** opportunity emails) to a **research-grounded alerting pipeline** that fuses **X / social sentiment**, **news**, **SEC filings (10-K/10-Q)**, and **financial reporting datapoints**, with **dip / valuation context** from existing watchlists and quotes—and emails the user an **audit-style recommendation** framed as educational output: **timing**, **staged sizing**, **invalidation**, and **confidence caveats**.
+
+**Non-negotiables (same as § Agent planning principles):**  
+All **numbers shown to users** (prices, % vs baseline, position %, floats) must originate from **tools / DB / vendor APIs**, not model recall. The LLM **synthesizes and explains**; it does not invent filings, headlines, or prices. Maintain **explicit “not investment advice”** copy in email footers and in-app. Consider **commercial terms** for each data vendor (X API tiers, redistribution of SEC text, delayed vs real-time quotes).
+
+---
+
+### Phase A — Scope, policy, and data contracts
+
+- [ ] **Problem statement & user story:** Define ICP use case (watchlist-only long-term accumulators vs active traders); max email frequency per user/symbol/day; quiet hours / timezone (`users` prefs or new column).
+- [ ] **Legal / compliance review (lightweight):** Document disclaimers; SEC EDGAR usage (public filings); whether third-party news snippets require attribution/licensing; retention limits for copied text in DB/logs.
+- [ ] **`DeepAlertOutput` schema v1:** Typed JSON attached to persisted runs + emails, e.g.  
+  `{ schemaVersion, symbol, triggers: [...], fusedSignals: { x, news, filings, fundamentals }, dipContext: {...}, sizingProposal: { tranchesPct portfolioStaged[], maxPctCap, rationale }, risks: [...], invalidation: [...], citations: [...] }`.  
+  All **numeric** fields must map to tool IDs / source timestamps.
+- [ ] **Correlation rules:** Decide when email fires (AND/OR gates): e.g. deterministic dip threshold **plus** minimum “severity” score from NLP/topic model **or** filing freshness window; configurable per user tier later.
+
+### Phase B — Ingestion & storage layer (foundation)
+
+Split **fetch/cache** from **reasoning**. Prefer **scheduled jobs + idempotent ingestion** over doing heavy I/O inside a single LangGraph invoke.
+
+- [ ] **Job runner:** Introduce **asynchronous worker** path (bullmq / pg-boss / Sidekiq-style in Node—or separate Python worker) consistent with §9 “background jobs dedicated queue”; avoid blocking `PriceMonitor` cron thread.
+- [ ] **`research_artifacts` (or partitioned tables):** Store raw + normalized payloads: `source`, `symbol`, `cusip/cik optional`, `fetched_at`, `url`, `hash`, `content_summary` (vendor or self-generated), **`structured_fields` JSONB**, retention TTL.
+- [ ] **X (Twitter):** Leverage **`xInvestorFeedService`** / bearer token pattern; extend to **per-symbol cashtag + curated list ingestion** where API allows; normalize to `ResearchArtifact`; respect **rate limits** and backoff; circuit breaker logs.
+- [ ] **News:** Pick 1–2 providers (e.g. **polygon news**, Finnhub, or licensed wire) with **symbol filtering** + dedupe by URL hash; ingest headlines + published time only if license permits full body storage.
+- [ ] **SEC filings (10-K/10-Q/8-K earnings):**  
+  - [ ] Resolve **CIK** from ticker (SEC company_tickers / mapping table).  
+  - [ ] Poll **submission API** or EDGAR index for accepted filings; dedupe by `accession-number`.  
+  - [ ] **Fetch primary HTML** + optional **XBRL instance** (`*.htm`/`ix?doc=`), store object reference (S3 or DB blob capped) per §9 infra when ready.  
+  - [ ] **Extraction MVP:** Sections via regex/heuristics (Risk Factors MD&A summary length cap) → LLM summarize with **quoted spans max N chars**; **Phase B2:** XBRL facts for Revenue, EBITDA, debt (structured tool output).
+- [ ] **Financial reporting / fundamentals snapshot:** Quarterly metrics from vendor API or XBRL-derived store; persist “as-of” and source; expose `get_fundamentals_snapshot(symbol)` tool to LangGraph.
+
+### Phase C — LangGraph expansion (research + fusion nodes)
+
+Extend Python graph (new workflow or subgraph) beyond `opportunity_scout`:
+
+- [ ] **`research_context_loader(user_id, symbols)`:** Pull latest **`ResearchArtifact`** rows per symbol (time-windowed).
+- [ ] **`market_and_dip_context`:** Reuse **`watchlist_context`**, **`market_snapshots`**, optional vol / drawdown from history tool.
+- [ ] **`signal_fusion_scorer`:** Deterministic weighted features (filing freshness, negative news density, sentiment delta from X baseline) → **explainable numeric vector** fed to LLM as context (not replacing tool numbers).
+- [ ] **`sizing_policy_node`:** Map user **`maxPositionSizePct`**, liquidity tier, volatility proxy, and **tranche schema** into **bounded** `% portfolio` recommendation (enforce caps server-side regardless of prose).
+- [ ] **`email_composer`** (structured): Template + LLM for narrative; validator rejects send if mandatory fields missing or citations absent for claims tagged “filing-derived”.
+
+### Phase D — Triggering, dedupe, and email delivery
+
+- [ ] **`ResearchAlertEvaluator` (deterministic orchestrator):** Subscribes to same cadence as `PriceMonitor` or separate cron (e.g. 5–15 min for news, hourly for filings); merges **dip flags** from `evaluateWatchlistOpportunity` **with** fused research thresholds.
+- [ ] **Dedupe keys:** `user + symbol + alert_class + time_bucket`, separate buckets for **“dip-only”** vs **“dip+fundamentals”** to avoid redundant mail.
+- [ ] **SMTP / SES pipeline:** Batch HTML + plaintext; link to **`/dashboard` / signals** with deeplink token optional; **`opportunity_digest_email`** prefs (separate checkbox from legacy price-alert email if desired).
+- [ ] **Async send:** enqueue send job; retries with DLQ per §9.
+
+### Phase E — Frontend & observability
+
+- [ ] Dashboard **“Latest research briefing”** card per symbol / run with **same structured fields** as email (parity).
+- [ ] **`/profile`:** Toggle **research digests**, frequency cap, timezone.
+- [ ] Metrics: ingestion lag, emails sent, skips (dedupe/provider error), LLM tokens per digest, guardrail rejects.
+
+### Phase F — QA, golden runs, rollout
+
+- [ ] Golden fixtures with **frozen tool responses** + expected schema pass/fail — including **contradiction** case (bullish filings + hostile news → lower confidence tier).
+- [ ] Canary users + kill switch env (`DISABLE_RESEARCH_EMAILS`).
+- [ ] Documentation: **`docs/RESEARCH_AGENT.md`** describing vendors, env vars, and runbooks (optional separate from this file when implementing).
+
+---
+
+**Suggested execution order:** **A → B (X/news first, filings MVP second) → D (wired to existing dip email path with minimal fusion) → C (full LangGraph richness) → E → F**.  
+
+**Estimated reality:** Phase B (EDGAR + XBRL) and licensing are **the long poles**; align scope to an **MVP** (headlines + 8-K earnings + XBRL-lite or vendor fundamentals) before “full 10-K semantic search.”
