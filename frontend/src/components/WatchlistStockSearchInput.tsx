@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
+import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import { addWatchlistSymbol, searchWatchlistStocks, type StockSearchHit } from '../services/watchlistApi';
 
 const DEBOUNCE_MS = 300;
@@ -130,38 +131,45 @@ export const WatchlistStockSearchInput: React.FC<WatchlistStockSearchInputProps>
       (searchAvailable && value.trim().length >= 2 && !loading));
 
   return (
-    <div ref={rootRef} className="relative flex-1">
-      <div className="flex gap-2 mt-1.5">
-        <input
-          type="text"
-          autoCapitalize="characters"
-          autoCorrect="off"
-          spellCheck={false}
-          autoComplete="off"
-          aria-autocomplete="list"
-          aria-expanded={showPanel}
-          aria-controls={showPanel ? listId : undefined}
-          aria-activedescendant={showPanel && hits[highlight] ? `${listId}-opt-${highlight}` : undefined}
-          role="combobox"
-          id="watchlist-stock-search-input"
-          value={value}
-          disabled={disabled || adding}
-          onChange={(e) => {
-            setValue(e.target.value);
-            setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          onKeyDown={onKeyDown}
-          placeholder="Search company or ticker (e.g. Apple, MSFT)…"
-          className="input-field flex-1 font-mono text-sm"
-        />
+    <div ref={rootRef} className="relative w-full">
+      <div className="flex min-h-[44px] w-full overflow-hidden rounded-xl border border-white/[0.12] bg-[#0a0d12] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-[box-shadow,border-color] focus-within:border-[#58a6ff]/85 focus-within:ring-2 focus-within:ring-[#58a6ff]/22">
+        <div className="relative flex min-w-0 flex-1 items-center">
+          <MagnifyingGlassIcon
+            className="pointer-events-none absolute left-3 h-4 w-4 shrink-0 text-kib-muted"
+            aria-hidden
+          />
+          <input
+            type="text"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+            autoComplete="off"
+            aria-autocomplete="list"
+            aria-expanded={showPanel}
+            aria-controls={showPanel ? listId : undefined}
+            aria-activedescendant={showPanel && hits[highlight] ? `${listId}-opt-${highlight}` : undefined}
+            role="combobox"
+            id="watchlist-stock-search-input"
+            value={value}
+            disabled={disabled || adding}
+            onChange={(e) => {
+              setValue(e.target.value);
+              setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            onKeyDown={onKeyDown}
+            placeholder="Search name or ticker…"
+            className="min-w-0 flex-1 border-0 bg-transparent py-2.5 pl-9 pr-2 text-sm font-mono text-kib-fg placeholder:text-kib-muted/80 focus:outline-none focus:ring-0 disabled:opacity-50"
+          />
+        </div>
+        <div className="w-px shrink-0 self-stretch bg-white/[0.08]" aria-hidden />
         <button
           type="button"
           onClick={() => void doAdd(value)}
           disabled={adding || disabled || !value.trim()}
-          className="btn-primary whitespace-nowrap px-5 disabled:opacity-50"
+          className="shrink-0 px-4 text-sm font-semibold text-kib-fg transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40 sm:px-5"
         >
-          {adding ? 'Adding…' : 'Add'}
+          {adding ? '…' : 'Add'}
         </button>
       </div>
 
@@ -169,7 +177,7 @@ export const WatchlistStockSearchInput: React.FC<WatchlistStockSearchInputProps>
         <ul
           id={listId}
           role="listbox"
-          className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[min(280px,45vh)] overflow-y-auto rounded-lg border border-white/[0.1] bg-kib-card py-1 shadow-lg"
+          className="absolute left-0 right-0 top-full z-50 mt-1.5 max-h-[min(280px,45vh)] overflow-y-auto rounded-xl border border-white/[0.1] bg-kib-card py-1 shadow-xl ring-1 ring-black/40"
         >
           {loading && hits.length === 0 && (
             <li className="px-3 py-2 text-xs text-kib-muted">Searching…</li>

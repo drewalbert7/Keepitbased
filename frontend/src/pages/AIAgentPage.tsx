@@ -63,6 +63,12 @@ export const AIAgentPage: React.FC = () => {
   type WlSortKey = 'symbol' | 'dayPct' | 'vsBase';
   const [wlSort, setWlSort] = useState<{ key: WlSortKey; dir: 1 | -1 }>({ key: 'symbol', dir: 1 });
 
+  /** Table rows: all symbols, stocks only, or crypto only */
+  type WlAssetTab = 'all' | 'stock' | 'crypto';
+  const [wlAssetTab, setWlAssetTab] = useState<WlAssetTab>('all');
+  /** Add form: one search at a time for clearer layout */
+  const [wlAddTab, setWlAddTab] = useState<'stock' | 'crypto'>('stock');
+
   const [agentPreferences, setAgentPreferences] = useState<AgentPreferences>({
     topN: 3,
     confidenceFloor: 0.55,
@@ -282,6 +288,31 @@ export const AIAgentPage: React.FC = () => {
     return items;
   }, [watchlistCtx?.items, wlSort]);
 
+  const wlCounts = useMemo(() => {
+    const items = watchlistCtx?.items ?? [];
+    let stocks = 0;
+    let crypto = 0;
+    for (const i of items) {
+      if (i.assetType === 'crypto') crypto += 1;
+      else stocks += 1;
+    }
+    return { stocks, crypto, total: items.length };
+  }, [watchlistCtx?.items]);
+
+  const filteredWatchlistItems = useMemo(() => {
+    if (wlAssetTab === 'all') return sortedWatchlistItems;
+    return sortedWatchlistItems.filter((row) =>
+      wlAssetTab === 'crypto' ? row.assetType === 'crypto' : row.assetType === 'stock'
+    );
+  }, [sortedWatchlistItems, wlAssetTab]);
+
+  const wlTabBtn = (active: boolean) =>
+    `rounded-md px-3 py-1.5 text-xs font-semibold transition-colors sm:text-[13px] ${
+      active
+        ? 'bg-white/[0.14] text-kib-fg shadow-sm ring-1 ring-white/[0.12]'
+        : 'text-kib-muted hover:bg-white/[0.06] hover:text-kib-fg'
+    }`;
+
   const toggleWlSort = (key: WlSortKey) => {
     setWlSort((prev) =>
       prev.key === key ? { key, dir: (prev.dir === 1 ? -1 : 1) as 1 | -1 } : { key, dir: 1 }
@@ -445,32 +476,50 @@ export const AIAgentPage: React.FC = () => {
               left={
             <div className="min-w-0 space-y-5 rounded-lg border border-white/[0.08] bg-kib-card p-4 sm:p-5">
             <div className="mb-5 flex flex-col gap-4 border-b border-white/[0.06] pb-5">
-              <div className="grid gap-5 sm:grid-cols-2 sm:gap-6">
-                <label className="block text-sm font-medium text-slate-300" htmlFor="watchlist-stock-search-input">
-                  Add US stock
-                  <WatchlistStockSearchInput
-                    onSymbolAdded={() => void loadWatchlist()}
-                    disabled={watchlistLoading}
-                  />
-                </label>
-                <label className="block text-sm font-medium text-slate-300" htmlFor="watchlist-crypto-search-input">
-                  Add crypto
-                  <WatchlistCryptoSearchInput
-                    onSymbolAdded={() => void loadWatchlist()}
-                    disabled={watchlistLoading}
-                  />
-                  <p className="mt-1.5 text-[11px] text-kib-muted">
-                    Same Main list as stocks. Quotes from Polygon/crypto API (~10s poll + socket merge).
-                  </p>
-                </label>
+              <div>
+                <p className="text-sm font-medium text-kib-fg">Add to watchlist</p>
+                <p className="mt-0.5 text-xs text-kib-muted">
+                  Choose asset type, then search. Same list for stocks and crypto — quotes poll ~10s with socket merge
+                  (not broker feeds).
+                </p>
+                <div
+                  className="mt-3 inline-flex w-full max-w-md flex-wrap gap-1 rounded-lg border border-white/[0.08] bg-black/25 p-1 sm:w-auto"
+                  role="tablist"
+                  aria-label="Add symbol type"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={wlAddTab === 'stock'}
+                    onClick={() => setWlAddTab('stock')}
+                    className={wlTabBtn(wlAddTab === 'stock')}
+                  >
+                    US stock
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={wlAddTab === 'crypto'}
+                    onClick={() => setWlAddTab('crypto')}
+                    className={wlTabBtn(wlAddTab === 'crypto')}
+                  >
+                    Crypto
+                  </button>
+                </div>
+                <div className="mt-3 max-w-xl">
+                  {wlAddTab === 'stock' ? (
+                    <WatchlistStockSearchInput
+                      onSymbolAdded={() => void loadWatchlist()}
+                      disabled={watchlistLoading}
+                    />
+                  ) : (
+                    <WatchlistCryptoSearchInput
+                      onSymbolAdded={() => void loadWatchlist()}
+                      disabled={watchlistLoading}
+                    />
+                  )}
+                </div>
               </div>
-              <p className="text-xs text-slate-500 sm:hidden">
-                Stocks: search by name or ticker. Crypto: pick a pair from Polygon list.
-              </p>
-              <p className="hidden text-xs text-slate-500 sm:block sm:max-w-2xl">
-                US equities are verified listings; crypto uses Polygon pair discovery. Watchlist polls ~10s; Redis/socket
-                snapshots merge when available — not broker feeds.
-              </p>
             </div>
 
             {watchlistError && <p className="text-xs text-red-600 mb-2">{watchlistError}</p>}
@@ -484,235 +533,116 @@ export const AIAgentPage: React.FC = () => {
               <>
                 <p className="text-[11px] text-slate-500 mb-3">{watchlistCtx.policyNote}</p>
 
-                {/* Mobile / tablet: full data, compact cards */}
-                <div className="lg:hidden space-y-2.5 max-h-[min(70vh,560px)] overflow-y-auto overscroll-y-contain pb-1">
-                  <div className="flex flex-wrap items-center gap-2 rounded-md border border-white/[0.06] bg-kib-surface/80 px-2.5 py-2">
-                    <span className="text-[10px] font-semibold uppercase tracking-wide text-kib-muted">Sort</span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {(
-                        [
-                          ['symbol', 'Symbol'] as const,
-                          ['dayPct', 'Day %'] as const,
-                          ['vsBase', 'vs base'] as const
-                        ] as const
-                      ).map(([key, label]) => (
-                        <button
-                          key={key}
-                          type="button"
-                          onClick={() => toggleWlSort(key)}
-                          className={`rounded-md px-2 py-1 text-[11px] font-medium tabular-nums transition-colors ${
-                            wlSort.key === key
-                              ? 'bg-white/[0.12] text-kib-fg ring-1 ring-kib-cyber/35'
-                              : 'bg-white/[0.04] text-kib-muted hover:bg-white/[0.08]'
-                          }`}
-                        >
-                          {label}
-                          {wlSort.key === key ? (wlSort.dir === 1 ? ' ↑' : ' ↓') : ''}
-                        </button>
-                      ))}
-                    </div>
+                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                  <div
+                    className="inline-flex w-full flex-wrap gap-1 rounded-lg border border-white/[0.08] bg-kib-surface/80 p-1 sm:w-auto"
+                    role="tablist"
+                    aria-label="Watchlist asset filter"
+                  >
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={wlAssetTab === 'all'}
+                      onClick={() => setWlAssetTab('all')}
+                      className={wlTabBtn(wlAssetTab === 'all')}
+                    >
+                      All{' '}
+                      <span className="tabular-nums text-kib-muted">({wlCounts.total})</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={wlAssetTab === 'stock'}
+                      onClick={() => setWlAssetTab('stock')}
+                      className={wlTabBtn(wlAssetTab === 'stock')}
+                    >
+                      Stocks{' '}
+                      <span className="tabular-nums text-kib-muted">({wlCounts.stocks})</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={wlAssetTab === 'crypto'}
+                      onClick={() => setWlAssetTab('crypto')}
+                      className={wlTabBtn(wlAssetTab === 'crypto')}
+                    >
+                      Crypto{' '}
+                      <span className="tabular-nums text-kib-muted">({wlCounts.crypto})</span>
+                    </button>
                   </div>
-                  {sortedWatchlistItems.map((row) => {
-                    const pct = row.sizing.suggestedPortfolioPct;
-                    const qStatus = quoteStatusLabel(row.quoteAgeSec);
-                    return (
-                      <article
-                        key={`m-${row.assetType}:${row.alertId}:${row.symbol}`}
-                        className={`rounded-xl border border-white/[0.08] bg-kib-surface/90 p-3 shadow-sm ${
-                          row.active ? '' : 'opacity-90'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2 border-b border-white/[0.06] pb-2.5">
-                          <div className="min-w-0 flex-1">
-                            {row.assetType === 'stock' ? (
-                              <Link
-                                to={`/charts?symbol=${encodeURIComponent(row.symbol)}`}
-                                className="block font-semibold font-mono text-base text-kib-fg hover:text-kib-cyber"
-                              >
-                                {row.symbol}
-                              </Link>
-                            ) : (
-                              <Link
-                                to={`/crypto?symbol=${encodeURIComponent(row.symbol)}`}
-                                className="block font-semibold font-mono text-base text-kib-fg hover:text-kib-cyber"
-                              >
-                                {row.symbol}
-                              </Link>
-                            )}
-                            {!row.active && (
-                              <span className="mt-1 inline-block text-[10px] font-semibold uppercase tracking-wide text-amber-500">
-                                paused
-                              </span>
-                            )}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void handleRemoveTicker(
-                                row.symbol,
-                                String(row.assetType).toLowerCase() === 'crypto' ? 'crypto' : 'stock'
-                              )
-                            }
-                            className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-red-500 hover:bg-red-500/10"
-                          >
-                            Remove
-                          </button>
-                        </div>
-
-                        <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5 text-xs">
-                          <div>
-                            <p className="text-[10px] font-medium uppercase tracking-wide text-kib-muted">Last</p>
-                            <p className="mt-0.5 font-semibold tabular-nums text-kib-fg">
-                              {formatQuote(row.currentPrice, row.assetType)}
-                            </p>
-                            <p className={`mt-0.5 text-[10px] tabular-nums ${qStatus.cls}`}>
-                              {qStatus.text}
-                              {row.quoteAgeSec != null ? ` · ${row.quoteAgeSec}s` : ''}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-[10px] font-medium uppercase tracking-wide text-kib-muted">Day %</p>
-                            <p
-                              className={`mt-0.5 font-semibold tabular-nums ${changeColorClass(row.dayChangePct ?? undefined)}`}
-                            >
-                              {formatDayChangePct(row)}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] font-medium uppercase tracking-wide text-kib-muted">
-                              Baseline
-                            </p>
-                            <p className="mt-0.5 tabular-nums text-slate-300">
-                              {formatQuote(row.baselinePrice, row.assetType)}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-[10px] font-medium uppercase tracking-wide text-kib-muted">
-                              vs baseline
-                            </p>
-                            <p
-                              className={`mt-0.5 font-semibold tabular-nums ${vsBaselineColor(row)}`}
-                            >
-                              {vsBaselineDisplay(row)}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] font-medium uppercase tracking-wide text-kib-muted">Volume</p>
-                            <p className="mt-0.5 tabular-nums text-slate-300">{formatVolume(row.volume)}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-[10px] font-medium uppercase tracking-wide text-kib-muted">Size %</p>
-                            <p className="mt-0.5 font-semibold tabular-nums text-kib-fg">{pct}%</p>
-                          </div>
-                          <div className="col-span-2">
-                            <p className="text-[10px] font-medium uppercase tracking-wide text-kib-muted">
-                              Day range (H / L)
-                            </p>
-                            <p className="mt-0.5 tabular-nums text-slate-300">
-                              {row.dayHigh != null && row.dayLow != null ? (
-                                <>
-                                  {formatQuote(row.dayHigh, row.assetType)} /{' '}
-                                  {formatQuote(row.dayLow, row.assetType)}
-                                </>
-                              ) : (
-                                '—'
-                              )}
-                            </p>
-                          </div>
-                          <div className="col-span-2">
-                            <p className="text-[10px] font-medium uppercase tracking-wide text-kib-muted">Next dip</p>
-                            <p className="mt-0.5 text-slate-300">
-                              {row.nextThresholdGap ? (
-                                <>
-                                  <span className="font-medium text-kib-fg/90 capitalize">
-                                    {row.nextThresholdGap.next}
-                                  </span>
-                                  <span className="text-kib-muted"> · </span>
-                                  ~{row.nextThresholdGap.pctRemaining.toFixed(2)}% to threshold
-                                </>
-                              ) : (
-                                <span className="text-slate-500">—</span>
-                              )}
-                            </p>
-                          </div>
-                          <div className="col-span-2">
-                            <p className="text-[10px] font-medium uppercase tracking-wide text-kib-muted">Signal</p>
-                            <p className="mt-0.5">
-                              <span className="font-semibold text-kib-cyber/95">{row.sizing.tierLabel}</span>
-                            </p>
-                            <p className="mt-1 text-[11px] leading-snug text-kib-muted line-clamp-3" title={row.sizing.rationale}>
-                              {row.sizing.rationale}
-                            </p>
-                          </div>
-                          <div className="col-span-2 rounded-lg bg-black/20 px-2.5 py-2">
-                            <Watchlist52WeekRange
-                              variant="fluid"
-                              assetType={row.assetType}
-                              currentPrice={row.currentPrice}
-                              week52High={row.week52High}
-                              week52Low={row.week52Low}
-                            />
-                          </div>
-                        </div>
-                      </article>
-                    );
-                  })}
                 </div>
 
-                <div className="hidden lg:block overflow-x-auto rounded-lg border border-white/[0.06] bg-kib-surface">
-                  <div className="max-h-[min(520px,65vh)] overflow-y-auto overscroll-x-contain">
-                    <table className="w-full min-w-[1240px] text-sm">
-                      <thead className="sticky top-0 z-10 border-b border-white/[0.06] bg-kib-surface/95 backdrop-blur-sm">
-                        <tr className="text-left text-[11px] font-medium uppercase tracking-wide text-kib-muted">
-                          <th className="px-3 py-3 pl-4">
+                {filteredWatchlistItems.length === 0 && (
+                  <p className="mb-3 rounded-lg border border-amber-500/20 bg-amber-950/15 px-3 py-2 text-sm text-amber-100/90">
+                    No {wlAssetTab === 'stock' ? 'stocks' : 'crypto'} on this watchlist. Switch to{' '}
+                    <button
+                      type="button"
+                      className="font-semibold text-kib-cyber underline-offset-2 hover:underline"
+                      onClick={() => setWlAssetTab('all')}
+                    >
+                      All
+                    </button>{' '}
+                    or add symbols above.
+                  </p>
+                )}
+
+                <p className="mb-2 text-[11px] text-kib-muted lg:hidden">
+                  Scroll horizontally for the full watchlist — same columns as desktop.
+                </p>
+                <div className="-mx-1 overflow-x-auto rounded-lg border border-white/[0.06] bg-kib-surface px-1 sm:mx-0 sm:px-0">
+                  <div className="max-h-[min(70vh,560px)] overflow-y-auto overscroll-x-contain sm:max-h-[min(520px,65vh)]">
+                    <table className="w-full min-w-[1180px] text-[13px] sm:min-w-[1240px] sm:text-sm">
+                      <thead className="sticky top-0 z-20 border-b border-white/[0.06] bg-kib-surface/95 backdrop-blur-sm">
+                        <tr className="text-left text-[10px] font-medium uppercase tracking-wide text-kib-muted sm:text-[11px]">
+                          <th className="sticky left-0 top-0 z-30 border-r border-white/[0.06] bg-kib-surface/95 px-2 py-2.5 pl-3 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.5)] lg:static lg:top-auto lg:z-auto lg:border-0 lg:bg-transparent lg:px-3 lg:py-3 lg:pl-4 lg:shadow-none">
                             <button
                               type="button"
                               onClick={() => toggleWlSort('symbol')}
-                              className="font-semibold uppercase tracking-wide hover:text-kib-cyber"
+                              className="font-semibold uppercase tracking-wide hover:text-kib-cyber text-left"
                             >
                               Symbol{wlSort.key === 'symbol' ? (wlSort.dir === 1 ? ' ↑' : ' ↓') : ''}
                             </button>
                           </th>
-                          <th className="px-3 py-3 text-right tabular-nums">Last</th>
-                          <th className="px-3 py-3 text-right tabular-nums">
+                          <th className="px-2 py-2.5 text-right tabular-nums lg:px-3 lg:py-3">Last</th>
+                          <th className="px-2 py-2.5 text-right tabular-nums lg:px-3 lg:py-3">
                             <button
                               type="button"
                               onClick={() => toggleWlSort('dayPct')}
-                              className="font-semibold uppercase tracking-wide hover:text-kib-cyber ml-auto block"
+                              className="font-semibold uppercase tracking-wide hover:text-kib-cyber ml-auto block w-full text-right"
                             >
                               Day %{wlSort.key === 'dayPct' ? (wlSort.dir === 1 ? ' ↑' : ' ↓') : ''}
                             </button>
                           </th>
-                          <th className="px-3 py-3 text-right tabular-nums hidden lg:table-cell">Volume</th>
-                          <th className="px-3 py-3 text-right tabular-nums hidden xl:table-cell">Day range</th>
-                          <th className="px-3 py-3 hidden lg:table-cell min-w-[140px]">52W range</th>
-                          <th className="px-3 py-3 text-right tabular-nums hidden sm:table-cell">Baseline</th>
-                          <th className="px-3 py-3 text-right tabular-nums">
+                          <th className="px-2 py-2.5 text-right tabular-nums lg:px-3 lg:py-3">Volume</th>
+                          <th className="px-2 py-2.5 text-right tabular-nums lg:px-3 lg:py-3">Day range</th>
+                          <th className="min-w-[128px] px-2 py-2.5 lg:min-w-[140px] lg:px-3 lg:py-3">52W range</th>
+                          <th className="px-2 py-2.5 text-right tabular-nums lg:px-3 lg:py-3">Baseline</th>
+                          <th className="px-2 py-2.5 text-right tabular-nums lg:px-3 lg:py-3">
                             <button
                               type="button"
                               onClick={() => toggleWlSort('vsBase')}
-                              className="font-semibold uppercase tracking-wide hover:text-kib-cyber ml-auto block"
+                              className="font-semibold uppercase tracking-wide hover:text-kib-cyber ml-auto block w-full text-right"
                             >
                               vs baseline{wlSort.key === 'vsBase' ? (wlSort.dir === 1 ? ' ↑' : ' ↓') : ''}
                             </button>
                           </th>
-                          <th className="px-3 py-3 hidden md:table-cell max-w-[140px]">Next dip</th>
-                          <th className="px-3 py-3 hidden lg:table-cell max-w-[160px]">Signal</th>
-                          <th className="px-3 py-3 text-right tabular-nums">Size %</th>
-                          <th className="px-3 py-3 w-14 pr-4" aria-label="Remove" />
+                          <th className="max-w-[120px] px-2 py-2.5 lg:max-w-[140px] lg:px-3 lg:py-3">Next dip</th>
+                          <th className="max-w-[140px] px-2 py-2.5 lg:max-w-[160px] lg:px-3 lg:py-3">Signal</th>
+                          <th className="px-2 py-2.5 text-right tabular-nums lg:px-3 lg:py-3">Size %</th>
+                          <th className="w-12 px-1 py-2.5 pr-2 lg:w-14 lg:px-3 lg:py-3 lg:pr-4" aria-label="Remove" />
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/[0.06]">
-                        {sortedWatchlistItems.map((row) => {
+                        {filteredWatchlistItems.map((row) => {
                           const pct = row.sizing.suggestedPortfolioPct;
                           return (
                             <tr
                               key={`${row.assetType}:${row.alertId}:${row.symbol}`}
-                              className={`transition-colors hover:bg-white/[0.03] ${
+                              className={`group transition-colors hover:bg-white/[0.03] ${
                                 row.active ? '' : 'opacity-80'
                               }`}
                             >
-                              <td className="px-3 py-2.5 pl-4 align-top">
+                              <td className="sticky left-0 z-10 border-r border-white/[0.06] bg-kib-surface px-2 py-2 align-top shadow-[4px_0_12px_-4px_rgba(0,0,0,0.35)] transition-colors group-hover:bg-white/[0.03] lg:static lg:z-auto lg:border-0 lg:bg-transparent lg:px-3 lg:py-2.5 lg:pl-4 lg:shadow-none">
                                 <div className="flex flex-col gap-0.5">
                                   {row.assetType === 'stock' ? (
                                     <Link
@@ -736,7 +666,7 @@ export const AIAgentPage: React.FC = () => {
                                   )}
                                 </div>
                               </td>
-                              <td className="px-3 py-2.5 text-right tabular-nums align-top">
+                              <td className="px-2 py-2 text-right tabular-nums align-top lg:px-3 lg:py-2.5">
                                 <div className="font-semibold text-kib-fg tabular-nums">
                                   {formatQuote(row.currentPrice, row.assetType)}
                                 </div>
@@ -748,16 +678,16 @@ export const AIAgentPage: React.FC = () => {
                                 </div>
                               </td>
                               <td
-                                className={`px-3 py-2.5 text-right tabular-nums align-top ${changeColorClass(
+                                className={`px-2 py-2 text-right tabular-nums align-top lg:px-3 lg:py-2.5 ${changeColorClass(
                                   row.dayChangePct ?? undefined
                                 )}`}
                               >
                                 {formatDayChangePct(row)}
                               </td>
-                              <td className="px-3 py-2.5 text-right tabular-nums text-slate-300 hidden lg:table-cell align-top">
+                              <td className="px-2 py-2 text-right tabular-nums text-slate-300 align-top lg:px-3 lg:py-2.5">
                                 {formatVolume(row.volume ?? undefined)}
                               </td>
-                              <td className="px-3 py-2.5 text-right tabular-nums text-slate-400 text-xs hidden xl:table-cell align-top">
+                              <td className="px-2 py-2 text-right tabular-nums text-slate-400 text-xs align-top lg:px-3 lg:py-2.5">
                                 {row.dayHigh != null && row.dayLow != null ? (
                                   <>
                                     {formatQuote(row.dayHigh, row.assetType)} /{' '}
@@ -767,7 +697,7 @@ export const AIAgentPage: React.FC = () => {
                                   '—'
                                 )}
                               </td>
-                              <td className="px-3 py-2.5 hidden lg:table-cell align-top">
+                              <td className="px-2 py-2 align-top lg:px-3 lg:py-2.5">
                                 <Watchlist52WeekRange
                                   assetType={row.assetType}
                                   currentPrice={row.currentPrice}
@@ -775,15 +705,15 @@ export const AIAgentPage: React.FC = () => {
                                   week52Low={row.week52Low}
                                 />
                               </td>
-                              <td className="px-3 py-2.5 text-right tabular-nums text-slate-300 hidden sm:table-cell align-top">
+                              <td className="px-2 py-2 text-right tabular-nums text-slate-300 align-top lg:px-3 lg:py-2.5">
                                 {formatQuote(row.baselinePrice, row.assetType)}
                               </td>
                               <td
-                                className={`px-3 py-2.5 text-right tabular-nums align-top ${vsBaselineColor(row)}`}
+                                className={`px-2 py-2 text-right tabular-nums align-top lg:px-3 lg:py-2.5 ${vsBaselineColor(row)}`}
                               >
                                 {vsBaselineDisplay(row)}
                               </td>
-                              <td className="px-3 py-2.5 text-xs text-slate-300 hidden md:table-cell align-top max-w-[140px]">
+                              <td className="max-w-[120px] px-2 py-2 text-xs text-slate-300 align-top sm:max-w-[140px] lg:px-3 lg:py-2.5">
                                 {row.nextThresholdGap ? (
                                   <span>
                                     {row.nextThresholdGap.next}: ~{row.nextThresholdGap.pctRemaining.toFixed(2)}% to go
@@ -793,15 +723,15 @@ export const AIAgentPage: React.FC = () => {
                                 )}
                               </td>
                               <td
-                                className="px-3 py-2.5 text-xs text-slate-300 hidden lg:table-cell align-top max-w-[180px]"
+                                className="max-w-[140px] px-2 py-2 text-xs text-slate-300 align-top lg:max-w-[180px] lg:px-3 lg:py-2.5"
                                 title={row.sizing.rationale}
                               >
                                 <span className="font-medium text-kib-cyber/90">{row.sizing.tierLabel}</span>
                               </td>
-                              <td className="px-3 py-2.5 text-right tabular-nums align-top">
+                              <td className="px-2 py-2 text-right tabular-nums align-top lg:px-3 lg:py-2.5">
                                 <div className="font-medium text-kib-fg">{pct}%</div>
                               </td>
-                              <td className="px-3 py-2.5 pr-4 text-right align-top">
+                              <td className="w-12 px-1 py-2 pr-2 text-right align-top lg:w-auto lg:px-3 lg:py-2.5 lg:pr-4">
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -810,7 +740,7 @@ export const AIAgentPage: React.FC = () => {
                                 String(row.assetType).toLowerCase() === 'crypto' ? 'crypto' : 'stock'
                               )
                             }
-                                  className="text-xs font-medium text-red-600 hover:text-red-700 hover:underline"
+                                  className="text-[11px] font-medium text-red-600 hover:text-red-700 hover:underline sm:text-xs"
                                 >
                                   Remove
                                 </button>
@@ -832,9 +762,9 @@ export const AIAgentPage: React.FC = () => {
               right={
             <div className="flex max-h-none flex-col overflow-hidden rounded-lg border border-white/[0.08] bg-kib-card shadow-soft lg:sticky lg:top-20 lg:max-h-[min(92vh,900px)] lg:overflow-y-auto">
               <div className="shrink-0 border-b border-white/[0.06] bg-kib-surface/90 px-4 py-3">
-                <h3 className="text-sm font-semibold text-kib-fg">Alert policy &amp; customization</h3>
+                <h3 className="text-sm font-semibold text-kib-fg">Opportunity alerts</h3>
                 <p className="mt-1 text-[11px] leading-snug text-kib-muted">
-                  How opportunity signals fire and how thresholds are tuned globally (<code className="rounded bg-black/25 px-1 font-mono text-[10px]">OPPORTUNITY_*</code> on the API host).
+                  When a watchlist price moves enough vs your baseline, we flag a dip tier. Rules apply to every symbol the same way; below you choose how you get notified.
                 </p>
               </div>
               <OpportunityPolicyPanel embedInPanel />

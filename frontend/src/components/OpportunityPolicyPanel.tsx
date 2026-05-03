@@ -70,22 +70,21 @@ export const OpportunityPolicyPanel: React.FC<{
             Opportunity alerts
           </h3>
           <p className="mt-1 text-[11px] leading-relaxed text-kib-muted sm:text-xs">
-            Live “dip” signals (toasts, optional email,{' '}
+            Dip signals (toasts, optional email,{' '}
             <Link to="/opportunity-signals" className="text-kib-cyber underline-offset-2 hover:underline">
-              signals inbox
+              inbox
             </Link>
-            ) use <strong className="font-medium text-kib-fg">one global policy</strong> on the server — not per ticker in the UI.
+            ) share the same rules for every symbol.
           </p>
         </>
       )}
       {embedInPanel && (
         <p className="mb-3 text-[11px] leading-relaxed text-kib-muted">
-          Toasts &amp; optional email use these thresholds.{' '}
+          Same dip rules for every symbol.{' '}
           <Link to="/opportunity-signals" className="text-kib-cyber underline-offset-2 hover:underline">
-            Open signals inbox
+            View signal inbox
           </Link>
-          {' '}
-          · one global policy (not per ticker).
+          .
         </p>
       )}
 
@@ -97,45 +96,40 @@ export const OpportunityPolicyPanel: React.FC<{
 
       <div className={`${embedInPanel ? 'mt-0' : 'mt-3'} space-y-2 text-xs leading-relaxed text-kib-fg/90`}>
         <p>
-          <span className="text-kib-muted">When it runs:</span> you have an <strong>active</strong> watchlist alert with a{' '}
-          <strong>baseline price</strong>, and the latest quote is evaluated against that baseline.
+          <span className="text-kib-muted">When it runs:</span> you have an <strong>active</strong> watchlist row with a{' '}
+          <strong>baseline</strong>; each quote is compared to that baseline.
         </p>
 
         {mode === 'atr' ? (
           <>
             <p>
-              <span className="text-kib-muted">Primary rule (ATR):</span> if price is <strong>below</strong> baseline, we
-              measure the gap in units of <strong>14-day Wilder ATR</strong> from daily bars (volatility-normalized).
+              <span className="text-kib-muted">Short tiers (ATR):</span> below baseline, dip size is measured in{' '}
+              <strong>14-day ATR</strong> (daily bars).
             </p>
             <ul className="list-disc space-y-1 pl-4 text-[11px] text-kib-muted">
               <li>
-                <span className="font-medium text-kib-cyber">on_sale</span> when dip ≥{' '}
-                <strong className="tabular-nums text-kib-fg">{onSaleAtr}×</strong> ATR (14-day)
+                <span className="font-medium text-kib-cyber">on_sale</span> — dip ≥{' '}
+                <strong className="tabular-nums text-kib-fg">{onSaleAtr}×</strong> ATR
               </li>
               <li>
-                <span className="font-medium text-kib-cyber">overreaction</span> when dip ≥{' '}
-                <strong className="tabular-nums text-kib-fg">{overAtr}×</strong> ATR (14-day)
+                <span className="font-medium text-kib-cyber">overreaction</span> — dip ≥{' '}
+                <strong className="tabular-nums text-kib-fg">{overAtr}×</strong> ATR
               </li>
             </ul>
             <p className="mt-2 text-[11px] text-kib-muted">
-              <span className="text-kib-fg/90 font-medium">Long-term setup (parallel):</span>{' '}
-              <span className="font-mono text-violet-200/90">capitulation</span> is labeled in the app as{' '}
-              <strong className="text-kib-fg/90">Major Capitulation – Long-term Setup</strong>. It may fire
-              when (a) dip ≥ <strong className="tabular-nums text-kib-fg">{capA14}×</strong> 14-day ATR or (b) ≥{' '}
-              <strong className="tabular-nums text-kib-fg">{capA50}×</strong> 50-day ATR measured from{' '}
-              <strong className="text-kib-fg/90">max(your baseline, trailing ~52-week high)</strong> when highs exist,
-              (c) ≥{' '}
-              <strong className="tabular-nums text-kib-fg">{cap52}%</strong> below trailing ~52-week high, (d) optional
-              mega-cap rule ≥ <strong className="tabular-nums text-kib-fg">{capMegaAth}%</strong> below a long-window high
-              proxy
+              <span className="font-medium text-kib-fg/90">Major capitulation (long-term):</span> in-app as{' '}
+              <strong className="text-kib-fg/90">Major Capitulation – Long-term Setup</strong>. Stricter mix of ATR vs
+              14d/50d (<strong className="tabular-nums text-kib-fg">{capA14}×</strong> /{' '}
+              <strong className="tabular-nums text-kib-fg">{capA50}×</strong>), drawdown vs ~52w high (≥{' '}
+              <strong className="tabular-nums text-kib-fg">{cap52}%</strong>
+              ), optional mega-cap distance (≥ <strong className="tabular-nums text-kib-fg">{capMegaAth}%</strong>
               {megaCount != null ? (
                 <>
-                  {' '}
-                  (<strong className="tabular-nums text-kib-fg">{megaCount}</strong> symbols configured)
+                  , <strong className="tabular-nums text-kib-fg">{megaCount}</strong> symbols
                 </>
               ) : null}
-              , or (e) a softer structural fallback ≥ <strong className="tabular-nums text-kib-fg">{capFb52}%</strong>{' '}
-              below ~52w when violent ATR legs have not fired yet.
+              ), and a softer <strong className="tabular-nums text-kib-fg">{capFb52}%</strong> vs ~52w when huge ATR legs
+              have not fired yet.
             </p>
             {showMarketDataWarning && (
               <p className="text-[11px] text-amber-200/90 border border-amber-500/25 rounded-md px-2 py-1.5 bg-amber-950/40">
@@ -145,70 +139,57 @@ export const OpportunityPolicyPanel: React.FC<{
           </>
         ) : (
           <p>
-            <span className="text-kib-muted">Percentage mode:</span> flags use fixed drops vs your baseline:{' '}
-            <strong className="text-kib-fg">−{onSalePct}%</strong> for <span className="font-medium text-kib-cyber">on_sale</span>,{' '}
-            <strong className="text-kib-fg">−{overPct}%</strong> for <span className="font-medium text-kib-cyber">overreaction</span>.
+            <span className="text-kib-muted">Percentage mode:</span> fixed drops vs baseline —{' '}
+            <strong className="text-kib-fg">−{onSalePct}%</strong> → <span className="font-medium text-kib-cyber">on_sale</span>,{' '}
+            <strong className="text-kib-fg">−{overPct}%</strong> → <span className="font-medium text-kib-cyber">overreaction</span>.
           </p>
         )}
 
         {mode === 'atr' && (
           <p>
-            <span className="text-kib-muted">If ATR is missing:</span> same thresholds as % fallback —{' '}
-            <strong className="text-kib-fg">−{onSalePct}%</strong> / <strong className="text-kib-fg">−{overPct}%</strong>{' '}
-            vs baseline (global values).
+            <span className="text-kib-muted">If ATR is missing:</span> falls back to{' '}
+            <strong className="text-kib-fg">−{onSalePct}%</strong> / <strong className="text-kib-fg">−{overPct}%</strong> vs baseline.
           </p>
         )}
 
         <p className="text-[11px] text-kib-muted">
-          Vol-spike overreaction (&gt;{volMult}× a “typical” intraday move) is only used when the server supplies typical-move
-          data; the live price loop usually relies on ATR or % vs baseline.
+          Vol-spike boost (&gt;{volMult}× typical intraday move) applies only when that data exists; otherwise ATR or % rules
+          drive the loop.
         </p>
 
         <p className="text-[11px] text-kib-muted">
-          <span className="text-kib-fg/90 font-medium">Trend filter (short tiers only):</span>{' '}
+          <span className="font-medium text-kib-fg/90">Trend filter (short tiers):</span>{' '}
           {trendOn ? (
             <>
-              enabled — <span className="font-mono text-kib-fg/90">on_sale</span> /{' '}
-              <span className="font-mono text-kib-fg/90">overreaction</span> fire only when last price is{' '}
-              <strong>above</strong> the <strong className="tabular-nums text-kib-fg">{trendDays}</strong>-day simple moving
-              average (fail-open if SMA cannot be computed). Capitulation ignores this filter.
+              On — <span className="font-mono text-kib-fg/90">on_sale</span> /{' '}
+              <span className="font-mono text-kib-fg/90">overreaction</span> only if price is above the{' '}
+              <strong className="tabular-nums text-kib-fg">{trendDays}</strong>-day SMA (skipped if SMA missing). Capitulation
+              ignores this.
             </>
           ) : (
-            <>off — set OPPORTUNITY_SHORT_TREND_FILTER_ENABLED=true on the API host to require price &gt; N-day SMA for short tiers.</>
+            <>Off — enable on the API host with <span className="font-mono">OPPORTUNITY_SHORT_TREND_FILTER_ENABLED</span>.</>
           )}
         </p>
 
         {atrFloorPct > 0 ? (
           <p className="text-[11px] text-kib-muted">
-            <span className="text-kib-fg/90 font-medium">ATR floor:</span> daily ATR is ignored for rules when it falls below{' '}
-            <strong className="tabular-nums text-kib-fg">{atrFloorPct}%</strong> of price (penny / noisy names).
+            <span className="font-medium text-kib-fg/90">ATR floor:</span> ignore ATR for rules when it is under{' '}
+            <strong className="tabular-nums text-kib-fg">{atrFloorPct}%</strong> of price.
           </p>
         ) : (
           <p className="text-[11px] text-kib-muted">
-            <span className="text-kib-fg/90 font-medium">ATR floor:</span> off (set OPPORTUNITY_ATR_MIN_PCT_OF_PRICE to e.g.{' '}
-            <span className="font-mono">0.05</span> for 0.05% of price).
+            <span className="font-medium text-kib-fg/90">ATR floor:</span> off.
           </p>
         )}
 
         <p>
-          <span className="text-kib-muted">Deduping (short tiers):</span> at most one short-tier burst per symbol per{' '}
-          <strong className="text-kib-fg">{dedupe}</strong> per user.{' '}
-          <span className="text-kib-muted">Capitulation tier uses a separate window (default </span>
-          <strong className="text-kib-fg">{capDedupe}</strong>
-          <span className="text-kib-muted">) so multi-day setups do not spam while still allowing hourly short-tier hits.</span>
+          <span className="text-kib-muted">Cooldowns:</span> at most one short-tier signal per symbol per{' '}
+          <strong className="text-kib-fg">{dedupe}</strong> (per user). Capitulation uses{' '}
+          <strong className="text-kib-fg">{capDedupe}</strong> so long setups do not spam.
         </p>
-      </div>
 
-      <div className="mt-4 border-t border-white/[0.06] pt-3">
-        <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-kib-muted">Global customization</p>
-        <p className="text-[10px] leading-relaxed text-kib-muted">
-          Operators change these for <strong className="text-kib-fg/90">everyone</strong> via environment variables on the API
-          host (then restart). Examples: <code className="rounded bg-black/25 px-1 font-mono text-[11px] text-kib-fg/80">OPPORTUNITY_TRIGGER_MODE</code>,{' '}
-          <code className="rounded bg-black/25 px-1 font-mono text-[11px] text-kib-fg/80">OPPORTUNITY_ON_SALE_ATR_MULT</code>,{' '}
-          <code className="rounded bg-black/25 px-1 font-mono text-[11px] text-kib-fg/80">OPPORTUNITY_ON_SALE_DROP_PCT</code>,{' '}
-          <code className="rounded bg-black/25 px-1 font-mono text-[11px] text-kib-fg/80">OPPORTUNITY_DEDUPE_TTL_SEC</code>,{' '}
-          <code className="rounded bg-black/25 px-1 font-mono text-[11px] text-kib-fg/80">OPPORTUNITY_CAPITULATION_*</code>. See <code className="rounded bg-black/25 px-1 font-mono text-[11px] text-kib-fg/80">.env.example</code>{' '}
-          in the backend repo.
+        <p className="text-[10px] leading-relaxed text-kib-muted/90">
+          Deployers: change defaults in backend environment variables — see <code className="rounded bg-black/25 px-1 font-mono text-[10px]">.env.example</code>.
         </p>
       </div>
 

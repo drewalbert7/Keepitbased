@@ -9,7 +9,8 @@ import {
   CurrencyDollarIcon,
   InboxIcon,
   Bars3Icon,
-  XMarkIcon
+  XMarkIcon,
+  ChatBubbleLeftRightIcon
 } from '@heroicons/react/24/outline';
 
 const Navigation: React.FC = () => {
@@ -21,11 +22,16 @@ const Navigation: React.FC = () => {
     return null;
   }
 
+  const displayName =
+    [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() ||
+    (user?.email ? user.email.split('@')[0] : 'Account');
+
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
     { name: 'Stock Charts', href: '/charts', icon: ChartBarIcon },
     { name: 'Crypto Charts', href: '/crypto', icon: CurrencyDollarIcon },
     { name: 'Signals', href: '/opportunity-signals', icon: InboxIcon },
+    { name: 'Chat', href: '/chat', icon: ChatBubbleLeftRightIcon },
     { name: 'Profile', href: '/profile', icon: UserCircleIcon }
   ];
 
@@ -65,8 +71,8 @@ const Navigation: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          <span className="hidden truncate text-sm text-kib-muted lg:inline max-w-[140px]" title={user?.email}>
-            {user?.firstName}
+          <span className="hidden truncate text-sm text-kib-muted lg:inline max-w-[200px]" title={user?.email}>
+            {displayName}
           </span>
           <button
             type="button"

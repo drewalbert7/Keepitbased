@@ -83,11 +83,10 @@ export const AlertDeliveryPreferences: React.FC = () => {
 
   return (
     <div className="mt-4 border-t border-white/[0.06] pt-4">
-      <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-kib-muted">Your alert delivery</p>
+      <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-kib-muted">Your notifications</p>
       <p className="mb-3 text-[11px] leading-relaxed text-kib-muted">
-        Control how dip opportunity alerts reach you. Threshold math is still set globally on the server above;
-        this only affects when notifications are sent. By default, <strong className="text-kib-fg/90">US stocks</strong> use
-        regular market hours; <strong className="text-kib-fg/90">crypto</strong> is 24/7.
+        Email, quiet hours, and how “loud” a dip must be before we ping you. Stock emails default to regular market hours;
+        crypto is 24/7.
       </p>
 
       <div className="space-y-3 text-sm">

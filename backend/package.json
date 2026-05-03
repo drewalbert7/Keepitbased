@@ -8,9 +8,12 @@
     "dev": "nodemon server.js",
     "test": "jest",
     "test:charts": "node scripts/chartRegressionCheck.js",
-    "email:test-opportunity": "node scripts/sendTestOpportunityEmail.js"
+    "email:test-opportunity": "node scripts/sendTestOpportunityEmail.js",
+    "migrate:supabase-chat": "node scripts/applySupabaseChatMigration.js",
+    "setup:supabase-chat": "node scripts/setupSupabaseChat.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.105.1",
     "axios": "^1.6.2",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",

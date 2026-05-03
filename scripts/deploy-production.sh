@@ -8,6 +8,7 @@ PORT="${PORT:-3001}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:${PORT}/api/health}"
 
 echo "==> npm run build"
+echo "    (CRA bakes env at build time: set REACT_APP_SUPABASE_URL + REACT_APP_SUPABASE_ANON_KEY in frontend/.env.production for live chat — see frontend/env.production.example)"
 npm run build
 
 echo "==> pm2 reload keepitbased-api (start if missing)"

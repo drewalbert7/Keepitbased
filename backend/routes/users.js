@@ -1,19 +1,46 @@
 const express = require('express');
-const { body, validationResult } = require('express-validator');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const db = require('../models/database');
 const logger = require('../utils/logger');
 const { mergeNotificationPreferences } = require('../utils/notificationPreferences');
 
+const NAME_MAX = 50;
+
+function parseProfileName(value, label) {
+  if (value === undefined || value === null) {
+    return { error: `${label} cannot be empty` };
+  }
+  const s = String(value).trim();
+  if (!s) {
+    return { error: `${label} cannot be empty` };
+  }
+  if (s.length > NAME_MAX) {
+    return { error: `${label} must be at most ${NAME_MAX} characters` };
+  }
+  return { value: s };
+}
+
 // Update user profile
 router.put('/profile', auth, async (req, res) => {
   try {
     const { firstName, lastName, notificationPreferences } = req.body;
     const updates = {};
-    
-    if (firstName) updates.first_name = firstName;
-    if (lastName) updates.last_name = lastName;
+
+    if (Object.prototype.hasOwnProperty.call(req.body, 'firstName')) {
+      const parsed = parseProfileName(firstName, 'First name');
+      if (parsed.error) {
+        return res.status(400).json({ message: parsed.error });
+      }
+      updates.first_name = parsed.value;
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body, 'lastName')) {
+      const parsed = parseProfileName(lastName, 'Last name');
+      if (parsed.error) {
+        return res.status(400).json({ message: parsed.error });
+      }
+      updates.last_name = parsed.value;
+    }
     if (notificationPreferences) {
       const cur = await db.query(
         'SELECT notification_preferences FROM users WHERE id = $1',
@@ -24,6 +51,10 @@ router.put('/profile', auth, async (req, res) => {
         ...notificationPreferences
       });
       updates.notification_preferences = JSON.stringify(merged);
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ message: 'No profile fields to update' });
     }
 
     const setClause = Object.keys(updates)

@@ -294,6 +294,10 @@ const config = {
     return Number.isFinite(n) && n >= 0 && n < 50 ? n : 0;
   })(),
 
+  /** Supabase (global live chat) — service role server-side only */
+  SUPABASE_URL: String(process.env.SUPABASE_URL || '').replace(/\/$/, ''),
+  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+
   // Development mode settings
   ENABLE_TEST_USER: process.env.NODE_ENV === 'development' || process.env.ENABLE_TEST_USER === 'true',
   GRACEFUL_DB_FAILURE: process.env.GRACEFUL_DB_FAILURE !== 'false',

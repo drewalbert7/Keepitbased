@@ -26,6 +26,16 @@ const ProfilePage: React.FC = () => {
   });
   const [notifSaving, setNotifSaving] = useState(false);
 
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    setFirstName(user.firstName ?? '');
+    setLastName(user.lastName ?? '');
+  }, [user?.id, user?.firstName, user?.lastName]);
+
   useEffect(() => {
     if (!user?.notificationPreferences) return;
     const n = user.notificationPreferences;
@@ -45,11 +55,46 @@ const ProfilePage: React.FC = () => {
     });
   }, [user]);
 
+  const handleSaveProfileNames = async () => {
+    const fn = firstName.trim();
+    const ln = lastName.trim();
+    if (!fn || !ln) {
+      toast.error('First and last name are each required (1–50 characters).');
+      return;
+    }
+    if (fn.length > 50 || ln.length > 50) {
+      toast.error('Names must be at most 50 characters each.');
+      return;
+    }
+    setProfileSaving(true);
+    try {
+      const updated = await authService.updateProfile({ firstName: fn, lastName: ln });
+      updateUser({
+        firstName: updated.firstName,
+        lastName: updated.lastName,
+        notificationPreferences: updated.notificationPreferences ?? user?.notificationPreferences
+      });
+      toast.success('Profile updated');
+    } catch (error: unknown) {
+      const msg =
+        typeof error === 'object' && error !== null && 'response' in error
+          ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
+      toast.error(msg || 'Could not save profile');
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
   const handleSaveNotifications = async () => {
     setNotifSaving(true);
     try {
       const updated = await authService.updateProfile({ notificationPreferences: notifPrefs });
-      updateUser({ notificationPreferences: updated.notificationPreferences });
+      updateUser({
+        notificationPreferences: updated.notificationPreferences,
+        firstName: updated.firstName,
+        lastName: updated.lastName
+      });
       toast.success('Notification preferences saved');
     } catch (error: unknown) {
       const msg =
@@ -103,17 +148,50 @@ const ProfilePage: React.FC = () => {
         <div className="card">
           <h2 className="text-xl font-semibold text-kib-fg mb-4">Account Information</h2>
           <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-300">First Name</label>
-              <div className="mt-1 text-kib-fg">{user?.firstName}</div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label htmlFor="profile-first-name" className="block text-sm font-medium text-slate-300">
+                  First name
+                </label>
+                <input
+                  id="profile-first-name"
+                  type="text"
+                  autoComplete="given-name"
+                  maxLength={50}
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  className="input-field mt-1"
+                  placeholder="First name"
+                />
+              </div>
+              <div>
+                <label htmlFor="profile-last-name" className="block text-sm font-medium text-slate-300">
+                  Last name
+                </label>
+                <input
+                  id="profile-last-name"
+                  type="text"
+                  autoComplete="family-name"
+                  maxLength={50}
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  className="input-field mt-1"
+                  placeholder="Last name"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-300">Last Name</label>
-              <div className="mt-1 text-kib-fg">{user?.lastName}</div>
-            </div>
+            <button
+              type="button"
+              onClick={() => void handleSaveProfileNames()}
+              disabled={profileSaving}
+              className="btn-primary disabled:opacity-50"
+            >
+              {profileSaving ? 'Saving…' : 'Save name'}
+            </button>
             <div>
               <label className="block text-sm font-medium text-slate-300">Email</label>
               <div className="mt-1 text-kib-fg">{user?.email}</div>
+              <p className="mt-1 text-xs text-kib-muted">Email sign-in address cannot be changed here.</p>
             </div>
 
             {user?.isSignupInviteAdmin ? (

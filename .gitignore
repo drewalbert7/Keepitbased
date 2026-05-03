@@ -27,6 +27,9 @@ logs/
 config/environment/development.env
 backend/.env.backup.*
 
+# Supabase CLI cache (do not commit)
+supabase/.temp/
+
 # OS / editor
 .DS_Store
 Thumbs.db

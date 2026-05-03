@@ -14,6 +14,8 @@ import { ChartPage } from './pages/ChartPage';
 import { CryptoPage } from './pages/CryptoPage';
 import AIAgentPage from './pages/AIAgentPage';
 import OpportunitySignalsPage from './pages/OpportunitySignalsPage';
+import GlobalChatPage from './pages/GlobalChatPage';
+import { AuthenticatedChatLayer } from './components/AuthenticatedChatLayer';
 import LoadingSpinner from './components/ui/LoadingSpinner';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -39,6 +41,7 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 const AppRoutes: React.FC = () => {
   return (
     <Router>
+      <AuthenticatedChatLayer>
       <div className="relative min-h-screen text-kib-fg app-shell">
         <Navigation />
         <main>
@@ -98,6 +101,14 @@ const AppRoutes: React.FC = () => {
                 </SocketProvider>
               </ProtectedRoute>
             } />
+            <Route
+              path="/chat"
+              element={
+                <ProtectedRoute>
+                  <GlobalChatPage />
+                </ProtectedRoute>
+              }
+            />
           </Routes>
         </main>
         <Toaster 
@@ -128,6 +139,7 @@ const AppRoutes: React.FC = () => {
           }}
         />
       </div>
+      </AuthenticatedChatLayer>
     </Router>
   );
 };
