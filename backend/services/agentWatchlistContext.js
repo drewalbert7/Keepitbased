@@ -2,6 +2,7 @@ const { getRedisClient } = require('../utils/redis');
 const logger = require('../utils/logger');
 const { watchlistService } = require('./watchlistService');
 const PriceMonitor = require('./priceMonitor');
+const { getOpportunityTechnicalBundle } = require('./dailyAtrService');
 
 /**
  * Enrich user alerts with cached prices and staged buy-sizing hints vs dip thresholds.
@@ -267,13 +268,32 @@ async function buildAgentWatchlistContext({ alertService, userId, maxPositionPct
   }
 
   const policyNote =
-    'Sizing hints scale off your Max position size % in Agent Controls. This is not investment advice — verify against your plan and risk tolerance.';
+    'Sizing hints scale off your Max position size % in Agent Controls. For dollar amounts, ask the assistant in chat with your total deployable capital — it can relate Size % and signal tier to illustrative allocations. Not investment advice.';
+
+  const itemsWithRange = await Promise.all(
+    items.map(async (it) => {
+      const at = String(it.assetType || '').toLowerCase();
+      if (at !== 'stock' && at !== 'crypto') {
+        return it;
+      }
+      try {
+        const b = await getOpportunityTechnicalBundle(it.symbol, at === 'crypto' ? 'crypto' : 'stock', redis);
+        const out = { ...it };
+        if (b.week52High != null && Number.isFinite(b.week52High)) out.week52High = b.week52High;
+        if (b.week52Low != null && Number.isFinite(b.week52Low)) out.week52Low = b.week52Low;
+        return out;
+      } catch (e) {
+        logger.warn(`watchlist-context 52w bundle failed ${at}:${it.symbol}`, e.message);
+        return it;
+      }
+    })
+  );
 
   return {
     generatedAt: new Date().toISOString(),
     maxPositionPct: clamp(Number(maxPositionPct) || 10, 1, 50),
     policyNote,
-    items
+    items: itemsWithRange
   };
 }
 
@@ -309,6 +329,10 @@ function formatWatchlistDigestMarkdown(payload) {
   if (payload.maxPositionPct != null) {
     lines.push(`\n_Max position sizing reference: **${payload.maxPositionPct}%** (educational)._`);
   }
+  lines.push(
+    '',
+    '_**Allocation:** State **total deployable capital** (USD) in your next message if you want dollar-sized suggestions; the assistant uses Size % and alert tier together with that figure — not a trade instruction._'
+  );
   return lines.join('\n');
 }
 

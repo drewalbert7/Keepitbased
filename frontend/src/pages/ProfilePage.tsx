@@ -17,17 +17,30 @@ const ProfilePage: React.FC = () => {
   const [notifPrefs, setNotifPrefs] = useState({
     email: true,
     push: true,
-    opportunityToasts: true
+    opportunityToasts: true,
+    dipInsightEmail: true,
+    researchDigestEmail: false,
+    dailyWatchlistDigestEmail: false,
+    agentMaxPositionSizePct: 10
   });
   const [notifSaving, setNotifSaving] = useState(false);
 
   useEffect(() => {
     if (!user?.notificationPreferences) return;
     const n = user.notificationPreferences;
+    const pctRaw = n.agentMaxPositionSizePct;
+    const pct =
+      typeof pctRaw === 'number' && Number.isFinite(pctRaw)
+        ? Math.min(50, Math.max(1, Math.round(pctRaw)))
+        : 10;
     setNotifPrefs({
       email: n.email !== false,
       push: n.push !== false,
-      opportunityToasts: n.opportunityToasts !== false
+      opportunityToasts: n.opportunityToasts !== false,
+      dipInsightEmail: n.dipInsightEmail !== false,
+      researchDigestEmail: n.researchDigestEmail === true,
+      dailyWatchlistDigestEmail: n.dailyWatchlistDigestEmail === true,
+      agentMaxPositionSizePct: pct
     });
   }, [user]);
 
@@ -78,7 +91,7 @@ const ProfilePage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="mx-auto max-w-[1360px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-kib-fg">Profile</h1>
         <p className="text-kib-muted mt-2">Manage your account settings</p>
@@ -142,6 +155,88 @@ const ProfilePage: React.FC = () => {
               />
               <span className="text-kib-fg">In-app opportunity toasts</span>
             </label>
+
+            <div className="pt-4 mt-4 border-t border-kib-line">
+              <h3 className="text-sm font-semibold text-kib-fg mb-1">Dip briefing emails (Grok)</h3>
+              <p className="text-xs text-kib-muted mb-3">
+                When your symbol hits a deterministic dip vs baseline, we can send a richer email with a short
+                Grok briefing (including X context via x_search), suggested tranche % (capped below), and links.
+                Requires <code className="text-kib-fg/90">ENABLE_DIP_INSIGHT_EMAIL</code> on the server. If that
+                flag is off, the toggle has no effect.
+              </p>
+              <label className="flex items-center gap-3 cursor-pointer mb-4">
+                <input
+                  type="checkbox"
+                  checked={notifPrefs.dipInsightEmail}
+                  onChange={(e) =>
+                    setNotifPrefs((p) => ({ ...p, dipInsightEmail: e.target.checked }))
+                  }
+                  className="rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
+                  disabled={!notifPrefs.email}
+                />
+                <span className={`text-kib-fg ${!notifPrefs.email ? 'opacity-50' : ''}`}>
+                  Use Grok dip briefing email (instead of short opportunity-only email when enabled)
+                </span>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer mb-2">
+                <input
+                  type="checkbox"
+                  checked={notifPrefs.researchDigestEmail}
+                  onChange={(e) =>
+                    setNotifPrefs((p) => ({ ...p, researchDigestEmail: e.target.checked }))
+                  }
+                  className="rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
+                  disabled={!notifPrefs.email || !notifPrefs.dipInsightEmail}
+                />
+                <span
+                  className={`text-kib-fg text-sm ${!notifPrefs.email || !notifPrefs.dipInsightEmail ? 'opacity-50' : ''}`}
+                >
+                  Require stored news for Grok email (fusion gate — at least one headline in our DB for that symbol
+                  in the server lookback window; otherwise you get the short opportunity email only)
+                </span>
+              </label>
+              <label className="flex items-start gap-3 cursor-pointer mb-2">
+                <input
+                  type="checkbox"
+                  checked={notifPrefs.dailyWatchlistDigestEmail}
+                  onChange={(e) =>
+                    setNotifPrefs((p) => ({ ...p, dailyWatchlistDigestEmail: e.target.checked }))
+                  }
+                  className="mt-0.5 rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
+                  disabled={!notifPrefs.email}
+                />
+                <span className={`text-kib-fg text-sm ${!notifPrefs.email ? 'opacity-50' : ''}`}>
+                  Daily watchlist digest email (Grok overview of your tracked symbols + a few research ideas not on
+                  your list). Requires <code className="text-kib-fg/90">ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL</code> and a
+                  configured Python service with Grok.
+                </span>
+              </label>
+              <div className="max-w-xs">
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Max portfolio % for suggested tranche (1–50)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  step={1}
+                  value={notifPrefs.agentMaxPositionSizePct}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (!Number.isFinite(v)) return;
+                    setNotifPrefs((p) => ({
+                      ...p,
+                      agentMaxPositionSizePct: Math.min(50, Math.max(1, Math.round(v)))
+                    }));
+                  }}
+                  className="block w-full px-3 py-2 rounded-md border border-kib-line bg-kib-raise text-kib-fg text-sm focus:outline-none focus:ring-2 focus:ring-kib-cyber"
+                />
+                <p className="text-xs text-kib-muted mt-1">
+                  Caps the model&apos;s suggested allocation line in the email; not a buy order.
+                </p>
+              </div>
+            </div>
+
             <button
               type="button"
               onClick={handleSaveNotifications}

@@ -162,7 +162,7 @@ export const CryptoSearch: React.FC<CryptoSearchProps> = ({
 
       {/* Dropdown */}
       {isOpen && (
-        <div className="absolute z-50 mt-1 w-full max-w-md bg-kib-card border border-kib-line rounded-lg shadow-terminal-lg max-h-96 overflow-y-auto backdrop-blur-sm">
+        <div className="absolute z-50 mt-1 w-full max-w-md bg-kib-card border border-kib-line rounded-lg shadow-soft max-h-96 overflow-y-auto backdrop-blur-sm">
           {isLoading ? (
             <div className="p-4 text-center text-slate-500">
               <div className="animate-spin h-5 w-5 border-2 border-kib-line border-t-kib-cyber rounded-full mx-auto mb-2"></div>

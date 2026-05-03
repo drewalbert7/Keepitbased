@@ -2,7 +2,7 @@ import React from 'react';
 
 const AlertsPage: React.FC = () => {
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="mx-auto max-w-[1360px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-kib-fg">Alerts</h1>
         <p className="text-kib-muted mt-2">Manage your buy signal alerts</p>

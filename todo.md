@@ -1,6 +1,25 @@
 # KeepItBased Professional Implementation Plan
 
-Last updated: 2026-05-02 (§11 flagged as next-session focus in Resume Here)
+Last updated: 2026-05-03 — **Crypto charts UX parity** shipped (`CryptoPage` mirrors stock `ChartPage` shell, controls, feed strip, presets, sidebar indicators). **`cryptoChartTechnical.ts`** + **`CryptoChart` `onIndicatorSummary`**. **Deploy verified:** `npm run deploy` (frontend build + `pm2 reload keepitbased-api`, `/api/health` OK).
+
+## Execution status snapshot
+
+| Track | Status | Notes |
+|-------|--------|--------|
+| **Phase 0** — Charts / regression | **✅ Complete (MVP)** | `npm run test:charts`, lightweight-charts, Redis caching; **stock + crypto** chart pages aligned (layout/controls/sidebar). Optional polish in §2 “Remaining known issues”. |
+| **Phase 1** — LangGraph / agent gateway | **✅ Complete (core)** | `POST /agent/opportunities`, `/agent/dip-insight`, Node `/api/agent/chat`; persistence `agent_runs`/`agent_messages`; Grok dip emails + SES + Profile prefs. |
+| **§11 Phase A** — Contracts | **✅ Complete** | `DeepAlertOutput` scaffold, prefs merge, `researchAlertGates`, `SECTION_11_PHASE_A.md`. |
+| **§11 “speed path”** | **✅ Shipped** | Deterministic dip → Grok + **x_search** (no X API) → email; optional artifact gate when `researchDigestEmail` is on. |
+| **§11 Phase B** — Ingestion | **🟡 MVP shipped** | `research_artifacts` + Polygon `/v2/reference/news` + cron worker; all-watchlist tickers; dedupe `content_hash`. **Open:** dedicated queue worker, X + EDGAR (see §11). |
+| **§11 Phase D** — Fusion gate | **🟡 MVP shipped** | `researchFusionGate` + `correlationRuleV1` on dip-insight path when **`researchDigestEmail`** true → else plain opportunity email. **Open:** digest dedupe keys, async queue, full `ResearchAlertEvaluator`. |
+| **§11 Phase C** — Agent context | **🟡 MVP shipped** | Internal **`/research/artifacts`** + **`research_context_loader`** + reply digest + **`opportunity_scout`** scoring/LLM (**`news_context`**, risk bumps). **Open:** **`signal_fusion_scorer`**, vol from history, filing rows. |
+| **§9 Go-live checklist** | Open | Hard gates before declaring “launch”: queues, DR, etc. |
+
+## Product vision (north star — whole project guide)
+
+> We want the AI agent to identify dips and send out alert emails that **describe what is going on** and give a **recommendation on how much to allocate**. Sometimes these drops are due to **sentiment or news** that causes a **fire sale**.
+
+**How we implement this safely:** **Dips are detected mechanically** (price vs baseline / watchlist rules), so alerts are auditable. The **LLM explains** context (e.g. Grok + X search, later news/filings), frames **sentiment / fire-sale** narratives, and suggests **allocation bands** only within **user caps and policy** — never unconstrained “model prices.”
 
 ## Agent planning principles (non-negotiables)
 
@@ -12,27 +31,67 @@ Last updated: 2026-05-02 (§11 flagged as next-session focus in Resume Here)
 
 ## Roadmap position (reality check)
 
-- **Now:** **Research & alert agent** — opportunity scout, watchlist context, deterministic signals, tooling toward recommendations (not execution-grade market data yet).
-- **Phase 0** (charts / regression): in progress.
-- **Phase 1** (LangGraph foundation): **partially done**—Opportunity Scout graph + Grok path live; **persistence and eval harness** are the current close-the-gap work.
-- **Phases 2–5:** unchanged from below; tooling and policy expand after the skeleton is observable and testable.
+- **Phase 0** (charts / regression): **✅ MVP complete** — non-blocking polish only if regressions appear (§2).
+- **Phase 1** (LangGraph foundation): **✅ Core complete** — gateway, Opportunity Scout graph, dip-insight path, persistence, golden smoke tests.
+- **Now:** **§11 Phase C** (tail) — **`signal_fusion_scorer`** + history vol; **§11 Phase B** — queue worker, EDGAR; **§11 Phase D** — dedupe + async send; **Phase E** briefing card.
+- **Phases 2–5 & §9:** deferred until fusion + observability justify broader tooling and launch gates.
 
 ## Resume Here Next Session
 
-- **Where we left off:** **Dashboard** (`/dashboard`) is the main AI surface: chat on top, **watchlist below as a stock-app-style table** (Symbol, **Last** live quote + age, **Day %**, Baseline, vs baseline, Next dip, Signal tier + rationale `title`, Size %, Remove). Backend **`agentWatchlistContext`** exposes optional **`dayChangePct`** / **`dayChangeAbs`** from Redis quote snapshots; **`GET/POST/DELETE /api/watchlist`** syncs **Main** list with **`user_watchlists`** / alerts; **`PriceMonitor`** polls watchlist symbols. **`/api/agent/chat`** attaches **`watchlistContext`** for Python **`POST /agent/opportunities`**; LangGraph **`response_formatter`** prepends watchlist digest (Node fallback if graph unavailable).
-- **Latest verified state:** **`npm run deploy`** completed successfully (frontend production build + **`pm2 reload keepitbased-api`**); **`curl http://127.0.0.1:3001/api/health`** OK. Opportunity path still: **`POST /agent/opportunities`** can return `providerUsed=grok`; Node **`/api/agent/chat`** is the frontend gateway.
-- **Next session priority:** **`## 11) Multi-source research agent + dip-triggered deployment alerts`** — execute **step by step**: start **Phase A** (schema `DeepAlertOutput` v1, trigger rules, email/frequency prefs) then **Phase B** ingestion MVP (reuse **`xInvestorFeedService`** for X; add news artifact store; EDGAR/CIK + filing stubs before XBRL-heavy work). Merge with existing **`evaluateWatchlistOpportunity`** + **`sendOpportunitySignalEmail`** path in **Phase D** once artifacts exist.
-- **Immediate next action (parallel / smaller):** **Phase 4** — ship **agent runs / audit timeline** in the UI, or tighten **Redis-backed rate limits** for horizontal scaling. Already shipped: **per-user limits** on **`POST /api/agent/apply`**, **`GET /api/agent/audit`**, internal agent routes (see **`backend/config`**).
-- **Working checklist (order):**
-  1. ~~Verify provider routing / graph readiness on startup (via Python `/health` + logs; no LLM spend).~~
-  2. ~~Implement run + message persistence + write path from `/api/agent/chat`.~~
-  3. ~~**Integrate** watchlist opportunity evaluator with price polling (`PriceMonitor` + Redis dedupe + Socket `opportunitySignal` to `user_{id}`).~~
-  4. ~~Smoke script: `npm run smoke:opportunity` (Python `POST /agent/opportunities`).~~
-  5. ~~In-app notification: Socket.IO toast on `opportunitySignal` (authenticated handshake); **persist** `opportunity_signals` + **prefs** `opportunityToasts`.~~
-  6. ~~**GET /api/agent/runs** for recent persisted chat runs (audit / future UI).~~
-  7. ~~**GET /api/opportunity-signals** + golden suite **`npm run golden:opportunity`**.~~
-  8. ~~**Dashboard watchlist table** (stock-app columns + live quote age); **`scripts/deploy-production.sh`** / **`npm run deploy`**.~~
-  9. **§11 roadmap (next sprint):** work through **`## 11)`** phases A→B→D MVP→C→E→F; check off bullets inside §11 as you complete them.
+### Recent session — Crypto dashboard parity with stocks (done)
+
+- **`frontend/src/pages/CryptoPage.tsx`:** Same **`app-shell`** / header band / control strip as **`ChartPage`** (connection, Volume/Indicators, data source label, quote status, cadence **updates every 10s**, stale timer, Refresh). Main column **`lg:[grid-template-columns:minmax(0,3fr)_minmax(320px,1fr)]`**, feed-status bar above chart, period **presets** (1D–All mapped to Kraken interval + time range; YTD uses **6M** window — API has no true YTD). Sidebar: quote card (stock-like styling), crosshair panel (crosshair time handles **ms vs s**), **Pair info**, **Indicators** block when toggled on.
+- **`frontend/src/components/charts/cryptoChartTechnical.ts`:** Shared SMA/EMA/RSI/MACD math; MACD signal uses **EMA on numeric MACD line** (fixes bad `.close` on numbers). **`summarizeCryptoIndicators`** for last bar.
+- **`frontend/src/components/charts/CryptoChart.tsx`:** Uses shared technical series; optional **`onIndicatorSummary`** callback for sidebar. Removed dead duplicate indicator block; wiring uses **`useMemo` + `computeCryptoTechnicalSeries`**.
+- **URL:** Pair selection calls **`setSearchParams({ pair })`** (with existing `?symbol=` → `X:SYMUSD` parsing).
+- **Data loading:** OHLC cache in **`useRef`** (avoids unstable `loadCryptoData` deps). No success toast on every load (closer to stocks).
+- **Not in this pass:** Deeper `SimpleChart` vs `CryptoChart` feature parity (e.g. full `TradingViewTimeline` wire-up if desired); true **YTD** range if backend adds it.
+
+### Last deploy (pick up here)
+
+- **Frontend + Node:** `npm run deploy` or `bash scripts/deploy-production.sh` — builds **`frontend/build`**, **`pm2 reload keepitbased-api`**, checks **`http://127.0.0.1:3001/api/health`**.
+- **Python / LangGraph:** deploy script does **not** restart **`stock-service`** — after backend/agent changes run **`pm2 restart stock-service`** (and verify **`http://127.0.0.1:5001/health`** — `opportunityGraphReady`, etc.).
+- **Persist PM2:** `pm2 save` after successful reloads.
+
+### Where things stand
+
+- **Charts:** **`/charts`** — stock dashboard (`ChartPage`); **`/crypto`** — crypto dashboard (**Polygon** OHLC + ticker polling), now **UX-aligned** with stocks (see **Recent session — Crypto dashboard** above). Watchlist deep links use **`/charts?symbol=…`** vs **`/crypto?symbol=…`** / **`?pair=…`**.
+- **Dashboard:** `/dashboard` — chat + **watchlist table** (quotes, baseline, dip signals). **`/api/agent/chat`** → Python **`POST /agent/opportunities`** with **`watchlistContext`**.
+- **Alerts:** **`evaluateWatchlistOpportunity`** + **`PriceMonitor`** → Socket **`opportunitySignal`**, **`opportunity_signals`** DB, **`GET /api/opportunity-signals`**.
+- **Dip briefing emails:** **`ENABLE_DIP_INSIGHT_EMAIL`** + Profile **`dipInsightEmail`** / **`agentMaxPositionSizePct`** → Python **`POST /agent/dip-insight`** (Grok + **`x_search`**) → SES; fallback plain opportunity email; audit **`agent_runs`** (`source=dip_insight`). **`docs/RESEARCH_AGENT.md`**, **`npm run golden:dip-insight`**, **`GET /api/health/config`** (`smtpConfigured`, `dipInsightGloballyEnabled`).
+- **Research fusion (Phase D slice):** If Profile **`researchDigestEmail`** is **true**, **`evaluateDipInsightFusionGate`** requires **`correlationRuleV1`** (dip flags ∧ ≥1 **`research_artifact`** in **`RESEARCH_FUSION_LOOKBACK_HOURS`**); otherwise **plain** opportunity email only. If **`researchDigestEmail`** is **false**, dip-insight behavior is unchanged (speed path).
+- **Research in agent (Phase C MVP):** **`GET /api/internal/research/artifacts`** → **`research_context_loader`** → **`opportunity_scout`** adjusts **`event_risk`** / **`riskFlags`** from headline count + keyword hint; **`summarize_candidate(..., news_context=)`**; optional candidate fields **`researchHeadlinesInWindow`**, **`researchNegativeKeywordHint`**. Reply digest still prepends headline block in **`response_formatter`**.
+
+### What to do next (ordered)
+
+1. **§11 Phase C tail:** **`signal_fusion_scorer`** node or fold **realized vol** from **`fetch_stock_history`** into **`opportunity_scout`** `event_risk` (todo bullets in **`## 11)` Phase C**).
+2. **§11 Phase B tail:** BullMQ/pg-boss **queue** for ingestion (optional); **EDGAR / X** artifacts.
+3. **§11 Phase D tail:** digest **dedupe** keys + **async** email enqueue.
+4. **Phase E:** dashboard **“latest briefing / headlines”** card (parity with email/agent).
+5. **Phase F:** frozen-response goldens; **`DISABLE_RESEARCH_EMAILS`** when fused mail grows.
+
+### Parallel (optional, smaller)
+
+- **Phase E slice:** dashboard card “**last dip briefing**” / link to recent **`agent_runs`**.
+- **Phase F:** **frozen-response** golden for `/agent/dip-insight` (no live LLM spend in CI).
+- **Infra:** **`DISABLE_RESEARCH_EMAILS`** when fused digests ship; DMARC DNS (ops).
+
+### Previous immediate items (now largely shipped)
+
+- ~~Agent runs persistence~~, ~~watchlist opportunity integration~~, ~~golden scripts~~ — done.
+
+### Working checklist (order)
+
+1. ~~Verify provider routing / graph readiness on startup (via Python `/health` + logs; no LLM spend).~~
+2. ~~Implement run + message persistence + write path from `/api/agent/chat`.~~
+3. ~~**Integrate** watchlist opportunity evaluator with price polling (`PriceMonitor` + Redis dedupe + Socket `opportunitySignal` to `user_{id}`).~~
+4. ~~Smoke script: `npm run smoke:opportunity` (Python `POST /agent/opportunities`).~~
+5. ~~In-app notification: Socket.IO toast on `opportunitySignal` (authenticated handshake); **persist** `opportunity_signals` + **prefs** `opportunityToasts`.~~
+6. ~~**GET /api/agent/runs** for recent persisted chat runs (audit / future UI).~~
+7. ~~**GET /api/opportunity-signals** + golden suite **`npm run golden:opportunity`**.~~
+8. ~~**Dashboard watchlist table** (stock-app columns + live quote age); **`scripts/deploy-production.sh`** / **`npm run deploy`**.~~
+9. **§11 Phase C (tail):** optional **history-based vol** in **`opportunity_scout`**; Python **`signal_fusion_scorer`** node. **Parallel:** Phase B queue + EDGAR; Phase D dedupe.
+10. **Deploy hygiene:** after Python agent changes, **`pm2 restart stock-service`**; after Node/UI changes, **`npm run deploy`** (or `deploy-production.sh`). See **Resume Here → Last deploy**.
 
 ### Backlog (non-blocking)
 
@@ -73,6 +132,7 @@ Last updated: 2026-05-02 (§11 flagged as next-session focus in Resume Here)
   - stale data messaging
   - cleaner layout and controls
 - Chart engine replaced with `lightweight-charts` for stocks.
+- **Crypto charts (`/crypto`):** Layout and controls aligned with stock **`ChartPage`** (see **Resume Here → Recent session — Crypto dashboard**); shared technical helpers in **`cryptoChartTechnical.ts`**; indicator sidebar fed via **`onIndicatorSummary`** on **`CryptoChart`**.
 - Indicators v1 implemented:
   - SMA20/SMA50
   - EMA20/EMA50
@@ -140,37 +200,17 @@ Last updated: 2026-05-02 (§11 flagged as next-session focus in Resume Here)
 
 ## 4) Step-by-Step Execution Plan
 
-### Phase 0 - Hardening Before Agent Backend (Now)
+### Phase 0 - Hardening Before Agent Backend — **✅ Complete (MVP)**
 
-1. Finish chart jitter hardening and verify smoothness.
-2. Add chart QA checklist and signoff criteria.
-3. Keep regression suite green.
+**Delivered:** Chart regression (`npm run test:charts`), lightweight-charts integration, Redis-backed quote caching, stale-quote UX.
 
-Definition of done:
-- No visible top-bar jitter/flicker in normal polling.
-- `npm run test:charts` passes consistently.
+**Non-blocking follow-ups:** §2 “Remaining known issues / verification” (occasional jitter under rapid symbol switch, breakpoint QA).
 
-### Phase 1 - Backend Agent Skeleton (LangGraph foundation)
+### Phase 1 - Backend Agent Skeleton (LangGraph foundation) — **✅ Complete (core)**
 
-1. Create/extend Python service for LangGraph workflow.
-2. Keep `/agent/chat` and `/agent/apply` as the backend gateway contract.
-3. Define graph state schema:
-   - user context
-   - conversation history
-   - proposed actions
-   - policy decisions
-   - ranked opportunities
-4. Add initial nodes:
-   - `intent_router`
-   - `context_loader`
-   - `opportunity_scout`
-   - `planner`
-   - `policy_guardrail`
-   - `response_formatter`
+**Delivered:** Python LangGraph service (`POST /agent/opportunities`, `/agent/buy-alert/:symbol`, `/agent/dip-insight`); Node gateway `/api/agent/chat` → Python; `agent_runs` / `agent_messages` persistence; Opportunity Scout nodes (`intent_router`, `context_loader`, `opportunity_scout`, `policy_guardrail`, `response_formatter`); Grok-backed dip briefing email path + SES + Profile prefs.
 
-Definition of done:
-- Agent returns structured plan payloads from real LLM-backed graph.
-- No direct action execution without policy pass.
+**Deferred to Phase 2+:** Full tool catalog item-by-item; explicit `planner` node split where the graph needs it.
 
 ### Phase 2 - Tooling + Alert Control Integration
 
@@ -265,17 +305,9 @@ For each phase:
    - manual QA checklist complete
    - no known critical regressions.
 
-## 7) Immediate Next Task Queue
+## 7) Immediate Next Task Queue — migrated
 
-1. Lock AgentOutputV1 schema contract (`schemaVersion`, `topCandidates`, `score`, `whyNow`, `riskFlags`, `confidence`, `suggestedLimitBand`).
-2. Expose user-adjustable agent parameters in dashboard (`topN`, confidence floor, max position size, watchlist-only, scoring weights).
-3. Implement LangGraph service scaffold for Agent 1 (Opportunity Scout) with typed state.
-4. Add scoring pipeline (momentum + trend + liquidity + event risk flags) and top-N ranking output.
-5. Add watchlist opportunity detector + notification trigger logic ("on sale" + overreaction conditions).
-6. Add suggested limit-order range generator (entry band, invalidation note, risk hint).
-7. Proxy `/api/agent/chat` from Node backend to LangGraph service while keeping `/api/agent/apply` policy-gated.
-8. Persist agent runs/messages/notifications for audit and replay.
-9. Add golden prompt tests for ranking quality, notification quality, and policy safety.
+Most of the original queue **shipped** (AgentOutput contract, LangGraph gateway, watchlist opportunity pipeline, persistence, golden suites). **Active focus:** **`## 11) Phase C`** signal fusion + vol; **Phase B** EDGAR/queue; **Phase D** dedupe; **Phase E** card. **Parallel:** Phase F goldens; §9 go-live.
 
 ## 10) Next Session Kickoff Checklist
 
@@ -299,6 +331,13 @@ For each phase:
 ### Build
 
 - Frontend production build: `cd frontend && npm run build`
+
+### Production deploy (this host)
+
+- **App + static:** from repo root `npm run deploy` (runs `scripts/deploy-production.sh` — build, `pm2 reload keepitbased-api`, `/api/health` check, `pm2 save`).
+- **Python agent:** `pm2 restart stock-service` then `curl -sf http://127.0.0.1:5001/health` (opportunity graph + LLM must be healthy).
+- **Ingestion cron** runs inside **`keepitbased-api`**; enable with **`ENABLE_RESEARCH_INGESTION=true`** in `backend/.env`.
+- **Test opportunity email (plain HTML, same template as PriceMonitor):** `npm run email:test-opportunity` from repo root — requires an active **stock** **`user_alerts`** row with **`baseline_price`**, and email notifications on. Optional **`TEST_USER_ID`**. Subject prefix **`[TEST]`**.
 
 ## 9) Go-Live Infrastructure Checklist (Must Complete Before Launch)
 
@@ -341,21 +380,19 @@ All **numbers shown to users** (prices, % vs baseline, position %, floats) must 
 
 ### Phase A — Scope, policy, and data contracts
 
-- [ ] **Problem statement & user story:** Define ICP use case (watchlist-only long-term accumulators vs active traders); max email frequency per user/symbol/day; quiet hours / timezone (`users` prefs or new column).
-- [ ] **Legal / compliance review (lightweight):** Document disclaimers; SEC EDGAR usage (public filings); whether third-party news snippets require attribution/licensing; retention limits for copied text in DB/logs.
-- [ ] **`DeepAlertOutput` schema v1:** Typed JSON attached to persisted runs + emails, e.g.  
-  `{ schemaVersion, symbol, triggers: [...], fusedSignals: { x, news, filings, fundamentals }, dipContext: {...}, sizingProposal: { tranchesPct portfolioStaged[], maxPctCap, rationale }, risks: [...], invalidation: [...], citations: [...] }`.  
-  All **numeric** fields must map to tool IDs / source timestamps.
-- [ ] **Correlation rules:** Decide when email fires (AND/OR gates): e.g. deterministic dip threshold **plus** minimum “severity” score from NLP/topic model **or** filing freshness window; configurable per user tier later.
+- [x] **Problem statement & user story:** See `docs/SECTION_11_PHASE_A.md` — ICP, caps, quiet hours (stored in `notification_preferences`, merge via `mergeNotificationPreferences`).
+- [x] **Legal / compliance review (lightweight):** Same doc — disclaimers, EDGAR/news/X retention notes.
+- [x] **`DeepAlertOutput` schema v1:** `backend/schemas/deepAlertOutputV1.js` (`validateDeepAlertOutputV1`, provenance pattern for numerics).
+- [x] **Correlation rules (v1 baseline):** Same doc + `correlationRuleV1()` in `backend/utils/researchAlertGates.js` (dip flags ∧ research artifact count); NLP severity / tiering deferred to Phase C.
 
 ### Phase B — Ingestion & storage layer (foundation)
 
 Split **fetch/cache** from **reasoning**. Prefer **scheduled jobs + idempotent ingestion** over doing heavy I/O inside a single LangGraph invoke.
 
-- [ ] **Job runner:** Introduce **asynchronous worker** path (bullmq / pg-boss / Sidekiq-style in Node—or separate Python worker) consistent with §9 “background jobs dedicated queue”; avoid blocking `PriceMonitor` cron thread.
-- [ ] **`research_artifacts` (or partitioned tables):** Store raw + normalized payloads: `source`, `symbol`, `cusip/cik optional`, `fetched_at`, `url`, `hash`, `content_summary` (vendor or self-generated), **`structured_fields` JSONB**, retention TTL.
+- [ ] **Job runner:** Introduce **asynchronous worker** path (bullmq / pg-boss / Sidekiq-style in Node—or separate Python worker) consistent with §9 “background jobs dedicated queue”; avoid blocking `PriceMonitor` cron thread. *(MVP: cron in API + `scheduleResearchIngestion`.)*
+- [x] **`research_artifacts`:** Table + `content_hash` dedupe, indexes; `researchArtifactsService`, **`npm run research:ingest-once`**.
 - [ ] **X (Twitter):** Leverage **`xInvestorFeedService`** / bearer token pattern; extend to **per-symbol cashtag + curated list ingestion** where API allows; normalize to `ResearchArtifact`; respect **rate limits** and backoff; circuit breaker logs.
-- [ ] **News:** Pick 1–2 providers (e.g. **polygon news**, Finnhub, or licensed wire) with **symbol filtering** + dedupe by URL hash; ingest headlines + published time only if license permits full body storage.
+- [x] **News (MVP):** Polygon **`/v2/reference/news`** — **`polygonNewsIngestion`** + **`aggregatedWatchlistSymbols`** (all list names; **STOCK** + **CRYPTO** tokens).
 - [ ] **SEC filings (10-K/10-Q/8-K earnings):**  
   - [ ] Resolve **CIK** from ticker (SEC company_tickers / mapping table).  
   - [ ] Poll **submission API** or EDGAR index for accepted filings; dedupe by `accession-number`.  
@@ -367,33 +404,40 @@ Split **fetch/cache** from **reasoning**. Prefer **scheduled jobs + idempotent i
 
 Extend Python graph (new workflow or subgraph) beyond `opportunity_scout`:
 
-- [ ] **`research_context_loader(user_id, symbols)`:** Pull latest **`ResearchArtifact`** rows per symbol (time-windowed).
-- [ ] **`market_and_dip_context`:** Reuse **`watchlist_context`**, **`market_snapshots`**, optional vol / drawdown from history tool.
+- [x] **`research_context_loader`:** After **`market_data_loader`**, **`GET /api/internal/research/artifacts`** (Node **`researchArtifactsReader`**, watchlist allowlist) → digest in **`response_formatter`**.
+- [ ] **`market_and_dip_context`:** Reuse **`watchlist_context`**, **`market_snapshots`**, **`research_context`**, optional vol / drawdown from history tool.
+- [x] Feed **`research_context`** into **`opportunity_scout`:** headline count + regex **negative hint** → **`event_risk`** bump; **`_risk_flags_from_event_and_news`**; **`summarize_candidate(..., news_context=)`**; candidate fields **`researchHeadlinesInWindow`**, optional **`researchNegativeKeywordHint`**.
 - [ ] **`signal_fusion_scorer`:** Deterministic weighted features (filing freshness, negative news density, sentiment delta from X baseline) → **explainable numeric vector** fed to LLM as context (not replacing tool numbers).
 - [ ] **`sizing_policy_node`:** Map user **`maxPositionSizePct`**, liquidity tier, volatility proxy, and **tranche schema** into **bounded** `% portfolio` recommendation (enforce caps server-side regardless of prose).
 - [ ] **`email_composer`** (structured): Template + LLM for narrative; validator rejects send if mandatory fields missing or citations absent for claims tagged “filing-derived”.
 
 ### Phase D — Triggering, dedupe, and email delivery
 
-- [ ] **`ResearchAlertEvaluator` (deterministic orchestrator):** Subscribes to same cadence as `PriceMonitor` or separate cron (e.g. 5–15 min for news, hourly for filings); merges **dip flags** from `evaluateWatchlistOpportunity` **with** fused research thresholds.
+- [x] **Fusion gate (MVP):** `backend/services/researchFusionGate.js` — on opportunity email path, if **`researchDigestEmail`** then **`correlationRuleV1`** + **`countArtifactsForSymbol`**; else Grok dip-insight unchanged. Config **`RESEARCH_FUSION_LOOKBACK_HOURS`**, health exposes lookback.
+- [ ] **`ResearchAlertEvaluator` (full):** Standalone orchestrator + separate cadence for news/filings; merge with **all** email classes and metrics.
 - [ ] **Dedupe keys:** `user + symbol + alert_class + time_bucket`, separate buckets for **“dip-only”** vs **“dip+fundamentals”** to avoid redundant mail.
-- [ ] **SMTP / SES pipeline:** Batch HTML + plaintext; link to **`/dashboard` / signals** with deeplink token optional; **`opportunity_digest_email`** prefs (separate checkbox from legacy price-alert email if desired).
+- [ ] **SMTP / SES pipeline:** Batch HTML + plaintext; link to **`/dashboard` / signals** with deeplink token optional; **`researchDigestEmail`** on **Profile** (fusion gate).
 - [ ] **Async send:** enqueue send job; retries with DLQ per §9.
 
 ### Phase E — Frontend & observability
 
 - [ ] Dashboard **“Latest research briefing”** card per symbol / run with **same structured fields** as email (parity).
-- [ ] **`/profile`:** Toggle **research digests**, frequency cap, timezone.
+- [x] **`/profile`:** **`researchDigestEmail`** toggle + copy (fusion gate with stored headlines).
+- [ ] **`/profile`:** Frequency cap + timezone for fused digests (`researchMaxEmailsPerDay`, quiet hours) — prefs exist in merge; expose when Phase D digest cadence ships.
+- [x] **`/profile`:** **Grok dip briefing** (`dipInsightEmail`) + **max tranche %** (`agentMaxPositionSizePct`) — ships §11 speed-path controls in UI.
 - [ ] Metrics: ingestion lag, emails sent, skips (dedupe/provider error), LLM tokens per digest, guardrail rejects.
 
 ### Phase F — QA, golden runs, rollout
 
+- [x] **Dip insight smoke:** `npm run golden:dip-insight` (POST `/agent/dip-insight`, schema check; needs Python + Grok).
 - [ ] Golden fixtures with **frozen tool responses** + expected schema pass/fail — including **contradiction** case (bullish filings + hostile news → lower confidence tier).
 - [ ] Canary users + kill switch env (`DISABLE_RESEARCH_EMAILS`).
-- [ ] Documentation: **`docs/RESEARCH_AGENT.md`** describing vendors, env vars, and runbooks (optional separate from this file when implementing).
+- [x] Documentation: **`docs/RESEARCH_AGENT.md`** — env matrix, kill switches, troubleshooting, architecture.
 
 ---
 
 **Suggested execution order:** **A → B (X/news first, filings MVP second) → D (wired to existing dip email path with minimal fusion) → C (full LangGraph richness) → E → F**.  
+
+**Speed path (shipped) does not replace B:** Live Grok **`x_search`** dip emails + Profile toggles complement §11 but **do not** persist artifacts for dedupe, dashboards, or offline QA—**Phase B** remains the dependency for fusion + `ResearchAlertEvaluator`.
 
 **Estimated reality:** Phase B (EDGAR + XBRL) and licensing are **the long poles**; align scope to an **MVP** (headlines + 8-K earnings + XBRL-lite or vendor fundamentals) before “full 10-K semantic search.”

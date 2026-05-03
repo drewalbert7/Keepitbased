@@ -21,6 +21,7 @@ echo "==> wait for listener"
 for i in 1 2 3 4 5 6 7 8 9 10; do
   if curl -sf "$HEALTH_URL" >/dev/null; then
     echo "==> health OK: $HEALTH_URL"
+    echo "==> If LangGraph / python-service changed: pm2 restart stock-service && curl -sf http://127.0.0.1:5001/health"
     pm2 save
     exit 0
   fi

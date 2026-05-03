@@ -12,6 +12,11 @@ function formatPrice(row: OpportunitySignalRow): string {
   return n.toFixed(2);
 }
 
+function formatOpportunityFlag(flag: string): string {
+  if (flag === 'capitulation') return 'Major Capitulation – Long-term Setup';
+  return flag;
+}
+
 const OpportunitySignalsPage: React.FC = () => {
   const [signals, setSignals] = useState<OpportunitySignalRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,13 +40,14 @@ const OpportunitySignalsPage: React.FC = () => {
   }, [load]);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-8 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-kib-fg">Opportunity signals</h1>
-          <p className="text-kib-muted mt-2">
-            Deterministic watchlist hits vs your alert baselines (deduped hourly). Also emailed when
-            email alerts are on and SMTP is configured.
+    <div className="mx-auto max-w-[1360px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+      <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight text-kib-fg sm:text-3xl">Opportunity signals</h1>
+          <p className="mt-2 text-sm text-kib-muted sm:text-base">
+            Deterministic watchlist hits vs your alert baselines: short tiers deduped on an hourly window;
+            long-term capitulation tier uses a separate relaxed window (often 24h). Also emailed when email
+            alerts are on and SMTP is configured.
           </p>
         </div>
         <button type="button" className="btn-secondary whitespace-nowrap" onClick={() => load()}>
@@ -95,9 +101,13 @@ const OpportunitySignalsPage: React.FC = () => {
                       {flags.map((f) => (
                         <span
                           key={f}
-                          className="px-2 py-0.5 rounded-md bg-teal-950/55 text-teal-200 border border-teal-500/30 text-xs font-mono"
+                          className={`px-2 py-0.5 rounded-md border text-xs font-mono ${
+                            f === 'capitulation'
+                              ? 'bg-violet-950/55 text-violet-200 border-violet-500/35 max-w-[220px] whitespace-normal'
+                              : 'bg-teal-950/55 text-teal-200 border-teal-500/30'
+                          }`}
                         >
-                          {f}
+                          {formatOpportunityFlag(f)}
                         </span>
                       ))}
                     </span>

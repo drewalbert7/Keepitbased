@@ -30,8 +30,18 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const onOpportunity = (payload: Record<string, unknown>) => {
       if (!toastOpportunities) return;
       const sym = typeof payload.symbol === 'string' ? payload.symbol : '?';
-      const flags = Array.isArray(payload.flags) ? (payload.flags as string[]).join(', ') : 'signal';
-      toast.success(`Opportunity: ${sym} — ${flags}`, { duration: 6500 });
+      const rawFlags = Array.isArray(payload.flags) ? (payload.flags as string[]) : [];
+      const labelFlags = rawFlags.map((f) =>
+        f === 'capitulation' ? 'Major Capitulation – Long-term Setup' : f
+      );
+      const flags = labelFlags.length ? labelFlags.join(', ') : 'signal';
+      const prefix =
+        rawFlags.includes('capitulation') && rawFlags.length === 1
+          ? 'Major capitulation'
+          : rawFlags.includes('capitulation')
+            ? 'Opportunity (includes long-term setup)'
+            : 'Opportunity';
+      toast.success(`${prefix}: ${sym} — ${flags}`, { duration: 8500 });
     };
 
     sock.on('opportunitySignal', onOpportunity);

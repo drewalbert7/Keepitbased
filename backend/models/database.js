@@ -14,8 +14,20 @@ pool.connect((err, client, release) => {
   }
 });
 
-// Initialize database tables
+// Serialize schema init — concurrent callers (server + scripts) must not race CREATE TABLE.
+let databaseInitPromise = null;
+
 async function initializeDatabase() {
+  if (!databaseInitPromise) {
+    databaseInitPromise = runInitializeDatabase().catch((err) => {
+      databaseInitPromise = null;
+      throw err;
+    });
+  }
+  return databaseInitPromise;
+}
+
+async function runInitializeDatabase() {
   const client = await pool.connect();
   
   try {
@@ -208,6 +220,41 @@ async function initializeDatabase() {
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_opportunity_signals_user_created
       ON opportunity_signals(user_id, created_at DESC);
+    `);
+
+    // §11 Phase B — normalized research artifacts (news, later X/filings)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS research_artifacts (
+        id BIGSERIAL PRIMARY KEY,
+        source VARCHAR(32) NOT NULL,
+        symbol VARCHAR(32) NOT NULL,
+        asset_type VARCHAR(10) NOT NULL CHECK (asset_type IN ('stock', 'crypto')),
+        cik VARCHAR(20),
+        url TEXT,
+        content_hash VARCHAR(64) NOT NULL,
+        title TEXT,
+        content_summary TEXT,
+        published_at TIMESTAMPTZ,
+        fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        raw_payload JSONB NOT NULL DEFAULT '{}',
+        structured_fields JSONB NOT NULL DEFAULT '{}',
+        UNIQUE(content_hash)
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_research_artifacts_symbol_published
+      ON research_artifacts(symbol, published_at DESC NULLS LAST);
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_research_artifacts_fetched
+      ON research_artifacts(fetched_at DESC);
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_research_artifacts_source
+      ON research_artifacts(source);
     `);
 
     // Add migration for reset token columns (safely add if they don't exist)

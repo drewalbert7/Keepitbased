@@ -1,5 +1,6 @@
 const express = require('express');
-const { body, validationResult } = require('express-validator');
+const rateLimit = require('express-rate-limit');
+const { body, param, validationResult } = require('express-validator');
 const router = express.Router();
 const config = require('../config');
 const AlertService = require('../services/alertService');
@@ -7,8 +8,18 @@ const auth = require('../middleware/auth');
 const logger = require('../utils/logger');
 const { persistAgentAuditEvent } = require('../services/agentPersistence');
 const { validateAlertSymbol } = require('../utils/alertSymbolValidate');
+const requireDeleteConfirmation = require('../middleware/requireDeleteConfirmation');
 
 const alertService = new AlertService();
+
+const alertDeleteLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many delete attempts. Try again later.' },
+  keyGenerator: (req) => `alert-del:${req.user?.id ?? req.ip}`
+});
 
 // Get user's alerts
 router.get('/', auth, async (req, res) => {
@@ -105,6 +116,7 @@ router.post('/', auth, [
 
 // Update alert
 router.put('/:id', auth, [
+  param('id').isInt({ min: 1 }).toInt(),
   body('smallThreshold').optional().isFloat({ min: 0.1, max: 50 }),
   body('mediumThreshold').optional().isFloat({ min: 0.1, max: 50 }),
   body('largeThreshold').optional().isFloat({ min: 0.1, max: 50 }),
@@ -124,7 +136,7 @@ router.put('/:id', auth, [
     if (largeThreshold !== undefined) updates.large_threshold = largeThreshold;
     if (active !== undefined) updates.active = active;
 
-    const alert = await alertService.updateAlert(req.params.id, updates);
+    const alert = await alertService.updateAlert(req.params.id, req.user.id, updates);
     
     if (!alert) {
       return res.status(404).json({ message: 'Alert not found' });
@@ -138,8 +150,18 @@ router.put('/:id', auth, [
 });
 
 // Delete alert
-router.delete('/:id', auth, async (req, res) => {
+router.delete(
+  '/:id',
+  auth,
+  alertDeleteLimiter,
+  requireDeleteConfirmation,
+  [param('id').isInt({ min: 1 }).toInt()],
+  async (req, res) => {
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
     const alert = await alertService.deleteAlert(req.params.id, req.user.id);
     
     if (!alert) {
@@ -156,8 +178,8 @@ router.delete('/:id', auth, async (req, res) => {
 // Get alert history
 router.get('/history', auth, async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
+    const page = Math.min(Math.max(parseInt(req.query.page, 10) || 1, 1), 10_000);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
     const offset = (page - 1) * limit;
 
     const result = await require('../models/database').query(`

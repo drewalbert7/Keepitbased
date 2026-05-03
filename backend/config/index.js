@@ -85,6 +85,156 @@ const config = {
   // Features
   PRICE_CHECK_INTERVAL_MS: parseInt(process.env.PRICE_CHECK_INTERVAL_MS) || 60000,
   MAX_ALERTS_PER_USER: parseInt(process.env.MAX_ALERTS_PER_USER) || 50,
+  /** When true, optional Grok dip briefing email replaces plain opportunity email (see notification_preferences.dipInsightEmail). */
+  ENABLE_DIP_INSIGHT_EMAIL: process.env.ENABLE_DIP_INSIGHT_EMAIL === 'true',
+  /** Emergency kill switch: when true, never send Grok dip briefing emails (plain opportunity email still allowed). */
+  DISABLE_DIP_INSIGHT_EMAIL: process.env.DISABLE_DIP_INSIGHT_EMAIL === 'true',
+
+  /**
+   * Scheduled daily email: Grok analysis of Main watchlist + suggested tickers (Python service + GROK_*).
+   * Users opt in via Profile `dailyWatchlistDigestEmail`; operator sets ENABLE_* on host.
+   */
+  ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL: process.env.ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL === 'true',
+  DISABLE_DAILY_WATCHLIST_DIGEST_EMAIL: process.env.DISABLE_DAILY_WATCHLIST_DIGEST_EMAIL === 'true',
+  /** Cron for digest send (default 07:00 UTC daily). */
+  DAILY_WATCHLIST_DIGEST_CRON: process.env.DAILY_WATCHLIST_DIGEST_CRON || '0 7 * * *',
+  /** Delay between users when sending digests (rate limits / Grok). */
+  DAILY_WATCHLIST_DIGEST_STAGGER_MS: (() => {
+    const n = parseInt(process.env.DAILY_WATCHLIST_DIGEST_STAGGER_MS, 10);
+    return Number.isFinite(n) && n >= 0 ? Math.min(n, 120_000) : 2500;
+  })(),
+
+  /**
+   * §11 Phase B — Polygon/Massive reference news → research_artifacts (scheduled worker).
+   * Set ENABLE_RESEARCH_INGESTION=true after POLYGON/MASSIVE key is configured.
+   */
+  ENABLE_RESEARCH_INGESTION: process.env.ENABLE_RESEARCH_INGESTION === 'true',
+  /** Cron expression for news ingestion (default: every 10 minutes). */
+  RESEARCH_NEWS_CRON: process.env.RESEARCH_NEWS_CRON || '*/10 * * * *',
+  /** Max distinct stock tickers to poll per cron tick (rate-limit friendly). */
+  RESEARCH_NEWS_MAX_SYMBOLS_PER_RUN: (() => {
+    const n = parseInt(process.env.RESEARCH_NEWS_MAX_SYMBOLS_PER_RUN, 10);
+    return Number.isFinite(n) && n > 0 ? Math.min(n, 500) : 30;
+  })(),
+  /** Polygon /v2/reference/news limit per symbol. */
+  RESEARCH_NEWS_PER_SYMBOL_LIMIT: (() => {
+    const n = parseInt(process.env.RESEARCH_NEWS_PER_SYMBOL_LIMIT, 10);
+    return Number.isFinite(n) && n > 0 ? Math.min(n, 50) : 10;
+  })(),
+  /** Gap between symbol requests (ms) to avoid burst rate limits (0 allowed). */
+  RESEARCH_NEWS_SYMBOL_DELAY_MS: (() => {
+    const n = parseInt(process.env.RESEARCH_NEWS_SYMBOL_DELAY_MS, 10);
+    return Number.isFinite(n) && n >= 0 ? n : 600;
+  })(),
+
+  /** §11 Phase D — hours of `research_artifacts` to count for dip+research fusion (Profile `researchDigestEmail`). */
+  RESEARCH_FUSION_LOOKBACK_HOURS: (() => {
+    const n = parseInt(process.env.RESEARCH_FUSION_LOOKBACK_HOURS, 10);
+    return Number.isFinite(n) && n > 0 ? Math.min(n, 168) : 24;
+  })(),
+
+  /**
+   * Watchlist opportunity signals: `atr` = distance below baseline in units of 14-day Wilder ATR (daily);
+   * `pct` = legacy fixed % vs baseline. If ATR cannot be fetched, `atr` falls back to `pct` for that tick.
+   */
+  OPPORTUNITY_TRIGGER_MODE: (() => {
+    const m = String(process.env.OPPORTUNITY_TRIGGER_MODE || 'atr')
+      .trim()
+      .toLowerCase();
+    return m === 'pct' ? 'pct' : 'atr';
+  })(),
+  /** Fire `on_sale` when (baseline − price) / ATR14 ≥ this (price below baseline). */
+  OPPORTUNITY_ON_SALE_ATR_MULT: (() => {
+    const n = parseFloat(process.env.OPPORTUNITY_ON_SALE_ATR_MULT, 10);
+    return Number.isFinite(n) && n > 0 ? n : 1.25;
+  })(),
+  /** Fire `overreaction` when (baseline − price) / ATR14 ≥ this, or via legacy / vol rules in pct mode. */
+  OPPORTUNITY_OVERREACTION_ATR_MULT: (() => {
+    const n = parseFloat(process.env.OPPORTUNITY_OVERREACTION_ATR_MULT, 10);
+    return Number.isFinite(n) && n > 0 ? n : 2.5;
+  })(),
+  /** % vs baseline — used in pct mode or when daily ATR cannot be computed */
+  OPPORTUNITY_ON_SALE_DROP_PCT: (() => {
+    const n = parseFloat(process.env.OPPORTUNITY_ON_SALE_DROP_PCT, 10);
+    return Number.isFinite(n) && n > 0 && n < 100 ? n : 5;
+  })(),
+  OPPORTUNITY_OVERREACTION_DROP_PCT: (() => {
+    const n = parseFloat(process.env.OPPORTUNITY_OVERREACTION_DROP_PCT, 10);
+    return Number.isFinite(n) && n > 0 && n < 100 ? n : 12;
+  })(),
+  /** |day change| vs “typical” move for vol-spike overreaction (when typical move is available) */
+  OPPORTUNITY_VOL_SPIKE_MULT: (() => {
+    const n = parseFloat(process.env.OPPORTUNITY_VOL_SPIKE_MULT, 10);
+    return Number.isFinite(n) && n > 0 ? n : 2;
+  })(),
+  /** Redis dedupe TTL for opportunity socket/email per user+symbol bucket */
+  OPPORTUNITY_DEDUPE_TTL_SEC: (() => {
+    const n = parseInt(process.env.OPPORTUNITY_DEDUPE_TTL_SEC, 10);
+    return Number.isFinite(n) && n > 0 ? Math.min(n, 7 * 24 * 3600) : 3600;
+  })(),
+
+  /** Long-term “Major Capitulation” tier — parallel to short/medium ATR tiers */
+  OPPORTUNITY_CAPITULATION_ATR14_MULT: (() => {
+    const n = parseFloat(process.env.OPPORTUNITY_CAPITULATION_ATR14_MULT);
+    return Number.isFinite(n) && n > 0 ? n : 4;
+  })(),
+  OPPORTUNITY_CAPITULATION_ATR50_MULT: (() => {
+    const n = parseFloat(process.env.OPPORTUNITY_CAPITULATION_ATR50_MULT);
+    return Number.isFinite(n) && n > 0 ? n : 3;
+  })(),
+  /** Drawdown from trailing ~52-week daily high (percent points, e.g. 20 = 20%) */
+  OPPORTUNITY_CAPITULATION_FROM_52W_PCT: (() => {
+    const n = parseFloat(process.env.OPPORTUNITY_CAPITULATION_FROM_52W_PCT, 10);
+    return Number.isFinite(n) && n > 0 && n < 100 ? n : 20;
+  })(),
+  /** Fallback when ATR/structure ambiguous — vs ~52w high (percent drawdown) */
+  OPPORTUNITY_CAPITULATION_FALLBACK_52W_PCT: (() => {
+    const n = parseFloat(process.env.OPPORTUNITY_CAPITULATION_FALLBACK_52W_PCT, 10);
+    return Number.isFinite(n) && n > 0 && n < 100 ? n : 18;
+  })(),
+  /** Mega-cap optional rule — vs session ATH proxy from daily highs (percent drawdown) */
+  OPPORTUNITY_CAPITULATION_MEGA_CAP_ATH_PCT: (() => {
+    const n = parseFloat(process.env.OPPORTUNITY_CAPITULATION_MEGA_CAP_ATH_PCT, 10);
+    return Number.isFinite(n) && n > 0 && n < 100 ? n : 15;
+  })(),
+  /** Comma-separated tickers for mega-cap ATH rule (stocks only). Set to NONE to disable. */
+  OPPORTUNITY_MEGA_CAP_SYMBOLS: (() => {
+    const raw = process.env.OPPORTUNITY_MEGA_CAP_SYMBOLS;
+    const src =
+      raw === undefined || raw === null
+        ? 'AAPL,MSFT,NVDA,META,GOOGL,GOOG,AMZN,TSLA'
+        : String(raw);
+    const t = src.trim().toUpperCase();
+    if (t === '' || t === 'NONE' || t === '-') return [];
+    return src
+      .split(/[, \t]+/)
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean);
+  })(),
+  /** Dedupe window for capitulation tier (default 24h; use 604800 for weekly) */
+  OPPORTUNITY_CAPITULATION_DEDUPE_TTL_SEC: (() => {
+    const n = parseInt(process.env.OPPORTUNITY_CAPITULATION_DEDUPE_TTL_SEC, 10);
+    return Number.isFinite(n) && n > 0 ? Math.min(n, 14 * 24 * 3600) : 86400;
+  })(),
+
+  /**
+   * Short-tier trend filter: require last price above N-day SMA of closes (fail-open if SMA missing).
+   * Capitulation tier ignores this. Set OPPORTUNITY_SHORT_TREND_FILTER_ENABLED=true to enable.
+   */
+  OPPORTUNITY_SHORT_TREND_FILTER_ENABLED: process.env.OPPORTUNITY_SHORT_TREND_FILTER_ENABLED === 'true',
+  OPPORTUNITY_SHORT_TREND_SMA_DAYS: (() => {
+    const n = parseInt(process.env.OPPORTUNITY_SHORT_TREND_SMA_DAYS, 10);
+    return Number.isFinite(n) && n >= 20 && n <= 300 ? n : 200;
+  })(),
+
+  /**
+   * Drop ATR14/ATR50 for rules when ATR is tiny vs price (penny / broken quotes). Percent of price, e.g. 0.05 = 0.05%.
+   * 0 = disabled.
+   */
+  OPPORTUNITY_ATR_MIN_PCT_OF_PRICE: (() => {
+    const n = parseFloat(process.env.OPPORTUNITY_ATR_MIN_PCT_OF_PRICE);
+    return Number.isFinite(n) && n >= 0 && n < 50 ? n : 0;
+  })(),
 
   // Development mode settings
   ENABLE_TEST_USER: process.env.NODE_ENV === 'development' || process.env.ENABLE_TEST_USER === 'true',

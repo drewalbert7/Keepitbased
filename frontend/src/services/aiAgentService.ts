@@ -240,6 +240,9 @@ export interface WatchlistContextItem {
   dayLow?: number | null;
   volume?: number | null;
   prevClose?: number | null;
+  /** Trailing ~252 sessions from daily aggregates when market data available */
+  week52High?: number | null;
+  week52Low?: number | null;
 }
 
 export interface WatchlistContextResponse {

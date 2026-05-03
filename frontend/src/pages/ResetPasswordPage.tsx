@@ -75,8 +75,8 @@ const ResetPasswordPage: React.FC = () => {
 
   if (tokenValid === false) {
     return (
-      <div className="relative z-10 min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-md w-full space-y-8 text-center rounded-2xl border border-kib-line bg-kib-card/85 backdrop-blur-sm p-8 shadow-terminal-lg">
+      <div className="relative z-10 flex min-h-screen items-center justify-center app-shell px-4 py-12 sm:px-6 lg:px-8">
+        <div className="w-full max-w-md space-y-8 rounded-2xl border border-white/[0.08] bg-kib-card/95 p-8 text-center shadow-soft backdrop-blur-sm">
           <div>
             <h1 className="text-4xl font-bold font-mono text-kib-fg mb-2 tracking-tight">
               <span className="text-kib-cyber">{'>'}</span> KeepItBased
@@ -101,7 +101,7 @@ const ResetPasswordPage: React.FC = () => {
 
   if (tokenValid === null) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center app-shell">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-2 border-kib-line border-t-kib-cyber mx-auto mb-4"></div>
           <p className="text-kib-muted">Validating reset link...</p>
@@ -111,8 +111,8 @@ const ResetPasswordPage: React.FC = () => {
   }
 
   return (
-    <div className="relative z-10 min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 rounded-2xl border border-kib-line bg-kib-card/85 backdrop-blur-sm p-8 sm:p-10 shadow-terminal-lg">
+    <div className="relative z-10 flex min-h-screen items-center justify-center app-shell px-4 py-12 sm:px-6 lg:px-8">
+      <div className="w-full max-w-md space-y-8 rounded-2xl border border-white/[0.08] bg-kib-card/95 p-8 shadow-soft backdrop-blur-sm sm:p-10">
         <div className="text-center">
           <h1 className="text-4xl font-bold font-mono text-kib-fg mb-2 tracking-tight">
             <span className="text-kib-cyber">{'>'}</span> KeepItBased

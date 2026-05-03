@@ -14,6 +14,8 @@ class OpportunityState(TypedDict, total=False):
     prompt_symbols: List[str]
     user_alert_context: List[Dict[str, Any]]
     market_snapshots: Dict[str, Any]
+    # Node GET /api/internal/research/artifacts — Polygon/news rows scoped to user's watchlist
+    research_context: Optional[Dict[str, Any]]
     candidates: List[Dict[str, Any]]
     internal_alert_result: Dict[str, Any]
     output: Dict[str, Any]

@@ -36,13 +36,17 @@ const opportunitySignalsRoutes = require('./routes/opportunitySignals');
 const internalAgentRoutes = require('./routes/internalAgent');
 const socialRoutes = require('./routes/social');
 const watchlistRoutes = require('./routes/watchlist');
+const internalResearchRoutes = require('./routes/internalResearch');
 
 const jwt = require('jsonwebtoken');
 const PriceMonitor = require('./services/priceMonitor');
 const AlertService = require('./services/alertService');
+const { scheduleResearchIngestion } = require('./services/researchIngestionWorker');
+const { scheduleDailyWatchlistDigest } = require('./services/dailyWatchlistDigestWorker');
 const logger = require('./utils/logger');
 
 const app = express();
+app.disable('x-powered-by');
 
 // Behind nginx/reverse proxy: restore real client IP for rate limits and logs.
 // Set TRUST_PROXY_HOPS=0 to disable (local dev without proxy).
@@ -133,6 +137,7 @@ app.use('/api/internal/agent', internalAgentRoutes);
 app.use('/api/opportunity-signals', opportunitySignalsRoutes);
 app.use('/api/social', socialRoutes);
 app.use('/api/watchlist', watchlistRoutes);
+app.use('/api/internal/research', internalResearchRoutes);
 
 // Serve static files from React build
 app.use(express.static(path.join(__dirname, '../frontend/build')));
@@ -169,6 +174,12 @@ cron.schedule('*/1 * * * *', async () => {
     logger.error('Error in scheduled price check:', error);
   }
 });
+
+// §11 Phase B — Polygon news → research_artifacts (non-blocking; separate schedule from price polling)
+scheduleResearchIngestion();
+
+// Daily Grok watchlist digest (opt-in per user + ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL)
+scheduleDailyWatchlistDigest(alertService);
 
 // Error handling
 app.use((err, req, res, next) => {

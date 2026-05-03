@@ -1,6 +1,36 @@
 const nodemailer = require('nodemailer');
 const logger = require('../utils/logger');
 
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Visible From address. For AWS SES, `SMTP_USER` is often the SMTP IAM-style username (AKIA…),
+ * not an email — set `SMTP_FROM=noreply@yourdomain.com` on your verified domain.
+ */
+function smtpFromHeader() {
+  const addr = process.env.SMTP_FROM || process.env.SMTP_USER;
+  return `"KeepItBased" <${addr}>`;
+}
+
+/** Only allow X/Twitter URLs in outbound emails. */
+function sanitizeXPostUrl(raw) {
+  try {
+    const u = new URL(String(raw).trim());
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    const host = u.hostname.replace(/^www\./, '').toLowerCase();
+    if (host !== 'x.com' && host !== 'twitter.com') return null;
+    return u.href;
+  } catch {
+    return null;
+  }
+}
+
 class EmailService {
   constructor() {
     this.transporter = nodemailer.createTransport({
@@ -83,7 +113,7 @@ class EmailService {
       `;
 
       const mailOptions = {
-        from: `"KeepItBased" <${process.env.SMTP_USER}>`,
+        from: smtpFromHeader(),
         to: email,
         subject: `${emoji} ${alertData.level.toUpperCase()} Alert: ${alertData.symbol} dropped ${alertData.dropPercentage}%`,
         html: html
@@ -138,7 +168,7 @@ class EmailService {
       `;
 
       const mailOptions = {
-        from: `"KeepItBased" <${process.env.SMTP_USER}>`,
+        from: smtpFromHeader(),
         to: email,
         subject: 'Welcome to KeepItBased - Start Getting Buy Alerts! 🚀',
         html: html
@@ -194,7 +224,7 @@ class EmailService {
       `;
 
       const mailOptions = {
-        from: `"KeepItBased" <${process.env.SMTP_USER}>`,
+        from: smtpFromHeader(),
         to: email,
         subject: 'KeepItBased - Your Username Recovery',
         html: html
@@ -254,7 +284,7 @@ class EmailService {
       `;
 
       const mailOptions = {
-        from: `"KeepItBased" <${process.env.SMTP_USER}>`,
+        from: smtpFromHeader(),
         to: email,
         subject: 'KeepItBased - Reset Your Password',
         html: html
@@ -275,13 +305,17 @@ class EmailService {
 
   /**
    * Watchlist / PriceMonitor deterministic opportunity signal (not legacy alert rules).
+   * @param {object} [options]
+   * @param {string} [options.subjectPrefix] — e.g. `[TEST] ` for smoke scripts
    */
-  async sendOpportunitySignalEmail(toAddress, payload) {
+  async sendOpportunitySignalEmail(toAddress, payload, options = {}) {
     if (!this.isConfigured()) {
       logger.warn('Opportunity email skipped: SMTP not configured');
       return;
     }
     try {
+      const subjectPrefix =
+        typeof options.subjectPrefix === 'string' ? options.subjectPrefix : '';
       const {
         symbol,
         assetType,
@@ -291,7 +325,13 @@ class EmailService {
         price,
         timestamp
       } = payload;
-      const flagStr = Array.isArray(flags) ? flags.join(', ') : String(flags);
+      const hasCapitulationFlag = Array.isArray(flags) && flags.includes('capitulation');
+      const displayFlagLabels = Array.isArray(flags)
+        ? flags.map((f) =>
+            f === 'capitulation' ? 'Major Capitulation – Long-term Setup' : String(f)
+          )
+        : [];
+      const flagStr = displayFlagLabels.length ? displayFlagLabels.join(', ') : String(flags);
       const reasonLines = Array.isArray(reasons)
         ? reasons.map((r) => `<li>${String(r)}</li>`).join('')
         : '';
@@ -300,10 +340,14 @@ class EmailService {
           ? `${Number(vsBaselinePct).toFixed(2)}%`
           : '—';
 
+      const heroTitle = hasCapitulationFlag
+        ? 'KeepItBased — Major Capitulation (long-term setup)'
+        : 'KeepItBased — Opportunity signal';
+
       const html = `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
           <div style="background: linear-gradient(135deg, #0f766e 0%, #115e59 100%); padding: 24px; text-align: center; border-radius: 10px 10px 0 0;">
-            <h1 style="color: white; margin: 0; font-size: 22px;">KeepItBased — Opportunity signal</h1>
+            <h1 style="color: white; margin: 0; font-size: 22px;">${heroTitle}</h1>
           </div>
           <div style="background: white; padding: 28px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.08);">
             <p style="font-size: 18px; margin: 0 0 16px;">
@@ -345,15 +389,256 @@ class EmailService {
         </div>
       `;
 
+      const subjectLine = hasCapitulationFlag
+        ? `${subjectPrefix}Major Capitulation – Long-term Setup: ${String(symbol || '').toUpperCase()} (${flagStr})`
+        : `${subjectPrefix}Opportunity: ${String(symbol || '').toUpperCase()} (${flagStr})`;
+
       await this.transporter.sendMail({
-        from: `"KeepItBased" <${process.env.SMTP_USER}>`,
+        from: smtpFromHeader(),
         to: toAddress,
-        subject: `Opportunity: ${String(symbol || '').toUpperCase()} (${flagStr})`,
+        subject: subjectLine,
         html
       });
       logger.info(`Opportunity signal email sent to ${toAddress} for ${symbol}`);
     } catch (error) {
       logger.error('Error sending opportunity signal email:', error);
+    }
+  }
+
+  /**
+   * Scheduled daily digest: Grok narrative + suggested additions (educational only).
+   * @param {string} toAddress
+   * @param {{ digest: { marketOverview?: string, holdingsAnalysis?: string, suggestedAdditions?: Array<{symbol:string,thesis?:string,riskNote?:string,timeHorizon?:string}>, disclaimer?: string }, runMetadata?: object }} payload
+   */
+  async sendDailyWatchlistDigestEmail(toAddress, payload) {
+    if (!this.isConfigured()) {
+      logger.warn('Daily watchlist digest email skipped: SMTP not configured');
+      return;
+    }
+    try {
+      const digest = payload.digest || {};
+      const meta = payload.runMetadata || {};
+      const overview = escapeHtml(String(digest.marketOverview || '').trim() || '—').replace(/\n/g, '<br>');
+      const holdings = escapeHtml(String(digest.holdingsAnalysis || '').trim() || '—').replace(/\n/g, '<br>');
+      const disclaimer = escapeHtml(
+        String(digest.disclaimer || '').trim() ||
+          'Educational commentary only; not personalized investment advice.'
+      );
+      const additions = Array.isArray(digest.suggestedAdditions) ? digest.suggestedAdditions : [];
+      const suggestionBlocks = additions
+        .slice(0, 8)
+        .map((s) => {
+          const sym = escapeHtml(String(s.symbol || '').toUpperCase());
+          const thesis = escapeHtml(String(s.thesis || '').trim());
+          const risk = escapeHtml(String(s.riskNote || '').trim());
+          const horiz = escapeHtml(String(s.timeHorizon || '').trim());
+          return `
+            <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 12px; background: #f8fafc;">
+              <p style="margin: 0 0 8px; font-size: 16px; font-weight: 700; color: #0f172a;">${sym}</p>
+              ${horiz ? `<p style="margin: 0 0 6px; font-size: 12px; color: #64748b;">Horizon: ${horiz}</p>` : ''}
+              <p style="margin: 0 0 8px; font-size: 14px; color: #334155; line-height: 1.5;">${thesis || '—'}</p>
+              ${risk ? `<p style="margin: 0; font-size: 13px; color: #b45309;"><strong>Risk:</strong> ${risk}</p>` : ''}
+            </div>`;
+        })
+        .join('');
+      const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      const dateLabel = new Date().toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+      const metaLine =
+        meta.providerUsed != null
+          ? `<p style="font-size: 11px; color: #94a3b8; margin-top: 16px;">Model: ${escapeHtml(String(meta.providerUsed))}</p>`
+          : '';
+
+      const html = `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 640px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #1e3a5f 0%, #0f766e 100%); padding: 26px; text-align: center; border-radius: 10px 10px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 22px;">Daily watchlist digest</h1>
+            <p style="color: rgba(255,255,255,0.88); margin: 10px 0 0; font-size: 14px;">${escapeHtml(dateLabel)}</p>
+          </div>
+          <div style="background: white; padding: 28px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.08);">
+            <h2 style="font-size: 15px; color: #0f172a; margin: 0 0 10px;">Market overview</h2>
+            <p style="font-size: 15px; color: #334155; line-height: 1.55; margin: 0 0 22px;">${overview}</p>
+
+            <h2 style="font-size: 15px; color: #0f172a; margin: 0 0 10px;">Your watchlist</h2>
+            <p style="font-size: 15px; color: #334155; line-height: 1.55; margin: 0 0 22px;">${holdings}</p>
+
+            <h2 style="font-size: 15px; color: #0f172a; margin: 0 0 12px;">Ideas to research (not on your list)</h2>
+            <p style="font-size: 12px; color: #64748b; margin: 0 0 14px;">
+              The model suggests liquid US names you are not currently tracking. Verify quotes, filings, and fit with your plan before acting.
+            </p>
+            ${suggestionBlocks || '<p style="color: #64748b; font-size: 14px;">No suggestions in this run.</p>'}
+
+            <p style="font-size: 12px; color: #64748b; margin-top: 20px; line-height: 1.5;">${disclaimer}</p>
+            ${metaLine}
+
+            <div style="text-align: center; margin-top: 24px;">
+              <a href="${baseUrl}/"
+                 style="background: linear-gradient(135deg, #0f766e 0%, #115e59 100%);
+                        color: white; padding: 12px 24px; text-decoration: none;
+                        border-radius: 8px; font-weight: 600; display: inline-block;">
+                Open KeepItBased
+              </a>
+            </div>
+            <p style="margin-top: 20px; font-size: 12px; color: #94a3b8; text-align: center;">
+              <a href="${baseUrl}/profile" style="color: #0f766e;">Turn off daily digest</a> in Profile notifications.
+            </p>
+          </div>
+        </div>
+      `;
+
+      await this.transporter.sendMail({
+        from: smtpFromHeader(),
+        to: toAddress,
+        subject: `KeepItBased — Daily watchlist digest (${new Date().toLocaleDateString('en-US')})`,
+        html
+      });
+      logger.info(`Daily watchlist digest sent to ${toAddress}`);
+    } catch (error) {
+      logger.error('Error sending daily watchlist digest email:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Grok-backed dip briefing (§11 speed path). Numbers in dipContext are tool-backed; prose is educational only.
+   */
+  async sendDipInsightEmail(toAddress, params) {
+    if (!this.isConfigured()) {
+      logger.warn('Dip insight email skipped: SMTP not configured');
+      return;
+    }
+    try {
+      const {
+        symbol,
+        assetType,
+        dipContext = {},
+        insight = {},
+        maxAllocationPct = 10,
+        citationUrls = []
+      } = params;
+      const sym = String(symbol || '').toUpperCase();
+      const cap = Math.min(50, Math.max(1, Number(maxAllocationPct) || 10));
+      let pct = Number(insight.suggestedTranchePct);
+      if (!Number.isFinite(pct)) pct = Math.min(2, cap);
+      pct = Math.min(Math.max(0, pct), cap);
+
+      const summ = escapeHtml(insight.situationSummary || '');
+      const sentLab = escapeHtml(
+        (insight.xSentiment && insight.xSentiment.label) || 'unknown'
+      );
+      const drivers = escapeHtml((insight.xSentiment && insight.xSentiment.drivers) || '');
+      const fire = insight.fireSaleHypothesis
+        ? escapeHtml(String(insight.fireSaleHypothesis))
+        : '';
+      const risks = Array.isArray(insight.riskNotes)
+        ? insight.riskNotes.map((r) => `<li>${escapeHtml(r)}</li>`).join('')
+        : '';
+      const vs =
+        dipContext.vsBaselinePct != null && Number.isFinite(Number(dipContext.vsBaselinePct))
+          ? `${Number(dipContext.vsBaselinePct).toFixed(2)}%`
+          : '—';
+      const px =
+        dipContext.price != null && Number.isFinite(Number(dipContext.price))
+          ? Number(dipContext.price).toFixed(4)
+          : '—';
+
+      const postLinks = [];
+      if (Array.isArray(insight.xPostLinks)) {
+        for (const row of insight.xPostLinks) {
+          if (row && row.url) {
+            const href = sanitizeXPostUrl(row.url);
+            if (href)
+              postLinks.push({
+                href,
+                note: escapeHtml(row.note || '')
+              });
+          }
+        }
+      }
+      if (postLinks.length === 0 && Array.isArray(citationUrls)) {
+        for (const u of citationUrls.slice(0, 12)) {
+          const href = sanitizeXPostUrl(u);
+          if (href) postLinks.push({ href, note: 'x_search citation' });
+        }
+      }
+      const linksHtml =
+        postLinks.length > 0
+          ? `<div style="margin: 18px 0; padding: 14px 16px; background: #f1f5f9; border-radius: 8px;">
+              <p style="margin: 0 0 10px; font-size: 14px; font-weight: 600; color: #0f172a;">Posts on X (Grok x_search)</p>
+              <ul style="margin: 0; padding-left: 18px; font-size: 13px; color: #334155;">
+                ${postLinks
+                  .map(
+                    (l) =>
+                      `<li style="margin: 6px 0;"><a href="${escapeHtml(l.href)}" style="color: #0f766e;">${escapeHtml(l.href)}</a>${l.note && l.note !== 'x_search citation' ? ` — ${l.note}` : ''}</li>`
+                  )
+                  .join('')}
+              </ul>
+            </div>`
+          : '';
+
+      const html = `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 640px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #0f766e 0%, #115e59 100%); padding: 24px; text-align: center; border-radius: 10px 10px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 22px;">KeepItBased — Dip briefing</h1>
+            <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0; font-size: 14px;">${String(assetType || '').toUpperCase()} ${sym}</p>
+          </div>
+          <div style="background: white; padding: 28px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.08);">
+            <p style="font-size: 15px; line-height: 1.55; color: #1e293b; margin: 0 0 16px;">${summ}</p>
+            <div style="background: #f8fafc; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px;">
+              <p style="margin: 4px 0; font-size: 14px;"><strong>Live snapshot (tool-backed):</strong> last ~$${px} · vs your baseline ${vs}</p>
+              <p style="margin: 4px 0; font-size: 14px;"><strong>X sentiment (Grok x_search):</strong> ${sentLab}</p>
+              <p style="margin: 8px 0 0; font-size: 13px; color: #475569;">${drivers}</p>
+            </div>
+            ${
+              fire
+                ? `<p style="font-size: 14px; color: #334155;"><strong>Context:</strong> ${fire}</p>`
+                : ''
+            }
+            ${linksHtml}
+            <div style="margin: 20px 0; padding: 16px; border: 1px solid #e2e8f0; border-radius: 8px;">
+              <p style="margin: 0 0 8px; font-size: 15px; font-weight: 600;">Suggested tranche (educational, capped at ${cap}% of portfolio)</p>
+              <p style="margin: 0; font-size: 28px; font-weight: 700; color: #0f766e;">${pct.toFixed(2)}%</p>
+              <p style="margin: 8px 0 0; font-size: 12px; color: #64748b;">You set max ${cap}% as sizing reference; we never exceed it here.</p>
+            </div>
+            ${
+              risks
+                ? `<ul style="margin: 12px 0; padding-left: 20px; color: #475569; font-size: 14px;">${risks}</ul>`
+                : ''
+            }
+            <div style="text-align: center; margin-top: 24px;">
+              <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard"
+                 style="background: linear-gradient(135deg, #0f766e 0%, #115e59 100%);
+                        color: white; padding: 12px 24px; text-decoration: none;
+                        border-radius: 8px; font-weight: 600; display: inline-block;">
+                Open dashboard
+              </a>
+            </div>
+            <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8; text-align: center;">
+              <p style="margin: 0 0 8px;">
+                <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile" style="color: #0f766e;">Manage notifications</a>
+              </p>
+              <p style="margin: 12px 0 0; font-size: 11px; color: #cbd5e1;">
+                Not investment advice. Educational commentary only. Past performance does not guarantee future results.
+              </p>
+            </div>
+          </div>
+        </div>
+      `;
+
+      await this.transporter.sendMail({
+        from: smtpFromHeader(),
+        to: toAddress,
+        subject: `Dip briefing: ${sym} — suggested ${pct.toFixed(1)}% tranche (educational)`,
+        html
+      });
+      logger.info(`Dip insight email sent to ${toAddress} for ${sym}`);
+    } catch (error) {
+      logger.error('Error sending dip insight email:', error);
+      throw error;
     }
   }
 }

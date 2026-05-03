@@ -4,6 +4,7 @@ const { getRedisClient } = require('../utils/redis');
 const { validateAlertSymbol } = require('../utils/alertSymbolValidate');
 const PriceMonitor = require('./priceMonitor');
 const config = require('../config');
+const { assertTradableUsStock } = require('./stockReferenceService');
 
 const MAIN_NAME = 'Main';
 const STOCK_PREFIX = 'STOCK';
@@ -130,7 +131,18 @@ class WatchlistService {
       err.statusCode = 400;
       throw err;
     }
-    const symbol = symCheck.symbol;
+    const normalizedInput = symCheck.symbol;
+    let symbol = normalizedInput;
+    try {
+      const resolved = await assertTradableUsStock(normalizedInput);
+      symbol = resolved.ticker;
+    } catch (e) {
+      if (e.statusCode === 400) throw e;
+      const err = new Error(e.message || 'Could not verify stock symbol');
+      err.statusCode = 400;
+      throw err;
+    }
+
     const token = tokenForStock(symbol);
 
     const row = await seedFromStockAlertsIfEmpty(userId);
@@ -172,7 +184,7 @@ class WatchlistService {
       [JSON.stringify(arr), row.id]
     );
 
-    logger.info(`Watchlist +stock user=${userId} ${symbol}`);
+    logger.info(`Watchlist +stock user=${userId} ${symbol}${normalizedInput !== symbol ? ` (from "${normalizedInput}")` : ''}`);
     return this.getMainWatchlist(userId);
   }
 

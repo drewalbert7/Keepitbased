@@ -27,17 +27,17 @@ const HomePage: React.FC = () => {
   }, [isAuthenticated, navigate]);
 
   return (
-    <div className="min-h-screen relative kib-mesh-bg overflow-x-hidden">
+    <div className="relative min-h-screen overflow-x-hidden app-shell">
       {/* Subtle vignette */}
       <div
         className="pointer-events-none fixed inset-0 z-0 opacity-60"
         style={{
-          background: 'radial-gradient(ellipse 70% 60% at 50% 0%, transparent 0%, #030712 75%)'
+          background: 'radial-gradient(ellipse 70% 60% at 50% 0%, transparent 0%, #0d1117 75%)'
         }}
       />
 
-      <header className="relative z-10 border-b border-kib-line/80 bg-kib-surface/75 backdrop-blur-md">
-        <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <header className="relative z-10 nav-shell">
+        <nav className="mx-auto max-w-[1360px] px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
             <div className="flex items-center gap-3">
               <span className="hidden sm:inline-flex font-mono text-[10px] text-kib-cyber/80 border border-kib-cyber/40 px-1.5 py-0.5 rounded tracking-widest uppercase">
@@ -56,9 +56,9 @@ const HomePage: React.FC = () => {
               </a>
               <a
                 href="https://app.keepitbased.com/register"
-                className="btn-primary py-2 px-4 text-sm font-semibold shadow-terminal"
+                className="btn-primary py-2 px-4 text-sm font-semibold"
               >
-                Get Started
+                Create account
               </a>
             </div>
           </div>
@@ -66,13 +66,17 @@ const HomePage: React.FC = () => {
       </header>
 
       <div className="relative z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-[1360px] px-4 sm:px-6 lg:px-8">
           <div className="relative pt-16 pb-16 sm:pb-24">
             <div className="lg:grid lg:grid-cols-12 lg:gap-8 items-center">
               <div className="sm:text-center md:max-w-2xl md:mx-auto lg:col-span-6 lg:text-left lg:flex lg:items-center">
                 <div>
                   <p className="font-mono text-xs text-kib-cyber mb-4 tracking-[0.2em] uppercase">
                     Signal stack · Stocks & Crypto
+                  </p>
+                  <p className="mb-4 inline-flex flex-wrap items-center gap-2 rounded-lg border border-kib-cyber/35 bg-kib-cyber/10 px-3 py-2 font-mono text-xs text-kib-cyber/95 sm:text-sm">
+                    <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-kib-cyber shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
+                    Invite-only — access is extended by invitation
                   </p>
                   <h1 className="text-4xl font-bold text-kib-fg sm:text-5xl md:text-6xl leading-tight">
                     Never Miss a
@@ -89,8 +93,8 @@ const HomePage: React.FC = () => {
                         href="https://app.keepitbased.com/register"
                         className="btn-primary text-center text-lg py-4 px-8 inline-flex items-center justify-center gap-2"
                       >
-                        <span className="font-mono text-sm opacity-80">$ </span>
-                        Start Investing Smarter
+                        <span className="font-mono text-sm opacity-80">&gt;_</span>
+                        Start with your invite
                       </a>
                       <a
                         href="https://app.keepitbased.com/charts"
@@ -101,7 +105,7 @@ const HomePage: React.FC = () => {
                     </div>
                     <p className="mt-4 text-sm font-mono text-kib-muted/90">
                       <span className="text-robinhood-green mr-2">●</span>
-                      Free forever · No hidden fees · No commitments.
+                      New accounts are invite-only. Have an invite? Create an account or sign in from the header.
                     </p>
                   </div>
                 </div>
@@ -110,7 +114,7 @@ const HomePage: React.FC = () => {
               <div className="mt-12 relative lg:mt-0 lg:col-span-6 lg:flex lg:items-center lg:justify-end">
                 <div className="relative mx-auto w-full max-w-md lg:max-w-none">
                   <div className="absolute -inset-1 rounded-[2rem] bg-gradient-to-br from-kib-cyber/20 via-transparent to-robinhood-green/10 blur-xl opacity-80" />
-                  <div className="relative rounded-3xl p-8 border border-kib-cyber/25 bg-kib-card shadow-terminal-lg backdrop-blur-sm">
+                  <div className="relative rounded-2xl border border-white/[0.08] bg-kib-card p-8 shadow-soft backdrop-blur-sm">
                     <div className="absolute top-4 right-4 font-mono text-[10px] text-kib-cyber/70">SIG_OK</div>
                     <div className="text-center mb-6">
                       <h3 className="text-lg font-semibold font-mono text-kib-fg">AAPL</h3>
@@ -161,7 +165,7 @@ const HomePage: React.FC = () => {
 
         {/* Stats */}
         <div className="border-y border-kib-line bg-kib-surface/90 py-14">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-[1360px] px-4 sm:px-6 lg:px-8">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-10 text-center">
               {[
                 ['10K+', 'active_users'],
@@ -180,7 +184,7 @@ const HomePage: React.FC = () => {
 
         {/* Features */}
         <div className="py-20 relative">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-[1360px] px-4 sm:px-6 lg:px-8">
             <div className="text-center">
               <h2 className="text-3xl font-bold text-kib-fg sm:text-4xl">Smart Alerts for Smart Investors</h2>
               <p className="mt-4 text-lg text-kib-muted font-mono text-sm uppercase tracking-[0.15em]">
@@ -251,7 +255,7 @@ const HomePage: React.FC = () => {
 
         {/* How */}
         <div className="py-20 bg-kib-surface/80 border-y border-kib-line">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-[1360px] px-4 sm:px-6 lg:px-8">
             <div className="text-center">
               <h2 className="text-3xl font-bold text-kib-fg sm:text-4xl">How KeepItBased Works</h2>
               <p className="mt-4 text-kib-muted">Deploy your watch pipeline in minutes</p>
@@ -279,7 +283,7 @@ const HomePage: React.FC = () => {
                 }
               ].map((s) => (
                 <div key={s.step} className="text-center">
-                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl mb-6 font-mono text-kib-cyber bg-kib-card border border-kib-cyber/35 shadow-terminal">
+                  <div className="mb-6 inline-flex h-14 w-14 items-center justify-center rounded-xl border border-white/[0.08] bg-kib-raise font-mono text-kib-cyber shadow-soft">
                     {s.step}
                   </div>
                   <p className="font-mono text-xs text-kib-cyber/80 mb-2">{s.icon} init</p>
@@ -336,22 +340,30 @@ const HomePage: React.FC = () => {
           <div className="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_30%_50%,rgba(34,211,238,0.2),transparent_55%)]" />
           <div className="relative max-w-4xl mx-auto text-center px-4 sm:px-6 lg:px-8">
             <h2 className="text-3xl font-bold text-kib-fg sm:text-4xl font-mono tracking-tight">execute_on_opportunity()</h2>
-            <p className="mt-6 text-lg text-kib-muted">Join investors who refuse to chase green candles.</p>
-            <div className="mt-10">
+            <p className="mt-6 text-lg text-kib-muted">
+              Join investors who refuse to chase green candles — access is by invitation.
+            </p>
+            <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+              <a
+                href="https://app.keepitbased.com/login"
+                className="btn-primary inline-block rounded-xl px-10 py-4 text-lg font-semibold"
+              >
+                Sign in
+              </a>
               <a
                 href="https://app.keepitbased.com/register"
-                className="btn-primary inline-block text-lg py-4 px-10 rounded-xl shadow-terminal-lg font-semibold"
+                className="btn-secondary inline-block rounded-xl px-10 py-4 text-lg font-semibold"
               >
-                Get Started Free
+                Create account
               </a>
             </div>
-            <p className="mt-6 text-sm font-mono text-kib-muted">no_card_required · cancel_anytime</p>
+            <p className="mt-6 text-sm font-mono text-kib-muted">invite_only · contact your host for access</p>
           </div>
         </div>
 
         {/* Footer */}
         <footer className="bg-kib-surface border-t border-kib-line py-12">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-[1360px] px-4 sm:px-6 lg:px-8">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
               {[
                 {

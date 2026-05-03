@@ -54,8 +54,8 @@ const RegisterPage: React.FC = () => {
   };
 
   return (
-    <div className="relative z-10 min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 rounded-2xl border border-kib-line bg-kib-card/80 backdrop-blur-sm p-8 sm:p-10 shadow-terminal-lg">
+    <div className="relative z-10 flex min-h-screen items-center justify-center app-shell px-4 py-12 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8 rounded-2xl border border-white/[0.08] bg-kib-card/95 p-8 backdrop-blur-sm sm:p-10 shadow-soft">
         <div className="text-center">
           <h1 className="text-4xl font-bold font-mono text-kib-fg mb-2 tracking-tight">
             <span className="text-kib-cyber">{'>'}</span> KeepItBased

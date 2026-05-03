@@ -178,7 +178,42 @@ async function getXPulse({ ttlMs = 90000 } = {}) {
   return inflight;
 }
 
+/**
+ * Recent posts from configured X monitors that cashtag the symbol (tool-backed for §11 dip emails).
+ * @param {string} symbol
+ * @returns {Promise<Array<{ id?: string, text: string, authorUsername?: string | null, createdAt?: string, monitorLabel?: string }>>}
+ */
+async function getXSnippetsForSymbol(symbol) {
+  const sym = String(symbol || '')
+    .trim()
+    .toUpperCase();
+  if (!sym) return [];
+
+  const pulse = await getXPulse({ ttlMs: 90000 });
+  const tweets = Array.isArray(pulse.tweets) ? pulse.tweets : [];
+  const out = [];
+
+  for (const tw of tweets) {
+    const tags =
+      Array.isArray(tw.cashtags) && tw.cashtags.length
+        ? tw.cashtags
+        : extractCashtags(tw.text || '');
+    if (!tags.includes(sym)) continue;
+    out.push({
+      id: tw.id,
+      text: tw.text || '',
+      authorUsername: tw.authorUsername || null,
+      createdAt: tw.createdAt,
+      monitorLabel: tw.monitorLabel
+    });
+    if (out.length >= 12) break;
+  }
+
+  return out;
+}
+
 module.exports = {
   getXPulse,
-  extractCashtags
+  extractCashtags,
+  getXSnippetsForSymbol
 };

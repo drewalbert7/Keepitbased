@@ -5,9 +5,20 @@ const auth = require('../middleware/auth');
 const logger = require('../utils/logger');
 const AlertService = require('../services/alertService');
 const { watchlistService } = require('../services/watchlistService');
+const { searchUsStocks, getApiKey } = require('../services/stockReferenceService');
+const requireDeleteConfirmation = require('../middleware/requireDeleteConfirmation');
 
 const router = express.Router();
 const alertService = new AlertService();
+
+const watchlistDeleteLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many watchlist removals. Try again later.' },
+  keyGenerator: (req) => `wl-del:${req.user?.id ?? req.ip}`
+});
 
 const watchlistLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -17,6 +28,16 @@ const watchlistLimiter = rateLimit({
   message: { message: 'Too many watchlist requests, retry shortly' }
 });
 
+/** Stock name/ticker search (Polygon reference); separate budget from mutation endpoints */
+const stockSearchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 45,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many symbol searches, retry shortly' },
+  keyGenerator: (req) => `wl-search:${req.user?.id ?? req.ip}`
+});
+
 router.get('/', auth, watchlistLimiter, async (req, res) => {
   try {
     const data = await watchlistService.getMainWatchlist(req.user.id);
@@ -24,6 +45,22 @@ router.get('/', auth, watchlistLimiter, async (req, res) => {
   } catch (error) {
     logger.error('GET watchlist failed:', error);
     return res.status(500).json({ message: 'Failed to load watchlist' });
+  }
+});
+
+/** GET /watchlist/stock-search?q= — US stock lookup for dashboard combobox */
+router.get('/stock-search', auth, stockSearchLimiter, async (req, res) => {
+  try {
+    const raw = req.query.q;
+    const q = typeof raw === 'string' ? raw.trim().slice(0, 64) : '';
+    if (q.length < 1) {
+      return res.json({ results: [], searchAvailable: !!getApiKey() });
+    }
+    const results = await searchUsStocks(q);
+    return res.json({ results, searchAvailable: !!getApiKey() });
+  } catch (error) {
+    logger.error('GET watchlist stock-search failed:', error);
+    return res.status(500).json({ message: 'Symbol search failed' });
   }
 });
 
@@ -54,6 +91,8 @@ router.delete(
   '/symbols/:symbol',
   auth,
   watchlistLimiter,
+  watchlistDeleteLimiter,
+  requireDeleteConfirmation,
   [param('symbol').isString().trim().isLength({ min: 1, max: 16 })],
   async (req, res) => {
     try {

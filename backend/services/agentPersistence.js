@@ -138,8 +138,80 @@ async function persistAgentAuditEvent({ userId, action, detail }) {
   return null;
 }
 
+/**
+ * Persist Grok dip-insight email generation for audit (§11 speed path).
+ */
+async function persistDipInsightEmailRun({
+  userId,
+  dipFacts,
+  xSnippetCount,
+  situationSummary,
+  fullOutput,
+  runMetadata
+}) {
+  if (!userId) return null;
+  const externalRunId = runMetadata?.runId || null;
+  const providerUsed = runMetadata?.providerUsed ?? null;
+  const fallbackUsed =
+    typeof runMetadata?.fallbackUsed === 'boolean' ? runMetadata.fallbackUsed : null;
+  const prompt = JSON.stringify({
+    type: 'dip_insight_input',
+    snippetCount: xSnippetCount,
+    symbol: dipFacts?.symbol
+  }).slice(0, 8000);
+  const reply = String(situationSummary || '').slice(0, 8000);
+  const output = {
+    ...(fullOutput && typeof fullOutput === 'object' ? fullOutput : {}),
+    dipFacts,
+    xSnippetCount
+  };
+
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const runRes = await client.query(
+      `INSERT INTO agent_runs (
+        user_id, external_run_id, source, prompt, mode, preferences,
+        reply, output, run_metadata, provider_used, fallback_used
+      ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8::jsonb, $9::jsonb, $10, $11)
+      RETURNING id`,
+      [
+        userId,
+        externalRunId,
+        'dip_insight',
+        prompt,
+        'dip_insight_email',
+        null,
+        reply,
+        JSON.stringify(output),
+        runMetadata ? JSON.stringify(runMetadata) : null,
+        providerUsed,
+        fallbackUsed
+      ]
+    );
+    const runId = runRes.rows[0].id;
+    await client.query(
+      `INSERT INTO agent_messages (run_id, seq, role, content) VALUES ($1, 1, 'user', $2)`,
+      [runId, prompt]
+    );
+    await client.query(
+      `INSERT INTO agent_messages (run_id, seq, role, content) VALUES ($1, 2, 'assistant', $2)`,
+      [runId, reply || '(no summary)']
+    );
+    await client.query('COMMIT');
+    return { runId };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.warn(`Dip insight persistence skipped: ${err.message}`);
+    return null;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   persistAgentChatRun,
+  persistDipInsightEmailRun,
   listRecentAgentRuns,
   listRecentAgentAudit,
   persistAgentAuditEvent

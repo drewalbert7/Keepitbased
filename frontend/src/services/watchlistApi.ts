@@ -21,3 +21,22 @@ export async function removeWatchlistSymbol(symbol: string): Promise<WatchlistRe
   );
   return data;
 }
+
+export interface StockSearchHit {
+  ticker: string;
+  name: string;
+  primary_exchange: string;
+}
+
+export interface StockSearchResponse {
+  results: StockSearchHit[];
+  searchAvailable: boolean;
+}
+
+/** Company / ticker search for the dashboard (US stocks via market data API) */
+export async function searchWatchlistStocks(q: string): Promise<StockSearchResponse> {
+  const { data } = await axios.get<StockSearchResponse>('/watchlist/stock-search', {
+    params: { q: q.trim().slice(0, 64) }
+  });
+  return data;
+}

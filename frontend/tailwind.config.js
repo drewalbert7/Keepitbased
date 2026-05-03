@@ -8,16 +8,16 @@ module.exports = {
     extend: {
       colors: {
         kib: {
-          bg: '#030712',
-          surface: '#070d18',
-          card: '#0c1526',
-          raise: '#111f33',
-          line: '#1e3a52',
-          edge: '#2d4a62',
-          fg: '#e8f4f8',
-          muted: '#8da4b8',
-          cyber: '#22d3ee',
-          glow: '#5eead4',
+          bg: '#0d1117',
+          surface: '#010409',
+          card: '#161b22',
+          raise: '#21262d',
+          line: '#30363d',
+          edge: '#484f58',
+          fg: '#e6edf3',
+          muted: '#8b949e',
+          cyber: '#58a6ff',
+          glow: '#79c0ff',
         },
         primary: {
           50: '#f0fdf4',
@@ -54,8 +54,8 @@ module.exports = {
         mono: ['"JetBrains Mono"', '"IBM Plex Mono"', 'ui-monospace', 'monospace'],
       },
       boxShadow: {
-        'terminal': '0 0 24px rgba(34, 211, 238, 0.08), inset 0 1px 0 rgba(34, 211, 238, 0.06)',
-        'terminal-lg': '0 0 40px rgba(34, 211, 238, 0.12), 0 0 80px rgba(0, 200, 5, 0.04)',
+        panel: '0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 24px rgba(0,0,0,0.35)',
+        soft: '0 4px 24px rgba(0, 0, 0, 0.28)',
       },
       animation: {
         'fade-in': 'fadeIn 0.5s ease-in-out',

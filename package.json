@@ -19,7 +19,10 @@
     "deploy": "bash scripts/deploy-production.sh",
     "health:api": "curl -sf http://127.0.0.1:3001/api/health && echo",
     "smoke:opportunity": "bash scripts/smoke-opportunity-agent.sh",
-    "golden:opportunity": "node scripts/runGoldenOpportunities.js"
+    "golden:opportunity": "node scripts/runGoldenOpportunities.js",
+    "golden:dip-insight": "node scripts/runGoldenDipInsight.js",
+    "research:ingest-once": "node scripts/runResearchIngestionOnce.js",
+    "email:test-opportunity": "cd backend && npm run email:test-opportunity"
   },
   "dependencies": {
     "concurrently": "^8.2.2",

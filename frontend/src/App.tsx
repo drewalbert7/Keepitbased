@@ -38,7 +38,7 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 const AppRoutes: React.FC = () => {
   return (
     <Router>
-      <div className="relative min-h-screen bg-kib-bg text-kib-fg kib-mesh-bg">
+      <div className="relative min-h-screen text-kib-fg app-shell">
         <Navigation />
         <main>
           <Routes>
@@ -95,15 +95,17 @@ const AppRoutes: React.FC = () => {
           </Routes>
         </main>
         <Toaster 
-          position="top-right"
+          position="top-center"
+          containerStyle={{ top: 'max(12px, env(safe-area-inset-top))' }}
           toastOptions={{
             duration: 4000,
             style: {
-              background: '#0c1526',
-              color: '#e8f4f8',
-              borderRadius: '12px',
-              border: '1px solid rgba(34, 211, 238, 0.2)',
-              boxShadow: '0 0 28px rgba(34, 211, 238, 0.12), 0 8px 24px rgba(0, 0, 0, 0.4)',
+              background: '#161b22',
+              color: '#e6edf3',
+              borderRadius: '8px',
+              border: '1px solid rgba(240, 246, 252, 0.1)',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
+              maxWidth: 'min(100vw - 24px, 420px)',
             },
             success: {
               iconTheme: {

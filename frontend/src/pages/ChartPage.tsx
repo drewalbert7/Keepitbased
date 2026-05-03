@@ -1,12 +1,27 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { SimpleChart } from '../components/charts/SimpleChart';
 import { StockSearch } from '../components/charts/StockSearch';
 import { getStockHistory, getStockQuote, getStockInfo, getTechnicalData, ChartData, QuoteData, StockInfo, TechnicalData } from '../services/chartService';
 import { useRealTimeQuotes } from '../hooks/useRealTimeQuotes';
 import { toast } from 'react-hot-toast';
 
+/** US-style tickers from deep links (e.g. BRK.B, MSFT). */
+function parseStockSymbolParam(raw: string | null): string | null {
+  const t = raw?.trim().toUpperCase();
+  if (!t) return null;
+  if (/^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(t)) return t;
+  return null;
+}
+
+function initialStockSymbol(): string {
+  if (typeof window === 'undefined') return 'AAPL';
+  return parseStockSymbolParam(new URLSearchParams(window.location.search).get('symbol')) || 'AAPL';
+}
+
 export const ChartPage: React.FC = () => {
-  const [selectedSymbol, setSelectedSymbol] = useState<string>('AAPL');
+  const [searchParams] = useSearchParams();
+  const [selectedSymbol, setSelectedSymbol] = useState<string>(initialStockSymbol);
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [quoteData, setQuoteData] = useState<QuoteData | null>(null);
   const [stockInfo, setStockInfo] = useState<StockInfo | null>(null);
@@ -197,8 +212,14 @@ export const ChartPage: React.FC = () => {
   };
 
   useEffect(() => {
+    const fromUrl = parseStockSymbolParam(searchParams.get('symbol'));
+    if (fromUrl && fromUrl !== selectedSymbol) {
+      setSelectedSymbol(fromUrl);
+      return;
+    }
     loadStockData(selectedSymbol);
-  }, [selectedSymbol]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadStockData closes over period/interval; URL drives symbol only
+  }, [selectedSymbol, searchParams]);
 
   const handleSymbolSelect = useCallback((symbol: string) => {
     setSelectedSymbol(symbol);
@@ -213,10 +234,10 @@ export const ChartPage: React.FC = () => {
   const staleLabel = useMemo(() => `updated ${staleSeconds}s ago`, [staleSeconds]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-950 via-gray-900 to-gray-950 text-white">
+    <div className="min-h-screen app-shell text-kib-fg">
       {/* Header */}
-      <div className="border-b border-gray-800/80 backdrop-blur">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+      <div className="border-b border-white/[0.08] bg-kib-surface/50 backdrop-blur-sm">
+        <div className="mx-auto max-w-[1360px] px-4 py-4 sm:px-6">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-4">
             <div className="space-y-1">
               <h1 className="text-2xl font-bold tracking-tight">Stocks Dashboard</h1>
@@ -287,7 +308,7 @@ export const ChartPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="mx-auto max-w-[1360px] px-4 py-6 sm:px-6">
         <div className="grid grid-cols-1 lg:[grid-template-columns:minmax(0,3fr)_minmax(320px,1fr)] gap-6">
           {/* Main Chart */}
           <div>

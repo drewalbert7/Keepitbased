@@ -5,7 +5,11 @@ import re
 from typing import Any, Dict, List, Optional, Set
 
 from .llm_client import LlmClient
-from .agent_internal_tools import create_user_alert, fetch_user_alerts
+from .agent_internal_tools import (
+    create_user_alert,
+    fetch_research_artifacts,
+    fetch_user_alerts,
+)
 from .market_tools import fetch_stock_history, fetch_stock_quote
 from .opportunity_state import OpportunityState
 
@@ -16,6 +20,13 @@ logger = logging.getLogger(__name__)
 _CRYPTO_HINT = {
     'BTC', 'ETH', 'SOL', 'DOGE', 'XRP', 'ADA', 'AVAX', 'DOT', 'LINK', 'LTC'
 }
+
+# Lightweight headline scan — deterministic; does not claim NLP classification quality.
+_NEGATIVE_HEADLINE_HINT = re.compile(
+    r"lawsuit|subpoena|downgrade|bankruptcy|recall|fraud|probe|layoff|"
+    r"profit\s+warning|trading\s+halt|investigation|indict|criminal|charg(es)?|restat(e|ement)",
+    re.I,
+)
 
 
 def _format_live_price(price: Any, asset_type: str) -> str:
@@ -83,6 +94,40 @@ def format_dashboard_watchlist_digest(ctx: Optional[Any]) -> str:
     return "\n".join(lines)
 
 
+def format_research_artifacts_digest(rc: Optional[Any]) -> str:
+    """Render Node `research_context` (stored Polygon/news rows) for grounded chat context."""
+    if not isinstance(rc, dict):
+        return ""
+    arts = rc.get("artifacts") if isinstance(rc.get("artifacts"), list) else []
+    if not arts:
+        return ""
+    lines = [
+        "**Recent headlines (ingested news)** — context only; verify material facts independently:",
+        "",
+    ]
+    for a in arts[:18]:
+        if not isinstance(a, dict):
+            continue
+        title = str(a.get("title") or "").strip()
+        sym = str(a.get("symbol") or "").upper()
+        src = str(a.get("source") or "").strip()
+        summ = str(a.get("contentSummary") or "").strip()
+        if len(summ) > 220:
+            summ = summ[:217] + "…"
+        row_bits = [f"- **{sym}**"]
+        if src:
+            row_bits.append(f"[{src}]")
+        if title:
+            row_bits.append(title)
+        lines.append(" ".join(row_bits))
+        if summ:
+            lines.append(f"  _{summ}_")
+    lh = rc.get("lookbackHours")
+    if isinstance(lh, (int, float)):
+        lines.extend(["", f"_Lookback: last **{int(lh)}** hour(s) from watchlist-scoped ingest._"])
+    return "\n".join(lines)
+
+
 def _watchlist_row_active(row: Any) -> bool:
     """Treat missing active as on (legacy rows); False / 0 = paused."""
     if not isinstance(row, dict):
@@ -138,6 +183,20 @@ def market_data_loader(state: OpportunityState) -> OpportunityState:
             "coverage": (hist or {}).get("coverage"),
         }
     return {"market_snapshots": market_snapshots}
+
+
+def research_context_loader(state: OpportunityState) -> OpportunityState:
+    """§11 Phase C — headlines from Node `research_artifacts`, scoped to this user's watchlist symbols."""
+    uid = int(state.get("user_id") or 0)
+    syms = list(state.get("symbols") or [])
+    hours = int(os.getenv("RESEARCH_CONTEXT_LOOKBACK_HOURS", "24") or "24")
+    limit = int(os.getenv("RESEARCH_CONTEXT_ARTIFACT_LIMIT", "50") or "50")
+    hours = max(1, min(168, hours))
+    limit = max(1, min(200, limit))
+    if uid <= 0:
+        return {"research_context": {"artifacts": [], "lookbackHours": hours}}
+    data = fetch_research_artifacts(uid, syms, hours=hours, limit=limit)
+    return {"research_context": data}
 
 
 def user_context_loader(state: OpportunityState) -> OpportunityState:
@@ -264,6 +323,52 @@ def context_loader(state: OpportunityState) -> OpportunityState:
     return {"symbols": symbols[:10], "prompt_symbols": prompt_symbols}
 
 
+def _artifacts_for_symbol(rc: Optional[Any], symbol: str) -> List[Dict[str, Any]]:
+    if not isinstance(rc, dict):
+        return []
+    arts = rc.get("artifacts")
+    if not isinstance(arts, list):
+        return []
+    sym_u = str(symbol).upper().strip()
+    return [
+        a
+        for a in arts
+        if isinstance(a, dict) and str(a.get("symbol") or "").upper().strip() == sym_u
+    ]
+
+
+def _research_signals_for_symbol(symbol: str, rc: Optional[Any]) -> Dict[str, Any]:
+    """Derive deterministic headline count / keyword hint / LLM blurb from `research_context`."""
+    items = _artifacts_for_symbol(rc, symbol)
+    neg = False
+    blurbs: List[str] = []
+    for a in items[:10]:
+        title = str(a.get("title") or "").strip()
+        summ = str(a.get("contentSummary") or "").strip()
+        blob = f"{title} {summ}"
+        if _NEGATIVE_HEADLINE_HINT.search(blob):
+            neg = True
+        if title and len(blurbs) < 6:
+            blurbs.append(title[:140])
+    blurbs_txt = " | ".join(blurbs)
+    return {
+        "count": len(items),
+        "negative_headline_hint": neg,
+        "news_blurb": blurbs_txt[:900],
+    }
+
+
+def _risk_flags_from_event_and_news(event_risk: float, sig: Dict[str, Any]) -> List[str]:
+    if sig.get("negative_headline_hint"):
+        return ["news_shock_risk", "volatility_elevated"]
+    count = int(sig.get("count") or 0)
+    if count >= 3:
+        return ["news_shock_risk", "volatility_elevated"]
+    if event_risk < 0.2:
+        return ["normal_volatility"]
+    return ["news_shock_risk", "volatility_elevated"]
+
+
 def opportunity_scout(state: OpportunityState) -> OpportunityState:
     preferences = state.get("preferences", {})
     weights = preferences.get("scoringWeights", {})
@@ -275,9 +380,11 @@ def opportunity_scout(state: OpportunityState) -> OpportunityState:
     top_n = int(preferences.get("topN", 3))
 
     snapshots = state.get("market_snapshots") or {}
+    rc = state.get("research_context") or {}
 
     candidates = []
     for idx, symbol in enumerate(state.get("symbols", [])):
+        sig = _research_signals_for_symbol(symbol, rc)
         snap = snapshots.get(symbol) or {}
         quote = snap.get("quote") if isinstance(snap, dict) else None
         live_boost = 0.0
@@ -287,25 +394,35 @@ def opportunity_scout(state: OpportunityState) -> OpportunityState:
         momentum = max(0.35, 0.78 - idx * 0.04 + live_boost)
         trend = max(0.35, 0.72 - idx * 0.03 + live_boost * 0.5)
         liquidity = 0.75 if symbol in ("AAPL", "MSFT", "NVDA") else 0.62
-        event_risk = min(0.5, 0.12 + idx * 0.04)
+        base_event = min(0.5, 0.12 + idx * 0.04)
+        news_bump = min(0.15, float(sig["count"]) * 0.045)
+        if sig["negative_headline_hint"]:
+            news_bump += 0.1
+        event_risk = min(0.5, base_event + news_bump)
 
         score = (momentum * momentum_w) + (trend * trend_w) + (liquidity * liquidity_w) - (event_risk * risk_w)
         score = max(0.0, min(1.0, score))
         confidence = max(0.0, min(1.0, score - event_risk * 0.08))
 
-        risk_flags = ["normal_volatility"] if event_risk < 0.2 else ["news_shock_risk", "volatility_elevated"]
-        llm_summary = LLM_CLIENT.summarize_candidate(symbol, score, risk_flags)
+        risk_flags = _risk_flags_from_event_and_news(event_risk, sig)
+        news_ctx = sig["news_blurb"] if sig["news_blurb"] else None
+        llm_summary = LLM_CLIENT.summarize_candidate(
+            symbol, score, risk_flags, news_context=news_ctx
+        )
         row = {
             "symbol": symbol,
             "score": round(score, 3),
             "confidence": round(confidence, 3),
             "whyNow": llm_summary.get("whyNow") or f"{symbol} has favorable multi-factor alignment.",
             "riskFlags": risk_flags,
+            "researchHeadlinesInWindow": int(sig["count"]),
             "suggestedLimitBand": {
                 "min": round(100 * (1 - 0.03 - idx * 0.002), 2),
                 "max": round(100 * (1 - 0.015 - idx * 0.002), 2),
             },
         }
+        if sig["negative_headline_hint"]:
+            row["researchNegativeKeywordHint"] = True
         if quote and isinstance(quote.get("price"), (int, float)):
             row["liveQuote"] = {
                 "price": float(quote["price"]),
@@ -396,6 +513,10 @@ def response_formatter(state: OpportunityState) -> OpportunityState:
     wl_digest = format_dashboard_watchlist_digest(state.get("watchlist_context"))
     if wl_digest:
         reply = f"{wl_digest}\n\n---\n\n{reply}"
+
+    research_digest = format_research_artifacts_digest(state.get("research_context"))
+    if research_digest:
+        reply = f"{research_digest}\n\n---\n\n{reply}"
 
     iar = state.get("internal_alert_result")
     out: Dict[str, Any] = {"schemaVersion": "v1", "topCandidates": candidates}

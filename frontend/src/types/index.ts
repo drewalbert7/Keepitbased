@@ -9,6 +9,28 @@ export interface User {
     push: boolean;
     /** In-app toast when deterministic opportunity signals fire (Socket `opportunitySignal`). Default true. */
     opportunityToasts?: boolean;
+    /** §11 fused research+dip digest emails (Phase D). Default false. */
+    researchDigestEmail?: boolean;
+    researchMaxEmailsPerDay?: number;
+    researchQuietHoursLocal?: { startHour: number; endHour: number };
+    timezone?: string;
+    /** Requires backend ENABLE_DIP_INSIGHT_EMAIL; Grok dip briefing vs plain opportunity email. */
+    dipInsightEmail?: boolean;
+    /** Caps suggested tranche % in dip briefing emails (1–50). */
+    agentMaxPositionSizePct?: number;
+    /** Opportunity dip emails; requires email master switch. Default true. */
+    opportunityEmail?: boolean;
+    /** `overreaction_only` sends fewer notifications (overreaction or capitulation tier, not on_sale alone). */
+    opportunityNotifyLevel?: 'all' | 'overreaction_only';
+
+    /** Daily batched Grok email (server flag + Python Grok). */
+    dailyWatchlistDigestEmail?: boolean;
+    /** When true, skip opportunity emails during quiet hours (not toasts). Default true. */
+    opportunityRespectQuietHours?: boolean;
+    /**
+     * When true (default), US stock opportunity toasts/emails only during regular session. Crypto is always 24/7.
+     */
+    opportunityStockMarketHoursOnly?: boolean;
   };
   createdAt: string;
 }

@@ -22,11 +22,19 @@ class AuthService {
     axios.defaults.baseURL = getApiBaseUrl();
     
     // Add request interceptor to include auth token
-    axios.interceptors.request.use((config) => {
+    axios.interceptors.request.use((cfg) => {
       if (this.token) {
-        config.headers.Authorization = `Bearer ${this.token}`;
+        cfg.headers.Authorization = `Bearer ${this.token}`;
       }
-      return config;
+      const method = cfg.method?.toLowerCase();
+      const url = String(cfg.url || '');
+      if (
+        method === 'delete' &&
+        (url.includes('/alerts/') || url.includes('/watchlist/symbols/'))
+      ) {
+        cfg.headers['X-Confirm-Delete'] = '1';
+      }
+      return cfg;
     });
 
     // Add response interceptor to handle auth errors
@@ -87,11 +95,7 @@ class AuthService {
   async updateProfile(userData: {
     firstName?: string;
     lastName?: string;
-    notificationPreferences?: {
-      email: boolean;
-      push: boolean;
-      opportunityToasts?: boolean;
-    };
+    notificationPreferences?: Partial<User['notificationPreferences']>;
   }): Promise<User> {
     const response = await axios.put<User>('/users/profile', userData);
     return response.data;

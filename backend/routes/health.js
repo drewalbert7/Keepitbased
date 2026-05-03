@@ -3,6 +3,7 @@ const router = express.Router();
 const config = require('../config');
 const db = require('../models/database');
 const logger = require('../utils/logger');
+const emailService = require('../services/emailService');
 
 // Basic health check
 router.get('/', (req, res) => {
@@ -103,7 +104,36 @@ router.get('/config', (req, res) => {
     PYTHON_SERVICE_URL: config.PYTHON_SERVICE_URL,
     hasJwtSecret: !!config.JWT_SECRET,
     hasDatabaseUrl: !!config.DATABASE_URL,
-    hasRedisUrl: !!config.REDIS_URL
+    hasRedisUrl: !!config.REDIS_URL,
+    smtpConfigured: emailService.isConfigured(),
+    dipInsightGloballyEnabled:
+      !!config.ENABLE_DIP_INSIGHT_EMAIL && !config.DISABLE_DIP_INSIGHT_EMAIL,
+    researchIngestionEnabled: !!config.ENABLE_RESEARCH_INGESTION,
+    researchNewsCron: config.RESEARCH_NEWS_CRON,
+    marketDataKeyPresent: !!(config.POLYGON_API_KEY || config.MASSIVE_API_KEY),
+    researchFusionLookbackHours: config.RESEARCH_FUSION_LOOKBACK_HOURS,
+    opportunityTriggerMode: config.OPPORTUNITY_TRIGGER_MODE,
+    opportunityOnSaleAtrMult: config.OPPORTUNITY_ON_SALE_ATR_MULT,
+    opportunityOverreactionAtrMult: config.OPPORTUNITY_OVERREACTION_ATR_MULT,
+    opportunityOnSaleDropPct: config.OPPORTUNITY_ON_SALE_DROP_PCT,
+    opportunityOverreactionDropPct: config.OPPORTUNITY_OVERREACTION_DROP_PCT,
+    opportunityVolSpikeMult: config.OPPORTUNITY_VOL_SPIKE_MULT,
+    opportunityDedupeTtlSec: config.OPPORTUNITY_DEDUPE_TTL_SEC,
+    opportunityCapitulationAtr14Mult: config.OPPORTUNITY_CAPITULATION_ATR14_MULT,
+    opportunityCapitulationAtr50Mult: config.OPPORTUNITY_CAPITULATION_ATR50_MULT,
+    opportunityCapitulationFrom52wPct: config.OPPORTUNITY_CAPITULATION_FROM_52W_PCT,
+    opportunityCapitulationFallback52wPct: config.OPPORTUNITY_CAPITULATION_FALLBACK_52W_PCT,
+    opportunityCapitulationMegaCapAthPct: config.OPPORTUNITY_CAPITULATION_MEGA_CAP_ATH_PCT,
+    opportunityMegaCapSymbolCount: Array.isArray(config.OPPORTUNITY_MEGA_CAP_SYMBOLS)
+      ? config.OPPORTUNITY_MEGA_CAP_SYMBOLS.length
+      : 0,
+    opportunityCapitulationDedupeTtlSec: config.OPPORTUNITY_CAPITULATION_DEDUPE_TTL_SEC,
+    opportunityShortTrendFilterEnabled: !!config.OPPORTUNITY_SHORT_TREND_FILTER_ENABLED,
+    opportunityShortTrendSmaDays: config.OPPORTUNITY_SHORT_TREND_SMA_DAYS,
+    opportunityAtrMinPctOfPrice: config.OPPORTUNITY_ATR_MIN_PCT_OF_PRICE,
+    dailyWatchlistDigestEnabled:
+      !!config.ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL && !config.DISABLE_DAILY_WATCHLIST_DIGEST_EMAIL,
+    dailyWatchlistDigestCron: config.DAILY_WATCHLIST_DIGEST_CRON
   };
 
   res.json({

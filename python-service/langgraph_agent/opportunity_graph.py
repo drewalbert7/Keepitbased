@@ -7,6 +7,7 @@ from .opportunity_nodes import (
     market_data_loader,
     opportunity_scout,
     policy_guardrail,
+    research_context_loader,
     response_formatter,
     user_context_loader,
 )
@@ -25,6 +26,7 @@ def build_opportunity_graph():
     graph.add_node("context_loader", context_loader)
     graph.add_node("user_context_loader", user_context_loader)
     graph.add_node("market_data_loader", market_data_loader)
+    graph.add_node("research_context_loader", research_context_loader)
     graph.add_node("opportunity_scout", opportunity_scout)
     graph.add_node("policy_guardrail", policy_guardrail)
     graph.add_node("alert_creator", alert_creator)
@@ -48,6 +50,11 @@ def build_opportunity_graph():
     )
     graph.add_conditional_edges(
         "market_data_loader",
+        lambda state: _route_or_fail(state, "research_context_loader"),
+        {"research_context_loader": "research_context_loader", "response_formatter": "response_formatter"},
+    )
+    graph.add_conditional_edges(
+        "research_context_loader",
         lambda state: _route_or_fail(state, "opportunity_scout"),
         {"opportunity_scout": "opportunity_scout", "response_formatter": "response_formatter"},
     )

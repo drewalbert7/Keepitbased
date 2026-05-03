@@ -2,6 +2,11 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { createChart, IChartApi, ISeriesApi, CandlestickData, HistogramData, LineData, CandlestickSeries, HistogramSeries, LineSeries, PriceScaleMode } from 'lightweight-charts';
 import { CryptoCandle, formatCryptoPrice, formatCryptoVolume } from '../../services/cryptoService';
 import TradingViewTimeline from './TradingViewTimeline';
+import {
+  computeCryptoTechnicalSeries,
+  summarizeCryptoIndicators,
+  type CryptoIndicatorSummary,
+} from './cryptoChartTechnical';
 
 interface CryptoChartProps {
   data: CryptoCandle[];
@@ -15,6 +20,8 @@ interface CryptoChartProps {
   onTimeScaleChange?: (scale: string, interval: string) => void;
   currentTimeScale?: string;
   currentInterval?: string;
+  /** Latest indicator values for sidebar (aligned with chart series). */
+  onIndicatorSummary?: (summary: CryptoIndicatorSummary | null) => void;
 }
 
 export const CryptoChart: React.FC<CryptoChartProps> = ({
@@ -28,7 +35,8 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
   onCrosshairMove,
   onTimeScaleChange,
   currentTimeScale = '1Y',
-  currentInterval = '1d'
+  currentInterval = '1d',
+  onIndicatorSummary,
 }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -351,150 +359,16 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
     }
   }, [showIndicators]);
 
-  // Enhanced technical indicators calculation with more options
-  const technicalData = useMemo(() => {
-    if (!data.length) return { 
-      sma20: [], 
-      sma50: [], 
-      ema12: [], 
-      ema26: [], 
-      macd: { signal: [], histogram: [], macd: [] },
-      rsi: [],
-      bollinger: { upper: [], middle: [], lower: [] }
-    };
+  const technicalData = useMemo(() => computeCryptoTechnicalSeries(data), [data]);
 
-    // Simple Moving Averages
-    const sma20: LineData[] = [];
-    const sma50: LineData[] = [];
-    
-    // Exponential Moving Averages
-    const ema12: LineData[] = [];
-    const ema26: LineData[] = [];
-    
-    // MACD
-    const macdSignal: LineData[] = [];
-    const macdHistogram: LineData[] = [];
-    const macdLine: LineData[] = [];
-    
-    // RSI
-    const rsi: LineData[] = [];
-    
-    // Bollinger Bands
-    const bbUpper: LineData[] = [];
-    const bbMiddle: LineData[] = [];
-    const bbLower: LineData[] = [];
-
-    // Calculate SMA 20
-    for (let i = 19; i < data.length; i++) {
-      const sum = data.slice(i - 19, i + 1).reduce((acc, candle) => acc + candle.close, 0);
-      sma20.push({
-        time: data[i].time as any,
-        value: sum / 20
-      });
+  useEffect(() => {
+    if (!onIndicatorSummary) return;
+    if (!data.length) {
+      onIndicatorSummary(null);
+      return;
     }
-
-    // Calculate SMA 50
-    for (let i = 49; i < data.length; i++) {
-      const sum = data.slice(i - 49, i + 1).reduce((acc, candle) => acc + candle.close, 0);
-      sma50.push({
-        time: data[i].time as any,
-        value: sum / 50
-      });
-    }
-
-    // Calculate EMA 12
-    const ema12Data = calculateEMA(data, 12);
-    ema12Data.forEach((value, index) => {
-      if (index >= 11) {
-        ema12.push({
-          time: data[index].time as any,
-          value
-        });
-      }
-    });
-
-    // Calculate EMA 26
-    const ema26Data = calculateEMA(data, 26);
-    ema26Data.forEach((value, index) => {
-      if (index >= 25) {
-        ema26.push({
-          time: data[index].time as any,
-          value
-        });
-      }
-    });
-
-    // Calculate MACD
-    const minEMAIndex = Math.max(25, 11);
-    for (let i = minEMAIndex; i < data.length; i++) {
-      const macdValue = ema12Data[i] - ema26Data[i];
-      macdLine.push({
-        time: data[i].time as any,
-        value: macdValue
-      });
-    }
-
-    // Calculate MACD Signal (9-period EMA of MACD)
-    const macdSignalData = calculateEMA(macdLine.map(item => item.value), 9);
-    macdSignalData.forEach((value, index) => {
-      if (index >= 8 && macdLine[index]) {
-        macdSignal.push({
-          time: macdLine[index].time,
-          value
-        });
-        macdHistogram.push({
-          time: macdLine[index].time,
-          value: macdLine[index].value - value
-        });
-      }
-    });
-
-    // Calculate RSI (14-period)
-    for (let i = 14; i < data.length; i++) {
-      const rsiValue = calculateRSI(data.slice(i - 14, i + 1));
-      if (rsiValue !== null) {
-        rsi.push({
-          time: data[i].time as any,
-          value: rsiValue
-        });
-      }
-    }
-
-    // Calculate Bollinger Bands (20-period, 2 standard deviations)
-    for (let i = 19; i < data.length; i++) {
-      const period = data.slice(i - 19, i + 1);
-      const sum = period.reduce((acc, candle) => acc + candle.close, 0);
-      const mean = sum / 20;
-      
-      const variance = period.reduce((acc, candle) => acc + Math.pow(candle.close - mean, 2), 0) / 20;
-      const stdDev = Math.sqrt(variance);
-      
-      bbUpper.push({
-        time: data[i].time as any,
-        value: mean + (stdDev * 2)
-      });
-      
-      bbMiddle.push({
-        time: data[i].time as any,
-        value: mean
-      });
-      
-      bbLower.push({
-        time: data[i].time as any,
-        value: mean - (stdDev * 2)
-      });
-    }
-
-    return { 
-      sma20, 
-      sma50, 
-      ema12, 
-      ema26, 
-      macd: { signal: macdSignal, histogram: macdHistogram, macd: macdLine },
-      rsi,
-      bollinger: { upper: bbUpper, middle: bbMiddle, lower: bbLower }
-    };
-  }, [data]);
+    onIndicatorSummary(summarizeCryptoIndicators(technicalData));
+  }, [data, technicalData, onIndicatorSummary]);
 
   // Update chart data
   useEffect(() => {
@@ -586,196 +460,6 @@ export const CryptoChart: React.FC<CryptoChartProps> = ({
       }
     }
   }, [height]);
-
-  // Helper functions for technical indicators
-  const calculateTechnicalIndicators = (data: any[]) => {
-    if (!data.length) return { 
-      sma20: [], 
-      sma50: [], 
-      ema12: [], 
-      ema26: [], 
-      macd: { signal: [], histogram: [], macd: [] },
-      rsi: [],
-      bollinger: { upper: [], middle: [], lower: [] }
-    };
-
-    // Simple Moving Averages
-    const sma20: LineData[] = [];
-    const sma50: LineData[] = [];
-    
-    // Exponential Moving Averages
-    const ema12: LineData[] = [];
-    const ema26: LineData[] = [];
-    
-    // MACD
-    const macdSignal: LineData[] = [];
-    const macdHistogram: LineData[] = [];
-    const macdLine: LineData[] = [];
-    
-    // RSI
-    const rsi: LineData[] = [];
-    
-    // Bollinger Bands
-    const bbUpper: LineData[] = [];
-    const bbMiddle: LineData[] = [];
-    const bbLower: LineData[] = [];
-
-    // Calculate SMA 20
-    for (let i = 19; i < data.length; i++) {
-      const sum = data.slice(i - 19, i + 1).reduce((acc, candle) => acc + candle.close, 0);
-      sma20.push({
-        time: data[i].time as any,
-        value: sum / 20
-      });
-    }
-
-    // Calculate SMA 50
-    for (let i = 49; i < data.length; i++) {
-      const sum = data.slice(i - 49, i + 1).reduce((acc, candle) => acc + candle.close, 0);
-      sma50.push({
-        time: data[i].time as any,
-        value: sum / 50
-      });
-    }
-
-    // Calculate EMA 12
-    const ema12Data = calculateEMA(data, 12);
-    ema12Data.forEach((value, index) => {
-      if (index >= 11) {
-        ema12.push({
-          time: data[index].time as any,
-          value
-        });
-      }
-    });
-
-    // Calculate EMA 26
-    const ema26Data = calculateEMA(data, 26);
-    ema26Data.forEach((value, index) => {
-      if (index >= 25) {
-        ema26.push({
-          time: data[index].time as any,
-          value
-        });
-      }
-    });
-
-    // Calculate MACD
-    const minEMAIndex = Math.max(25, 11);
-    for (let i = minEMAIndex; i < data.length; i++) {
-      const macdValue = ema12Data[i] - ema26Data[i];
-      macdLine.push({
-        time: data[i].time as any,
-        value: macdValue
-      });
-    }
-
-    // Calculate MACD Signal (9-period EMA of MACD)
-    const macdSignalData = calculateEMA(macdLine.map(item => item.value), 9);
-    macdSignalData.forEach((value, index) => {
-      if (index >= 8 && macdLine[index]) {
-        macdSignal.push({
-          time: macdLine[index].time,
-          value
-        });
-        macdHistogram.push({
-          time: macdLine[index].time,
-          value: macdLine[index].value - value
-        });
-      }
-    });
-
-    // Calculate RSI (14-period)
-    for (let i = 14; i < data.length; i++) {
-      const rsiValue = calculateRSI(data.slice(i - 14, i + 1));
-      rsi.push({
-        time: data[i].time as any,
-        value: rsiValue
-      });
-    }
-
-    // Calculate Bollinger Bands (20-period, 2 standard deviations)
-    for (let i = 19; i < data.length; i++) {
-      const periodData = data.slice(i - 19, i + 1);
-      const sum = periodData.reduce((acc, candle) => acc + candle.close, 0);
-      const middle = sum / 20;
-      
-      const variance = periodData.reduce((acc, candle) => acc + Math.pow(candle.close - middle, 2), 0);
-      const stdDev = Math.sqrt(variance / 20);
-      
-      const upper = middle + (stdDev * 2);
-      const lower = middle - (stdDev * 2);
-      
-      bbUpper.push({
-        time: data[i].time as any,
-        value: upper
-      });
-      bbMiddle.push({
-        time: data[i].time as any,
-        value: middle
-      });
-      bbLower.push({
-        time: data[i].time as any,
-        value: lower
-      });
-    }
-
-    return { 
-      sma20, 
-      sma50, 
-      ema12, 
-      ema26, 
-      macd: { signal: macdSignal, histogram: macdHistogram, macd: macdLine },
-      rsi,
-      bollinger: { upper: bbUpper, middle: bbMiddle, lower: bbLower }
-    };
-  };
-
-  const technicalIndicators = calculateTechnicalIndicators(data);
-
-  // Helper functions for technical indicators
-  const calculateEMA = (data: any[], period: number): number[] => {
-    const ema: number[] = [];
-    const multiplier = 2 / (period + 1);
-    
-    // Start with SMA for first value
-    let sum = 0;
-    for (let i = 0; i < period && i < data.length; i++) {
-      sum += data[i].close;
-    }
-    ema[period - 1] = sum / Math.min(period, data.length);
-    
-    // Calculate EMA for remaining values
-    for (let i = period; i < data.length; i++) {
-      ema[i] = (data[i].close - ema[i - 1]) * multiplier + ema[i - 1];
-    }
-    
-    return ema;
-  };
-
-  const calculateRSI = (periodData: any[]): number => {
-    if (periodData.length < 2) return 50;
-    
-    let gains = 0;
-    let losses = 0;
-    
-    for (let i = 1; i < periodData.length; i++) {
-      const change = periodData[i].close - periodData[i - 1].close;
-      if (change > 0) {
-        gains += change;
-      } else {
-        losses += Math.abs(change);
-      }
-    }
-    
-    if (losses === 0) return 100;
-    
-    const avgGain = gains / (periodData.length - 1);
-    const avgLoss = losses / (periodData.length - 1);
-    const rs = avgGain / avgLoss;
-    
-    return 100 - (100 / (1 + rs));
-  };
 
   // Enhanced bar spacing calculation with performance optimization
   const getOptimalBarSpacing = (dataLength: number, interval: string): number => {

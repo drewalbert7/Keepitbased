@@ -21,6 +21,15 @@ cd keepitbased
 sudo ./scripts/setup.sh
 ```
 
+### AI agent, Grok, and email (SES)
+Operational env matrix, dip briefing emails, and troubleshooting: **[docs/RESEARCH_AGENT.md](docs/RESEARCH_AGENT.md)**.
+
+**Smoke tests (require Python service on `PYTHON_SERVICE_URL`):**
+```bash
+npm run golden:opportunity   # LangGraph opportunity scan
+npm run golden:dip-insight  # POST /agent/dip-insight (Grok + x_search)
+```
+
 ## 📁 Project Structure
 
 ```

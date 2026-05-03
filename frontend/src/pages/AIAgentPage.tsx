@@ -3,7 +3,6 @@ import axios from 'axios';
 import { Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import {
-  AgentAuditEvent,
   AgentCandidate,
   AgentMessage,
   AgentPlan,
@@ -11,24 +10,26 @@ import {
   AgentPreferences,
   applyAgentPlan,
   chatWithAgent,
-  fetchAgentAudit,
   fetchAgentWatchlistContext,
-  fetchXPulse,
   inferAlertAssetType,
   type WatchlistContextItem,
-  type WatchlistContextResponse,
-  type XPulseResponse
+  type WatchlistContextResponse
 } from '../services/aiAgentService';
-import { addWatchlistSymbol, removeWatchlistSymbol } from '../services/watchlistApi';
+import { removeWatchlistSymbol } from '../services/watchlistApi';
 import { useSocket } from '../contexts/SocketContext';
 import { chartQuoteToPriceUpdatePayload, mergeWatchlistPriceUpdates } from '../utils/watchlistDerived';
 import { getStockQuote, type QuoteData } from '../services/chartService';
+import { OpportunityPolicyPanel } from '../components/OpportunityPolicyPanel';
+import { ResizablePair } from '../components/ResizablePair';
+import { WatchlistStockSearchInput } from '../components/WatchlistStockSearchInput';
+import { Watchlist52WeekRange } from '../components/Watchlist52WeekRange';
 
 const seedMessages: AgentMessage[] = [
   {
     id: 'm-1',
     role: 'system',
-    content: 'Welcome to your dashboard. Ask the assistant for strategies, watchlist ideas, or risk guardrails.',
+    content:
+      'Welcome to your dashboard. Ask for strategies, watchlist ideas, position sizing, or risk guardrails. If you want dollar-sized allocation ideas, share your total deployable capital and which symbols or signal tiers you mean — answers are educational only.',
     timestamp: new Date().toISOString()
   }
 ];
@@ -37,7 +38,6 @@ export const AIAgentPage: React.FC = () => {
   const [messages, setMessages] = useState<AgentMessage[]>(seedMessages);
   const [input, setInput] = useState('');
   const [isBusy, setIsBusy] = useState(false);
-  const [autoApply, setAutoApply] = useState(false);
   const [currentPlan, setCurrentPlan] = useState<AgentPlan | null>(null);
   const [currentOutput, setCurrentOutput] = useState<AgentOutputV1 | null>(null);
   const [currentRunMetadata, setCurrentRunMetadata] = useState<{
@@ -47,24 +47,10 @@ export const AIAgentPage: React.FC = () => {
     fallbackUsed: boolean;
   } | null>(null);
   const [lastAgentReply, setLastAgentReply] = useState('');
-  const [auditEvents, setAuditEvents] = useState<AgentAuditEvent[]>([]);
-  const [auditLoading, setAuditLoading] = useState(false);
-  const [auditLoaded, setAuditLoaded] = useState(false);
-  const [auditNextBeforeId, setAuditNextBeforeId] = useState<number | null>(null);
-  const [auditHasMore, setAuditHasMore] = useState(false);
-  /** Prefix passed to API (`action` LIKE `prefix%`). */
-  const [auditActionPrefix, setAuditActionPrefix] = useState('');
 
   const [watchlistCtx, setWatchlistCtx] = useState<WatchlistContextResponse | null>(null);
   const [watchlistLoading, setWatchlistLoading] = useState(false);
   const [watchlistError, setWatchlistError] = useState<string | null>(null);
-  const [portfolioUsd, setPortfolioUsd] = useState('');
-
-  const [tickerInput, setTickerInput] = useState('');
-  const [addTickerBusy, setAddTickerBusy] = useState(false);
-
-  const [xPulse, setXPulse] = useState<XPulseResponse | null>(null);
-  const [xPulseLoading, setXPulseLoading] = useState(false);
   const { socket } = useSocket();
 
   type WlSortKey = 'symbol' | 'dayPct' | 'vsBase';
@@ -152,18 +138,6 @@ export const AIAgentPage: React.FC = () => {
     };
   }, [watchlistStockSignature]);
 
-  const loadXPulse = useCallback(async () => {
-    setXPulseLoading(true);
-    try {
-      const data = await fetchXPulse();
-      setXPulse(data);
-    } catch {
-      toast.error('Could not refresh X pulse');
-    } finally {
-      setXPulseLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
     void loadWatchlist();
     /** Reconcile with server (baselines, new rows); live quotes also merge via Socket `priceUpdate`. */
@@ -185,15 +159,6 @@ export const AIAgentPage: React.FC = () => {
       socket.off('priceUpdate', onPrices);
     };
   }, [socket]);
-
-  useEffect(() => {
-    void loadXPulse();
-    const id = window.setInterval(() => void loadXPulse(), 60_000);
-    return () => window.clearInterval(id);
-  }, [loadXPulse]);
-
-  const formatUsd = (n: number) =>
-    new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
 
   const formatQuote = (price: number | null, assetType: string) => {
     if (price == null || Number.isNaN(price)) return '—';
@@ -268,34 +233,6 @@ export const AIAgentPage: React.FC = () => {
     return 'text-slate-300';
   };
 
-  const parsePortfolio = (): number | null => {
-    const raw = portfolioUsd.replace(/[^0-9.]/g, '');
-    const n = Number(raw);
-    if (!Number.isFinite(n) || n <= 0) return null;
-    return n;
-  };
-
-  const handleAddTicker = async () => {
-    const sym = tickerInput.trim();
-    if (!sym || addTickerBusy) return;
-    setAddTickerBusy(true);
-    try {
-      await addWatchlistSymbol(sym);
-      setTickerInput('');
-      toast.success(`${sym.toUpperCase()} added to your watchlist`);
-      await loadWatchlist();
-    } catch (error: unknown) {
-      const msg = axios.isAxiosError(error)
-        ? String(error.response?.data?.message || '') || error.message
-        : error instanceof Error
-          ? error.message
-          : 'Could not add symbol';
-      toast.error(msg);
-    } finally {
-      setAddTickerBusy(false);
-    }
-  };
-
   const handleRemoveTicker = async (symbol: string) => {
     try {
       await removeWatchlistSymbol(symbol);
@@ -329,46 +266,17 @@ export const AIAgentPage: React.FC = () => {
     addMessage('user', prompt);
 
     try {
-      const mode = autoApply ? 'auto_apply_low_risk' : 'recommend_only';
-      const response = await chatWithAgent(prompt, mode, agentPreferences);
+      const response = await chatWithAgent(prompt, 'recommend_only', agentPreferences);
       setCurrentPlan(response.plan);
       setCurrentOutput(response.output);
       setCurrentRunMetadata(response.runMetadata || null);
       setAgentPreferences(response.preferencesUsed);
       setLastAgentReply(response.reply);
       addMessage('agent', response.reply);
-
-      if (autoApply && response.plan.proposedAlert) {
-        try {
-          const applied = await applyAgentPlan(response.plan);
-          addMessage('system', applied.message);
-          toast.success(applied.message);
-        } catch (error: any) {
-          const msg = error?.response?.data?.message || 'Failed to apply alert draft';
-          addMessage('system', `Apply failed: ${msg}`);
-          toast.error(msg);
-        }
-      }
     } catch (error: any) {
       const msg = error?.response?.data?.message || 'Agent request failed';
       addMessage('system', `Agent failed: ${msg}`);
       toast.error(msg);
-    } finally {
-      setIsBusy(false);
-    }
-  };
-
-  const applyLatestPlan = async () => {
-    if (!latestPlan?.proposedAlert) return;
-    try {
-      setIsBusy(true);
-      const response = await applyAgentPlan(latestPlan);
-      toast.success(response.message);
-      addMessage('system', response.message);
-    } catch (error: any) {
-      const msg = error?.response?.data?.message || 'Failed to create alert from plan';
-      toast.error(msg);
-      addMessage('system', `Apply failed: ${msg}`);
     } finally {
       setIsBusy(false);
     }
@@ -404,208 +312,76 @@ export const AIAgentPage: React.FC = () => {
   const showWatchlistSetupHint =
     lastAgentReply.includes('AGENT_INTERNAL_SECRET') || lastAgentReply.includes('Watchlist-only mode');
 
-  const loadAuditFirstPage = async () => {
-    setAuditLoading(true);
-    try {
-      const page = await fetchAgentAudit({
-        limit: 25,
-        action: auditActionPrefix || undefined
-      });
-      setAuditEvents(page.events);
-      setAuditNextBeforeId(page.nextBeforeId);
-      setAuditHasMore(page.hasMore);
-      setAuditLoaded(true);
-    } catch {
-      toast.error('Could not load policy audit log');
-    } finally {
-      setAuditLoading(false);
-    }
-  };
-
-  const loadAuditMore = async () => {
-    if (auditNextBeforeId == null || auditLoading) return;
-    setAuditLoading(true);
-    try {
-      const page = await fetchAgentAudit({
-        limit: 25,
-        beforeId: auditNextBeforeId,
-        action: auditActionPrefix || undefined
-      });
-      setAuditEvents((prev) => [...prev, ...page.events]);
-      setAuditNextBeforeId(page.nextBeforeId);
-      setAuditHasMore(page.hasMore);
-    } catch {
-      toast.error('Could not load more audit entries');
-    } finally {
-      setAuditLoading(false);
-    }
-  };
-
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-kib-fg">Dashboard</h1>
-        <p className="text-kib-muted mt-2 max-w-3xl">
-          Your home base: chat with the AI assistant, then review your watchlist, sizing hints, and opportunity output
-          in one place.
+    <div className="mx-auto max-w-[1360px] px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+      <div className="mb-6 sm:mb-8">
+        <h1 className="text-2xl font-semibold tracking-tight text-kib-fg sm:text-3xl">Dashboard</h1>
+        <p className="mt-2 max-w-2xl text-sm text-kib-muted sm:text-base">
+          Watchlist and alert policy first — then chat with the assistant and review ranked opportunities.
         </p>
       </div>
 
       {showWatchlistSetupHint && (
-        <div className="mb-6 rounded-xl border border-amber-500/35 bg-amber-950/30 px-4 py-3 text-sm text-amber-100">
-          <p className="font-medium font-mono">Watchlist grounding needs configuration</p>
-          <p className="mt-1 text-amber-200/90">
-            Prefer setting <code className="rounded bg-kib-bg px-1 border border-amber-500/30">AGENT_INTERNAL_SECRET</code> on{' '}
-            Node and Python for full internal alerting. The agent still receives your dashboard watchlist from this session;
-            verify <code className="rounded bg-kib-bg px-1 border border-amber-500/30">NODE_BACKEND_URL</code> reaches Node
-            and you have active symbols — or disable <strong>Watchlist only</strong> for a broader universe.
+        <div className="mb-6 rounded-lg border border-amber-500/25 bg-amber-950/20 px-4 py-3 text-sm text-amber-100/95">
+          <p className="font-medium">Watchlist grounding needs configuration</p>
+          <p className="mt-1 text-amber-200/85">
+            Set <code className="rounded bg-black/30 px-1.5 py-0.5 font-mono text-[13px]">AGENT_INTERNAL_SECRET</code> on Node
+            and Python for full internal alerting. Verify{' '}
+            <code className="rounded bg-black/30 px-1.5 py-0.5 font-mono text-[13px]">NODE_BACKEND_URL</code> reaches the API
+            and you have active symbols.
           </p>
           <p className="mt-2">
-            <Link to="/opportunity-signals" className="font-medium text-kib-cyber underline">
+            <Link to="/opportunity-signals" className="font-medium text-kib-cyber underline-offset-2 hover:underline">
               Open signals inbox
             </Link>
           </p>
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        <div className="lg:col-span-8 flex flex-col gap-6">
-          <div className="card p-0 overflow-hidden rounded-xl shadow-md ring-1 ring-teal-500/10">
-          <div className="px-4 py-3 border-b border-kib-line bg-gradient-to-r from-kib-surface to-kib-card flex items-center justify-between">
-            <h2 className="font-semibold font-mono text-kib-fg">AI assistant</h2>
-            <span className={`text-xs font-mono px-2 py-1 rounded border ${isBusy ? 'border-amber-500/40 text-amber-200 bg-amber-950/50' : 'border-emerald-500/35 text-emerald-200 bg-emerald-950/40'}`}>
-              {isBusy ? 'Processing' : 'Ready'}
-            </span>
-          </div>
-
-          <div className="h-[480px] overflow-y-auto p-4 space-y-3 bg-kib-card">
-            {messages.map((message) => (
-              <div key={message.id} className={`max-w-[90%] ${message.role === 'user' ? 'ml-auto' : ''}`}>
-                <div
-                  className={`rounded-xl px-4 py-3 text-sm whitespace-pre-wrap ${
-                    message.role === 'user'
-                      ? 'bg-cyan-600 text-white border border-cyan-400/30'
-                      : message.role === 'agent'
-                        ? 'bg-kib-raise border border-kib-line text-kib-fg'
-                        : 'bg-amber-950/60 text-amber-100 border border-amber-500/25'
-                  }`}
-                >
-                  {message.content}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="p-4 border-t border-kib-line bg-kib-bg">
-            <div className="flex gap-2 mb-2">
-              <button
-                onClick={() => setInput('Create a stock alert strategy for AAPL with 4% and 9% dip thresholds')}
-                className="text-xs px-2 py-1 rounded bg-kib-card border border-kib-line hover:bg-slate-800/80"
-              >
-                AAPL Strategy
-              </button>
-              <button
-                onClick={() => setInput('Monitor TSLA volatility and suggest safer thresholds')}
-                className="text-xs px-2 py-1 rounded bg-kib-card border border-kib-line hover:bg-slate-800/80"
-              >
-                TSLA Volatility Plan
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setInput(
-                    'Analyze my active dashboard watchlist: rank symbols with your scoring weights, use live quotes, and summarize the strongest dip-band opportunities vs baselines.'
-                  )
-                }
-                className="text-xs px-2 py-1 rounded bg-kib-card border border-emerald-500/25 hover:bg-emerald-950/40"
-              >
-                Analyze watchlist
-              </button>
-            </div>
-            <div className="flex gap-3">
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void handleSend();
-                }}
-                placeholder="Tell the agent what alert strategy to build..."
-                className="flex-1 input-field"
-              />
-              <button onClick={handleSend} disabled={isBusy || !input.trim()} className="btn-primary disabled:opacity-50">
-                Send
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <section
-          id="watchlist"
-          className="rounded-xl border border-teal-500/20 bg-gradient-to-b from-kib-card via-kib-surface/90 to-kib-card p-5 sm:p-6 shadow-terminal ring-1 ring-teal-500/15"
-        >
-            <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-              <div>
-                <h2 className="text-xl font-semibold text-kib-fg tracking-tight">Watchlist & sizing</h2>
-                <p className="text-sm text-kib-muted mt-1 max-w-2xl">
-                  Watchlist-style table: last price, day move, baseline and dip-band context — sizing uses{' '}
-                  <strong>Max position size %</strong> in the sidebar.
+      <div className="flex flex-col gap-8">
+          <section id="watchlist" className="scroll-mt-20">
+            <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="text-lg font-semibold tracking-tight text-kib-fg sm:text-xl">Watchlist</h2>
+                <p className="mt-1 max-w-2xl text-sm text-kib-muted">
+                  Live quotes, baselines, and dip-band sizing (%). Ask the assistant for dollar allocations using your
+                  deployable capital when needed.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => void loadWatchlist()}
                 disabled={watchlistLoading}
-                className="btn-secondary text-xs py-1.5 px-3 whitespace-nowrap disabled:opacity-50"
+                className="btn-secondary whitespace-nowrap px-3 py-1.5 text-xs disabled:opacity-50"
               >
                 {watchlistLoading ? 'Refreshing…' : 'Refresh'}
               </button>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3 sm:items-end mb-5 pb-5 border-b border-teal-100/80">
-              <label className="flex-1 block text-sm font-medium text-slate-300">
-                Stock ticker
-                <div className="flex gap-2 mt-1.5">
-                  <input
-                    type="text"
-                    autoCapitalize="characters"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    value={tickerInput}
-                    onChange={(e) => setTickerInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') void handleAddTicker();
-                    }}
-                    placeholder="e.g. AAPL or BRK.B"
-                    className="input-field flex-1 font-mono text-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void handleAddTicker()}
-                    disabled={addTickerBusy || !tickerInput.trim()}
-                    className="btn-primary whitespace-nowrap px-5 disabled:opacity-50"
-                  >
-                    {addTickerBusy ? 'Adding…' : 'Add'}
-                  </button>
-                </div>
+            <div className="flex flex-col gap-6">
+            <ResizablePair
+              storageKey="kib-dashboard-watch-policy-split"
+              defaultPct={56}
+              minLeftPx={300}
+              minRightPx={260}
+              breakpoint="lg"
+              left={
+            <div className="min-w-0 space-y-5 rounded-lg border border-white/[0.08] bg-kib-card p-4 sm:p-5">
+            <div className="mb-5 flex flex-col gap-3 border-b border-white/[0.06] pb-5 sm:flex-row sm:items-end">
+              <label className="flex-1 block text-sm font-medium text-slate-300" htmlFor="watchlist-stock-search-input">
+                Add US stock
+                <WatchlistStockSearchInput
+                  onSymbolAdded={() => void loadWatchlist()}
+                  disabled={watchlistLoading}
+                />
               </label>
               <p className="text-xs text-slate-500 sm:max-w-xs sm:pb-1">
-                Stock rows use the same <strong>Charts</strong> quote API as the Stock Charts page (polled here about
-                every 10s). Server Redis/socket snapshots still merge in when available. Snapshot data only — not broker
-                depth.
+                Search by company name or ticker; only verified listings can be added. Quotes match the{' '}
+                <strong>Charts</strong> API (polled ~10s here). Redis/socket snapshots merge when available — snapshot
+                data only, not broker depth.
               </p>
             </div>
 
-            <label className="block text-xs text-kib-muted mb-2">
-              Optional portfolio value (USD) for dollar hints
-              <input
-                type="text"
-                inputMode="decimal"
-                placeholder="e.g. 50000"
-                value={portfolioUsd}
-                onChange={(e) => setPortfolioUsd(e.target.value)}
-                className="input-field mt-1 w-full text-sm"
-              />
-            </label>
             {watchlistError && <p className="text-xs text-red-600 mb-2">{watchlistError}</p>}
             {!watchlistCtx?.items.length && !watchlistLoading && (
               <p className="text-sm text-kib-muted">
@@ -615,11 +391,11 @@ export const AIAgentPage: React.FC = () => {
             {watchlistCtx && watchlistCtx.items.length > 0 && (
               <>
                 <p className="text-[11px] text-slate-500 mb-3">{watchlistCtx.policyNote}</p>
-                <div className="overflow-x-auto rounded-xl border border-kib-line bg-kib-card shadow-sm ring-1 ring-slate-800">
-                  <div className="max-h-[min(560px,62vh)] overflow-y-auto">
-                    <table className="min-w-[1100px] w-full text-sm">
-                      <thead className="sticky top-0 z-10 bg-kib-surface/95 backdrop-blur border-b border-kib-line">
-                        <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-kib-muted">
+                <div className="overflow-x-auto rounded-lg border border-white/[0.06] bg-kib-surface">
+                  <div className="max-h-[min(520px,65vh)] overflow-y-auto overscroll-x-contain">
+                    <table className="w-full min-w-[1240px] text-sm">
+                      <thead className="sticky top-0 z-10 border-b border-white/[0.06] bg-kib-surface/95 backdrop-blur-sm">
+                        <tr className="text-left text-[11px] font-medium uppercase tracking-wide text-kib-muted">
                           <th className="px-3 py-3 pl-4">
                             <button
                               type="button"
@@ -641,6 +417,7 @@ export const AIAgentPage: React.FC = () => {
                           </th>
                           <th className="px-3 py-3 text-right tabular-nums hidden lg:table-cell">Volume</th>
                           <th className="px-3 py-3 text-right tabular-nums hidden xl:table-cell">Day range</th>
+                          <th className="px-3 py-3 hidden lg:table-cell min-w-[140px]">52W range</th>
                           <th className="px-3 py-3 text-right tabular-nums hidden sm:table-cell">Baseline</th>
                           <th className="px-3 py-3 text-right tabular-nums">
                             <button
@@ -657,16 +434,13 @@ export const AIAgentPage: React.FC = () => {
                           <th className="px-3 py-3 w-14 pr-4" aria-label="Remove" />
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-800">
+                      <tbody className="divide-y divide-white/[0.06]">
                         {sortedWatchlistItems.map((row) => {
-                          const port = parsePortfolio();
                           const pct = row.sizing.suggestedPortfolioPct;
-                          const dollarHint =
-                            port != null && pct > 0 ? formatUsd((pct / 100) * port) : null;
                           return (
                             <tr
                               key={row.alertId}
-                              className={`hover:bg-kib-raise/80 transition-colors ${
+                              className={`transition-colors hover:bg-white/[0.03] ${
                                 row.active ? '' : 'opacity-80'
                               }`}
                             >
@@ -674,14 +448,20 @@ export const AIAgentPage: React.FC = () => {
                                 <div className="flex flex-col gap-0.5">
                                   {row.assetType === 'stock' ? (
                                     <Link
-                                      to="/charts"
+                                      to={`/charts?symbol=${encodeURIComponent(row.symbol)}`}
                                       className="font-semibold font-mono text-kib-fg hover:text-kib-cyber w-fit"
-                                      title="Open stock charts"
+                                      title={`Open chart for ${row.symbol}`}
                                     >
                                       {row.symbol}
                                     </Link>
                                   ) : (
-                                    <span className="font-semibold font-mono text-kib-fg">{row.symbol}</span>
+                                    <Link
+                                      to={`/crypto?symbol=${encodeURIComponent(row.symbol)}`}
+                                      className="font-semibold font-mono text-kib-fg hover:text-kib-cyber w-fit"
+                                      title={`Open crypto chart for ${row.symbol}`}
+                                    >
+                                      {row.symbol}
+                                    </Link>
                                   )}
                                   {!row.active && (
                                     <span className="text-[10px] uppercase tracking-wide text-amber-500">paused</span>
@@ -719,6 +499,14 @@ export const AIAgentPage: React.FC = () => {
                                   '—'
                                 )}
                               </td>
+                              <td className="px-3 py-2.5 hidden lg:table-cell align-top">
+                                <Watchlist52WeekRange
+                                  assetType={row.assetType}
+                                  currentPrice={row.currentPrice}
+                                  week52High={row.week52High}
+                                  week52Low={row.week52Low}
+                                />
+                              </td>
                               <td className="px-3 py-2.5 text-right tabular-nums text-slate-300 hidden sm:table-cell align-top">
                                 {formatQuote(row.baselinePrice, row.assetType)}
                               </td>
@@ -740,13 +528,10 @@ export const AIAgentPage: React.FC = () => {
                                 className="px-3 py-2.5 text-xs text-slate-300 hidden lg:table-cell align-top max-w-[180px]"
                                 title={row.sizing.rationale}
                               >
-                                <span className="font-medium text-teal-300">{row.sizing.tierLabel}</span>
+                                <span className="font-medium text-kib-cyber/90">{row.sizing.tierLabel}</span>
                               </td>
                               <td className="px-3 py-2.5 text-right tabular-nums align-top">
                                 <div className="font-medium text-kib-fg">{pct}%</div>
-                                {dollarHint && (
-                                  <div className="text-[10px] text-slate-500">{dollarHint}</div>
-                                )}
                               </td>
                               <td className="px-3 py-2.5 pr-4 text-right align-top">
                                 <button
@@ -769,184 +554,157 @@ export const AIAgentPage: React.FC = () => {
                 </p>
               </>
             )}
-            <p className="mt-3 text-[11px] text-slate-500">
-              Educational only — not investment advice. Verify trades with your own criteria.
-            </p>
-        </section>
-
-        </div>
-
-        <aside className="lg:col-span-4 space-y-6">
-          <div className="card border-kib-line rounded-xl shadow-sm ring-1 ring-teal-500/10">
-            <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
-              <div>
-                <h3 className="text-lg font-semibold text-kib-fg">Investor pulse (X)</h3>
-                <p className="text-xs text-kib-muted mt-1">
-                  Live posts from accounts you configure server-side, plus cashtag buzz across those posts.
+              <p className="mt-3 border-t border-white/[0.06] pt-3 text-[11px] leading-relaxed text-kib-muted">
+                Educational only — not investment advice.
+              </p>
+            </div>
+              }
+              right={
+            <div className="flex max-h-none flex-col overflow-hidden rounded-lg border border-white/[0.08] bg-kib-card shadow-soft lg:sticky lg:top-20 lg:max-h-[min(92vh,900px)] lg:overflow-y-auto">
+              <div className="shrink-0 border-b border-white/[0.06] bg-kib-surface/90 px-4 py-3">
+                <h3 className="text-sm font-semibold text-kib-fg">Alert policy &amp; customization</h3>
+                <p className="mt-1 text-[11px] leading-snug text-kib-muted">
+                  How opportunity signals fire and how thresholds are tuned globally (<code className="rounded bg-black/25 px-1 font-mono text-[10px]">OPPORTUNITY_*</code> on the API host).
                 </p>
               </div>
+              <OpportunityPolicyPanel embedInPanel />
+            </div>
+              }
+            />
+
+            <div className="rounded-lg border border-white/[0.08] bg-kib-card">
+              <div className="border-b border-white/[0.06] bg-kib-surface/90 px-4 py-3 sm:px-5">
+                <h3 className="text-sm font-semibold text-kib-fg sm:text-base">Latest plan</h3>
+                <p className="mt-1 text-[11px] text-kib-muted">
+                  From your last assistant reply that proposed alert thresholds.
+                </p>
+              </div>
+              <div className="p-4 sm:p-5">
+                {latestPlan?.proposedAlert ? (
+                  <div className="space-y-2 text-sm text-slate-300">
+                    <p>
+                      <span className="font-medium">Symbol:</span> {latestPlan.proposedAlert.symbol}
+                    </p>
+                    <p>
+                      <span className="font-medium">Asset:</span> {latestPlan.proposedAlert.assetType}
+                    </p>
+                    <p>
+                      <span className="font-medium">Thresholds:</span>{' '}
+                      {latestPlan.proposedAlert.smallThreshold}% / {latestPlan.proposedAlert.mediumThreshold}% /{' '}
+                      {latestPlan.proposedAlert.largeThreshold}%
+                    </p>
+                    <p className="text-kib-muted">{latestPlan.summary}</p>
+                    <ul className="list-disc pl-4 text-kib-muted">
+                      {latestPlan.riskNotes.map((note) => (
+                        <li key={note}>{note}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <p className="text-sm text-kib-muted">No plan yet. Send a prompt to generate one.</p>
+                )}
+              </div>
+            </div>
+            </div>
+          </section>
+
+          <div className="overflow-hidden rounded-lg border border-white/[0.08] bg-kib-card">
+          <div className="flex items-center justify-between border-b border-white/[0.06] bg-kib-surface px-4 py-3">
+            <h2 className="text-sm font-semibold text-kib-fg">Assistant</h2>
+            <span
+              className={`rounded-md px-2 py-0.5 text-xs font-medium ${
+                isBusy
+                  ? 'bg-amber-500/15 text-amber-200'
+                  : 'bg-white/[0.06] text-kib-muted'
+              }`}
+            >
+              {isBusy ? 'Working…' : 'Ready'}
+            </span>
+          </div>
+
+          <div className="min-h-[min(45vh,320px)] h-[min(45vh,380px)] overflow-y-auto bg-kib-card p-3 sm:min-h-[380px] sm:h-[440px] sm:p-4">
+            <div className="space-y-3">
+            {messages.map((message) => (
+              <div key={message.id} className={`max-w-[min(100%,520px)] ${message.role === 'user' ? 'ml-auto' : ''}`}>
+                <div
+                  className={`rounded-lg px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap sm:px-4 sm:py-3 ${
+                    message.role === 'user'
+                      ? 'bg-[#388bfd] text-white'
+                      : message.role === 'agent'
+                        ? 'border border-white/[0.06] bg-kib-raise text-kib-fg'
+                        : 'border border-amber-500/20 bg-amber-950/25 text-amber-100/95'
+                  }`}
+                >
+                  {message.content}
+                </div>
+              </div>
+            ))}
+            </div>
+          </div>
+
+          <div className="border-t border-white/[0.06] bg-kib-bg p-3 sm:p-4">
+            <div className="mb-3 flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => void loadXPulse()}
-                disabled={xPulseLoading}
-                className="btn-secondary text-xs py-1.5 px-3 whitespace-nowrap disabled:opacity-50"
+                onClick={() => setInput('Create a stock alert strategy for AAPL with 4% and 9% dip thresholds')}
+                className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-kib-fg hover:bg-white/[0.07]"
               >
-                {xPulseLoading ? 'Loading…' : 'Refresh'}
+                AAPL strategy
+              </button>
+              <button
+                type="button"
+                onClick={() => setInput('Monitor TSLA volatility and suggest safer thresholds')}
+                className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-kib-fg hover:bg-white/[0.07]"
+              >
+                TSLA volatility
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setInput(
+                    'Analyze my active dashboard watchlist: rank symbols with your scoring weights, use live quotes, and summarize the strongest dip-band opportunities vs baselines.'
+                  )
+                }
+                className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-kib-fg hover:bg-white/[0.07]"
+              >
+                Analyze watchlist
               </button>
             </div>
-            {xPulse?.warning && (
-              <div className="mb-3 rounded-lg bg-kib-raise border border-kib-line px-3 py-2 text-xs text-slate-300">
-                {xPulse.warning}
-              </div>
-            )}
-            {xPulse?.configured && xPulse.accounts.length > 0 && (
-              <p className="text-[11px] text-slate-500 mb-2">
-                Monitoring {xPulse.accounts.map((a) => `@${a.username || a.id}`).join(', ')}
-              </p>
-            )}
-            {xPulse && xPulse.tickerBuzz.length > 0 && (
-              <div className="mb-3">
-                <p className="text-xs font-semibold text-slate-300 mb-1">Cashtag attention (this fetch)</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {xPulse.tickerBuzz.map((b) => (
-                    <span
-                      key={b.symbol}
-                      className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-800"
-                    >
-                      ${b.symbol}
-                      <span className="ml-1 text-slate-500">×{b.mentions}</span>
-                    </span>
-                  ))}
-                </div>
-                <p className="text-[10px] text-slate-500 mt-1">
-                  Mentions are not buy signals — cross-check fundamentals and your rules.
-                </p>
-              </div>
-            )}
-            <div className="max-h-[min(280px,40vh)] overflow-y-auto space-y-2 border-t border-slate-800 pt-3">
-              {xPulse && xPulse.tweets.length === 0 && !xPulseLoading && (
-                <p className="text-xs text-kib-muted">No posts in this window — check API limits or account IDs.</p>
-              )}
-              {xPulse?.tweets.map((tw) => (
-                <article key={tw.id} className="text-xs border-b border-slate-800 pb-2 last:border-0">
-                  <div className="flex justify-between gap-2 text-slate-500">
-                    <span>
-                      @{tw.monitorUsername || tw.authorUsername || 'user'}{' '}
-                      <span className="text-slate-500">· {tw.monitorLabel}</span>
-                    </span>
-                    <time dateTime={tw.createdAt}>{new Date(tw.createdAt).toLocaleString()}</time>
-                  </div>
-                  <p className="text-kib-fg mt-1 whitespace-pre-wrap">{tw.text}</p>
-                  {tw.cashtags.length > 0 && (
-                    <p className="text-[10px] text-teal-700 mt-1">{tw.cashtags.map((c) => `$${c}`).join(' ')}</p>
-                  )}
-                </article>
-              ))}
-            </div>
-          </div>
-
-          <div className="card">
-            <h3 className="text-lg font-semibold text-kib-fg mb-3">Agent Controls</h3>
-            <div className="space-y-3 text-sm">
-              <label className="block">
-                <span className="text-slate-300">Top candidates</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={10}
-                  value={agentPreferences.topN}
-                  onChange={(e) => setAgentPreferences((prev) => ({ ...prev, topN: Number(e.target.value) }))}
-                  className="input-field mt-1 w-full"
-                />
-              </label>
-              <label className="block">
-                <span className="text-slate-300">Confidence floor (0-1)</span>
-                <input
-                  type="number"
-                  step={0.01}
-                  min={0.1}
-                  max={0.95}
-                  value={agentPreferences.confidenceFloor}
-                  onChange={(e) => setAgentPreferences((prev) => ({ ...prev, confidenceFloor: Number(e.target.value) }))}
-                  className="input-field mt-1 w-full"
-                />
-              </label>
-              <label className="block">
-                <span className="text-slate-300">Max position size %</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={50}
-                  value={agentPreferences.maxPositionSizePct}
-                  onChange={(e) => setAgentPreferences((prev) => ({ ...prev, maxPositionSizePct: Number(e.target.value) }))}
-                  className="input-field mt-1 w-full"
-                />
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={agentPreferences.watchlistOnly}
-                  onChange={(e) => setAgentPreferences((prev) => ({ ...prev, watchlistOnly: e.target.checked }))}
-                />
-                Watchlist only
-              </label>
-            </div>
-          </div>
-
-          <div className="card">
-            <h3 className="text-lg font-semibold text-kib-fg mb-3">Execution Controls</h3>
-            <label className="flex items-center gap-2 text-sm text-slate-300 mb-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch sm:gap-3">
               <input
-                type="checkbox"
-                checked={autoApply}
-                onChange={(e) => setAutoApply(e.target.checked)}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void handleSend();
+                }}
+                placeholder="e.g. How much should I allocate to AAPL with $50k deployable given today’s signal tier?"
+                className="input-field min-h-[44px] flex-1 sm:min-h-0"
               />
-              Auto-apply alert drafts after agent reply
-            </label>
-            <p className="text-xs text-slate-500 mb-2">
-              Creates or updates the draft symbol using 5% / 10% / 15% thresholds (same as &quot;Apply&quot; on a
-              candidate card).
-            </p>
-            <button
-              onClick={applyLatestPlan}
-              disabled={isBusy || !latestPlan?.proposedAlert}
-              className="w-full btn-secondary disabled:opacity-50"
-            >
-              Apply latest draft to alerts
-            </button>
+              <button
+                type="button"
+                onClick={handleSend}
+                disabled={isBusy || !input.trim()}
+                className="btn-primary shrink-0 disabled:opacity-50 sm:min-w-[88px]"
+              >
+                Send
+              </button>
+            </div>
           </div>
+        </div>
 
+          <ResizablePair
+            storageKey="kib-dashboard-opps-meta-split"
+            defaultPct={52}
+            minLeftPx={280}
+            minRightPx={220}
+            breakpoint="md"
+            left={
           <div className="card">
-            <h3 className="text-lg font-semibold text-kib-fg mb-3">Latest Plan</h3>
-            {latestPlan?.proposedAlert ? (
-              <div className="text-sm text-slate-300 space-y-2">
-                <p><span className="font-medium">Symbol:</span> {latestPlan.proposedAlert.symbol}</p>
-                <p><span className="font-medium">Asset:</span> {latestPlan.proposedAlert.assetType}</p>
-                <p>
-                  <span className="font-medium">Thresholds:</span>{' '}
-                  {latestPlan.proposedAlert.smallThreshold}% / {latestPlan.proposedAlert.mediumThreshold}% / {latestPlan.proposedAlert.largeThreshold}%
-                </p>
-                <p className="text-kib-muted">{latestPlan.summary}</p>
-                <ul className="list-disc pl-4 text-kib-muted">
-                  {latestPlan.riskNotes.map((note) => (
-                    <li key={note}>{note}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : (
-              <p className="text-sm text-kib-muted">No plan yet. Send a prompt to generate one.</p>
-            )}
-          </div>
-        </aside>
-      </div>
-
-      <div className="mt-10 grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="card rounded-xl shadow-sm ring-1 ring-teal-500/10">
-            <h3 className="text-lg font-semibold text-kib-fg mb-3">Top opportunities</h3>
+            <h3 className="mb-3 text-base font-semibold text-kib-fg sm:text-lg">Top opportunities</h3>
             {currentOutput?.topCandidates?.length ? (
               <div className="space-y-3 text-sm text-slate-300">
                 {currentOutput.topCandidates.map((candidate) => (
-                  <div key={candidate.symbol} className="rounded-lg border border-kib-line p-3 space-y-2 bg-kib-card">
+                  <div key={candidate.symbol} className="space-y-2 rounded-lg border border-white/[0.06] bg-kib-surface p-3">
                     <p><span className="font-medium">Symbol:</span> {candidate.symbol}</p>
                     {candidate.liveQuote && (
                       <p className="text-kib-muted">
@@ -976,7 +734,7 @@ export const AIAgentPage: React.FC = () => {
                       type="button"
                       onClick={() => applyCandidateAsAlert(candidate)}
                       disabled={isBusy}
-                      className="mt-1 w-full btn-primary text-xs py-2 disabled:opacity-50"
+                      className="mt-1 w-full btn-primary py-2 text-xs disabled:opacity-50"
                     >
                       Apply 5% / 10% / 15% alert for {candidate.symbol}
                     </button>
@@ -987,11 +745,12 @@ export const AIAgentPage: React.FC = () => {
               <p className="text-sm text-kib-muted">No opportunities yet. Send a prompt to generate ranked candidates.</p>
             )}
           </div>
-
-          <div className="card rounded-xl shadow-sm ring-1 ring-teal-500/10">
-            <h3 className="text-lg font-semibold text-kib-fg mb-3">Run metadata</h3>
+            }
+            right={
+          <div className="card">
+            <h3 className="mb-3 text-base font-semibold text-kib-fg sm:text-lg">Run metadata</h3>
             {currentRunMetadata ? (
-              <div className="text-sm text-slate-300 space-y-1">
+              <div className="space-y-1 text-sm text-slate-300">
                 <p><span className="font-medium">Run ID:</span> {currentRunMetadata.runId}</p>
                 <p><span className="font-medium">Provider:</span> {currentRunMetadata.providerUsed}</p>
                 <p><span className="font-medium">Fallback Used:</span> {currentRunMetadata.fallbackUsed ? 'Yes' : 'No'}</p>
@@ -1002,92 +761,9 @@ export const AIAgentPage: React.FC = () => {
               <p className="text-sm text-kib-muted">No run metadata yet.</p>
             )}
           </div>
-      </div>
+            }
+          />
 
-      <div className="mt-6 card rounded-xl shadow-sm ring-1 ring-teal-500/10 p-5 sm:p-6">
-            <div className="flex flex-col gap-3 mb-3">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <h3 className="text-lg font-semibold text-kib-fg">Policy audit</h3>
-                  <p className="text-xs text-kib-muted mt-1">
-                    Filter by action prefix, paginate with <strong>Load more</strong>. Match{' '}
-                    <code className="rounded bg-slate-800/80 px-1">agentRunId</code> to Run ID.
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <label className="text-xs text-kib-muted flex items-center gap-1">
-                    Filter
-                    <select
-                      value={auditActionPrefix}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setAuditActionPrefix(v);
-                        setAuditEvents([]);
-                        setAuditNextBeforeId(null);
-                        setAuditHasMore(false);
-                        setAuditLoaded(false);
-                      }}
-                      className="input-field text-xs py-1 max-w-[180px]"
-                    >
-                      <option value="">All actions</option>
-                      <option value="agent_apply">Agent apply…</option>
-                      <option value="internal">Internal API…</option>
-                      <option value="user_alert">User alert…</option>
-                      <option value="quota">Quota…</option>
-                    </select>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => void loadAuditFirstPage()}
-                    disabled={auditLoading}
-                    className="btn-secondary text-xs py-1.5 px-3 whitespace-nowrap disabled:opacity-50"
-                  >
-                    {auditLoading && auditEvents.length === 0 ? 'Loading…' : auditLoaded ? 'Refresh' : 'Load'}
-                  </button>
-                </div>
-              </div>
-            </div>
-            {auditLoaded && auditEvents.length === 0 && (
-              <p className="text-sm text-kib-muted">No audit entries for this filter.</p>
-            )}
-            {auditEvents.length > 0 && (
-              <>
-                <div className="overflow-x-auto max-h-72 overflow-y-auto text-xs">
-                  <table className="min-w-full text-left">
-                    <thead className="sticky top-0 bg-kib-card border-b border-kib-line">
-                      <tr className="text-kib-muted">
-                        <th className="py-1 pr-2 font-medium">Time</th>
-                        <th className="py-1 pr-2 font-medium">Action</th>
-                        <th className="py-1 font-medium">Detail</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {auditEvents.map((ev) => (
-                        <tr key={ev.id} className="border-b border-slate-800 align-top">
-                          <td className="py-1.5 pr-2 whitespace-nowrap text-slate-300">
-                            {new Date(ev.created_at).toLocaleString()}
-                          </td>
-                          <td className="py-1.5 pr-2 text-slate-300">{ev.action}</td>
-                          <td className="py-1.5 font-mono text-[11px] text-slate-300 break-all">
-                            {JSON.stringify(ev.detail)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {auditHasMore && (
-                  <button
-                    type="button"
-                    onClick={() => void loadAuditMore()}
-                    disabled={auditLoading}
-                    className="mt-3 w-full btn-secondary text-xs py-2 disabled:opacity-50"
-                  >
-                    {auditLoading ? 'Loading…' : 'Load more'}
-                  </button>
-                )}
-              </>
-            )}
       </div>
     </div>
   );

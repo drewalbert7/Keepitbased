@@ -391,6 +391,83 @@ def get_opportunities():
         logger.error(f"Error generating opportunities: {e}")
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/agent/dip-insight', methods=['POST'])
+def dip_insight():
+    """Grok narrative for deterministic dip signals + optional X snippets from Node."""
+    try:
+        body = request.get_json(silent=True) or {}
+        dip = body.get("dipContext") or body.get("dip_context")
+        if not isinstance(dip, dict):
+            return jsonify({"error": "dipContext object required"}), 400
+        x_snippets = body.get("xSnippets") or body.get("x_snippets") or []
+        if not isinstance(x_snippets, list):
+            x_snippets = []
+        try:
+            max_alloc = float(body.get("maxAllocationPct", body.get("max_allocation_pct", 10)))
+        except (TypeError, ValueError):
+            max_alloc = 10.0
+        run_id = str(uuid.uuid4())
+        t0 = time.perf_counter()
+        from langgraph_agent.llm_client import LlmClient
+
+        client = LlmClient()
+        out = client.generate_dip_insight(dip, x_snippets, max_alloc)
+        elapsed_ms = int((time.perf_counter() - t0) * 1000)
+        provider_used = getattr(client, "last_used_provider", "template")
+        fallback_used = bool(getattr(client, "last_fallback_used", True))
+        citations = list(getattr(client, "last_x_search_citations", None) or [])
+        return jsonify(
+            {
+                "insight": out,
+                "citations": citations,
+                "runMetadata": {
+                    "runId": run_id,
+                    "providerUsed": provider_used,
+                    "fallbackUsed": fallback_used,
+                    "langgraphInvokeMs": elapsed_ms,
+                    "xSearchCitationCount": len(citations),
+                },
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error in dip-insight: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/agent/daily-watchlist-digest', methods=['POST'])
+def daily_watchlist_digest():
+    """Grok daily email: watchlist snapshot -> overview + suggested additions."""
+    try:
+        body = request.get_json(silent=True) or {}
+        ctx = body.get("watchlistContext") or body.get("watchlist_context")
+        if not isinstance(ctx, dict):
+            return jsonify({"error": "watchlistContext object required"}), 400
+        run_id = str(uuid.uuid4())
+        t0 = time.perf_counter()
+        from langgraph_agent.llm_client import LlmClient
+
+        client = LlmClient()
+        digest = client.generate_daily_watchlist_digest(ctx)
+        elapsed_ms = int((time.perf_counter() - t0) * 1000)
+        provider_used = getattr(client, "last_used_provider", "template")
+        fallback_used = bool(getattr(client, "last_fallback_used", True))
+        return jsonify(
+            {
+                "digest": digest,
+                "runMetadata": {
+                    "runId": run_id,
+                    "providerUsed": provider_used,
+                    "fallbackUsed": fallback_used,
+                    "langgraphInvokeMs": elapsed_ms,
+                },
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error in daily-watchlist-digest: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
     app.run(host='0.0.0.0', port=port, debug=False)

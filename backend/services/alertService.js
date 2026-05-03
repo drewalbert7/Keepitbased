@@ -245,36 +245,29 @@ class AlertService {
     return result.rows[0]?.c ?? 0;
   }
 
-  async updateAlert(alertId, updates) {
+  async updateAlert(alertId, userId, updates) {
     try {
-      // Only allow updating specific fields to prevent SQL injection
       const allowedFields = ['small_threshold', 'medium_threshold', 'large_threshold', 'baseline_price', 'active'];
       const filteredUpdates = {};
-      const values = [alertId];
-      let paramIndex = 2;
-      
-      // Filter and validate updates
-      Object.keys(updates).forEach(key => {
+
+      Object.keys(updates).forEach((key) => {
         if (allowedFields.includes(key)) {
           filteredUpdates[key] = updates[key];
-          values.push(updates[key]);
-          paramIndex++;
         }
       });
-      
+
       if (Object.keys(filteredUpdates).length === 0) {
         throw new Error('No valid fields to update');
       }
-      
-      // Build SET clause with parameterized queries
-      const setClause = Object.keys(filteredUpdates)
-        .map((key, index) => `${key} $${index + 2}`)
-        .join(', ');
-      
+
+      const entries = Object.entries(filteredUpdates);
+      const values = [alertId, userId, ...entries.map(([, v]) => v)];
+      const setClause = entries.map(([key], index) => `${key} = $${index + 3}`).join(', ');
+
       const result = await db.query(
-        `UPDATE user_alerts 
+        `UPDATE user_alerts
          SET ${setClause}, updated_at = NOW()
-         WHERE id = $1
+         WHERE id = $1 AND user_id = $2
          RETURNING *`,
         values
       );

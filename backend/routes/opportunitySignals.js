@@ -7,7 +7,8 @@ const router = express.Router();
 
 router.get('/', auth, async (req, res) => {
   try {
-    const limit = Number(req.query.limit) || 50;
+    const raw = Number(req.query.limit);
+    const limit = Math.min(Math.max(Number.isFinite(raw) ? raw : 50, 1), 100);
     const signals = await listOpportunitySignals(req.user.id, limit);
     return res.json({ signals });
   } catch (error) {

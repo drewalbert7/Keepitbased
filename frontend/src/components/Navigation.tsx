@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -7,12 +7,15 @@ import {
   UserCircleIcon,
   ArrowRightOnRectangleIcon,
   CurrencyDollarIcon,
-  InboxIcon
+  InboxIcon,
+  Bars3Icon,
+  XMarkIcon
 } from '@heroicons/react/24/outline';
 
 const Navigation: React.FC = () => {
   const { isAuthenticated, user, logout } = useAuth();
   const location = useLocation();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   if (!isAuthenticated) {
     return null;
@@ -26,76 +29,96 @@ const Navigation: React.FC = () => {
     { name: 'Profile', href: '/profile', icon: UserCircleIcon }
   ];
 
-  const isActive = (href: string) => location.pathname === href || (href === '/dashboard' && location.pathname === '/ai-agent');
+  const isActive = (href: string) =>
+    location.pathname === href || (href === '/dashboard' && location.pathname === '/ai-agent');
+
+  const linkClass = (href: string) =>
+    `flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+      isActive(href)
+        ? 'bg-white/[0.08] text-kib-fg'
+        : 'text-kib-muted hover:bg-white/[0.06] hover:text-kib-fg'
+    }`;
 
   return (
-    <nav className="gradient-bg">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
-          <div className="flex items-center">
-            <Link to="/dashboard" className="font-mono text-lg font-semibold tracking-tight text-white hover:text-kib-cyber transition-colors">
-              {'>'} KEEPITBASED<span className="text-kib-cyber animate-pulse">_</span>
-            </Link>
-            
-            {/* Navigation Links */}
-            <div className="hidden md:ml-8 md:flex md:space-x-1">
-              {navigation.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <Link
-                    key={item.name}
-                    to={item.href}
-                    className={`flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      isActive(item.href)
-                        ? 'bg-kib-cyber/15 text-kib-cyber border border-kib-cyber/25'
-                        : 'text-slate-300 hover:bg-kib-cyber/10 hover:text-kib-cyber border border-transparent'
-                    }`}
-                  >
-                    <Icon className="w-5 h-5 mr-2" />
-                    {item.name}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-          
-          <div className="flex items-center space-x-4">
-            <span className="text-kib-muted text-sm hidden sm:inline">
-              <span className="font-mono text-kib-cyber/70">●</span> {user?.firstName}
-            </span>
-            <button
-              onClick={logout}
-              className="flex items-center px-3 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-kib-cyber/10 hover:text-kib-cyber border border-transparent transition-colors"
-            >
-              <ArrowRightOnRectangleIcon className="w-5 h-5 mr-2" />
-              Logout
-            </button>
-          </div>
-        </div>
-        
-        {/* Mobile menu */}
-        <div className="md:hidden">
-          <div className="px-2 pt-2 pb-3 space-y-1">
+    <nav className="sticky top-0 z-50 nav-shell pt-[env(safe-area-inset-top)]">
+      <div className="mx-auto flex h-14 max-w-[1360px] items-center justify-between gap-3 px-4 sm:px-6">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <Link
+            to="/dashboard"
+            className="shrink-0 text-[15px] font-semibold tracking-tight text-kib-fg hover:text-white"
+            onClick={() => setMobileOpen(false)}
+          >
+            KeepItBased
+          </Link>
+
+          <div className="hidden md:flex md:items-center md:gap-0.5">
             {navigation.map((item) => {
               const Icon = item.icon;
               return (
-                <Link
-                  key={item.name}
-                  to={item.href}
-                  className={`flex items-center px-3 py-2 rounded-md text-base font-medium transition-colors ${
-                    isActive(item.href)
-                      ? 'bg-kib-cyber/15 text-kib-cyber border border-kib-cyber/25'
-                      : 'text-slate-300 hover:bg-kib-cyber/10 hover:text-kib-cyber border border-transparent'
-                  }`}
-                >
-                  <Icon className="w-5 h-5 mr-2" />
+                <Link key={item.name} to={item.href} className={linkClass(item.href)}>
+                  <Icon className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
                   {item.name}
                 </Link>
               );
             })}
           </div>
         </div>
+
+        <div className="flex items-center gap-2 sm:gap-3">
+          <span className="hidden truncate text-sm text-kib-muted lg:inline max-w-[140px]" title={user?.email}>
+            {user?.firstName}
+          </span>
+          <button
+            type="button"
+            className="flex md:hidden rounded-md p-2 text-kib-muted hover:bg-white/[0.06] hover:text-kib-fg"
+            aria-expanded={mobileOpen}
+            aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+            onClick={() => setMobileOpen((o) => !o)}
+          >
+            {mobileOpen ? <XMarkIcon className="h-6 w-6" /> : <Bars3Icon className="h-6 w-6" />}
+          </button>
+          <button
+            type="button"
+            onClick={logout}
+            className="hidden sm:flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-kib-muted hover:bg-white/[0.06] hover:text-kib-fg"
+          >
+            <ArrowRightOnRectangleIcon className="h-5 w-5" />
+            Log out
+          </button>
+        </div>
       </div>
+
+      {mobileOpen && (
+        <div className="border-t border-white/[0.06] md:hidden">
+          <div className="mx-auto max-w-[1360px] space-y-0.5 px-3 py-3 pb-[max(12px,env(safe-area-inset-bottom))]">
+            {navigation.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.name}
+                  to={item.href}
+                  className={linkClass(item.href)}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  <Icon className="h-5 w-5 shrink-0 opacity-80" aria-hidden />
+                  {item.name}
+                </Link>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => {
+                setMobileOpen(false);
+                logout();
+              }}
+              className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium text-kib-muted hover:bg-white/[0.06] hover:text-kib-fg sm:hidden"
+            >
+              <ArrowRightOnRectangleIcon className="h-5 w-5" />
+              Log out
+            </button>
+          </div>
+        </div>
+      )}
     </nav>
   );
 };

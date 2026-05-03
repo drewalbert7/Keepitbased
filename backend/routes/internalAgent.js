@@ -11,6 +11,7 @@ const { watchlistService } = require('../services/watchlistService');
 const { persistAgentAuditEvent } = require('../services/agentPersistence');
 const logger = require('../utils/logger');
 const { validateAlertSymbol } = require('../utils/alertSymbolValidate');
+const { timingSafeStringEqual } = require('../utils/timingSafeEqual');
 
 const router = express.Router();
 const alertService = new AlertService(null);
@@ -40,7 +41,7 @@ function internalAuth(req, res, next) {
     return res.status(503).json({ message: 'Agent internal API not configured' });
   }
   const provided = req.headers['x-agent-internal-secret'];
-  if (provided !== expected) {
+  if (typeof provided !== 'string' || !timingSafeStringEqual(provided, expected)) {
     return res.status(401).json({ message: 'Unauthorized' });
   }
   const uid = parseInt(req.headers['x-user-id'], 10);

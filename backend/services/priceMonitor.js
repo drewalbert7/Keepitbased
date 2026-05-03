@@ -8,10 +8,15 @@ const {
   floorTimeBucketUtc
 } = require('./watchlistOpportunityEvaluator');
 const { mergeNotificationPreferences } = require('../utils/notificationPreferences');
+const {
+  allowsSendDuringQuietHours,
+  isUsStockRegularTradingHours
+} = require('../utils/researchAlertGates');
 const { recordOpportunitySignal } = require('./opportunitySignalsPersistence');
 const emailService = require('./emailService');
-
-const OPPORTUNITY_DEDUPE_TTL_SEC = 3600;
+const { tryDipInsightEmailOrThrow } = require('./dipInsightEmailService');
+const { evaluateDipInsightFusionGate } = require('./researchFusionGate');
+const { getOpportunityTechnicalBundle } = require('./dailyAtrService');
 
 class PriceMonitor {
   constructor(io) {
@@ -366,22 +371,80 @@ class PriceMonitor {
 
     if (!rows.length) return;
 
+    let tech = { atr14: null, atr50: null, week52High: null, athHigh: null };
+    if (config.POLYGON_API_KEY || config.MASSIVE_API_KEY) {
+      try {
+        tech = await getOpportunityTechnicalBundle(symbol, assetType, this.redis);
+      } catch (e) {
+        logger.warn(`Opportunity technical bundle skipped for ${assetType}:${symbol}: ${e.message}`);
+      }
+    }
+
+    const evalInputBase = {
+      symbol,
+      assetType,
+      price: priceData.price,
+      dayChangePct: Number.isFinite(dayChangePct) ? dayChangePct : null,
+      recentAbsAvgMovePct: null,
+      /** Short tiers use this only when OPPORTUNITY_TRIGGER_MODE=atr; capitulation tier always can use ATR + structure. */
+      atr14: tech.atr14,
+      atr50: tech.atr50,
+      week52High: tech.week52High,
+      athHigh: tech.athHigh,
+      smaTrend: tech.smaTrend
+    };
+
     for (const row of rows) {
       const baselinePrice = Number(row.baseline_price);
-      const evalResult = evaluateWatchlistOpportunity({
-        symbol,
-        price: priceData.price,
-        baselinePrice,
-        dayChangePct: Number.isFinite(dayChangePct) ? dayChangePct : null,
-        recentAbsAvgMovePct: null
+      const fullEval = evaluateWatchlistOpportunity({
+        ...evalInputBase,
+        baselinePrice
       });
 
-      if (!evalResult.evaluated || !evalResult.flags.length) continue;
+      if (!fullEval.evaluated || !fullEval.flags.length) continue;
 
-      const bucket = floorTimeBucketUtc(new Date(), 60);
-      const dedupeRedisKey = `oppdedupe:${row.user_id}:${assetType}:${symbol}:${bucket}`;
-      const allowed = await this.tryOpportunityDedupe(dedupeRedisKey);
-      if (!allowed) continue;
+      const hasCap = fullEval.flags.includes('capitulation');
+      const hasShort =
+        fullEval.flags.includes('on_sale') || fullEval.flags.includes('overreaction');
+
+      const shortBucket = floorTimeBucketUtc(new Date(), 60);
+      const shortKey = `oppdedupe:${row.user_id}:${assetType}:${symbol}:${shortBucket}`;
+      const capBucket = floorTimeBucketUtc(new Date(), 24 * 60);
+      const capKey = `oppdedupe:cap:${row.user_id}:${assetType}:${symbol}:${capBucket}`;
+
+      const shortOk =
+        !hasShort ||
+        (await this.tryOpportunityDedupeWithTtl(
+          shortKey,
+          config.OPPORTUNITY_DEDUPE_TTL_SEC
+        ));
+      const capOk =
+        !hasCap ||
+        (await this.tryOpportunityDedupeWithTtl(
+          capKey,
+          config.OPPORTUNITY_CAPITULATION_DEDUPE_TTL_SEC
+        ));
+
+      if (!shortOk && !capOk) continue;
+
+      let evalResult = fullEval;
+      if (!shortOk && hasShort && capOk && hasCap) {
+        evalResult = evaluateWatchlistOpportunity(
+          { ...evalInputBase, baselinePrice },
+          { skipShortTiers: true }
+        );
+      } else if (!capOk && hasCap && shortOk && hasShort) {
+        evalResult = evaluateWatchlistOpportunity(
+          { ...evalInputBase, baselinePrice },
+          { skipCapitulation: true }
+        );
+      } else if (!shortOk && hasShort && (!hasCap || !capOk)) {
+        continue;
+      } else if (!capOk && hasCap && (!hasShort || !shortOk)) {
+        continue;
+      }
+
+      if (!evalResult.evaluated || !evalResult.flags.length) continue;
 
       const payload = {
         kind: 'opportunity_signal',
@@ -405,31 +468,128 @@ class PriceMonitor {
       });
 
       const prefs = mergeNotificationPreferences(row.notification_preferences);
-      if (prefs.opportunityToasts) {
+      const notifyLevel = prefs.opportunityNotifyLevel === 'overreaction_only' ? 'overreaction_only' : 'all';
+      const passesNotifyFilters =
+        notifyLevel === 'all' ||
+        (Array.isArray(evalResult.flags) &&
+          (evalResult.flags.includes('overreaction') ||
+            evalResult.flags.includes('capitulation')));
+
+      const stockOutsideRth =
+        assetType === 'stock' &&
+        prefs.opportunityStockMarketHoursOnly !== false &&
+        !isUsStockRegularTradingHours(new Date());
+
+      const passesOutbound =
+        passesNotifyFilters && !stockOutsideRth;
+
+      if (prefs.opportunityToasts && passesOutbound) {
         this.io.to(`user_${row.user_id}`).emit('opportunitySignal', payload);
       }
 
-      if (prefs.email && row.email && emailService.isConfigured()) {
-        await emailService.sendOpportunitySignalEmail(row.email, payload);
+      const quietBlocksOppEmail =
+        prefs.opportunityRespectQuietHours !== false &&
+        !allowsSendDuringQuietHours(prefs, new Date()).allowed;
+
+      const wantOppEmail =
+        passesOutbound &&
+        prefs.email !== false &&
+        prefs.opportunityEmail !== false &&
+        row.email &&
+        emailService.isConfigured() &&
+        !quietBlocksOppEmail;
+
+      if (wantOppEmail) {
+        const useInsight =
+          config.ENABLE_DIP_INSIGHT_EMAIL &&
+          !config.DISABLE_DIP_INSIGHT_EMAIL &&
+          prefs.dipInsightEmail;
+
+        let runInsight = useInsight;
+        if (runInsight) {
+          const fusion = await evaluateDipInsightFusionGate(prefs, evalResult, symbol);
+          runInsight = fusion.allowDipInsight;
+          if (prefs.researchDigestEmail && !fusion.allowDipInsight) {
+            logger.info(
+              `Dip insight skipped (research fusion): user ${row.user_id} ${assetType}:${symbol} artifacts=${fusion.artifactCount} reasons=${fusion.fusionReasons.join(',')}`
+            );
+          }
+        }
+
+        if (runInsight) {
+          try {
+            await tryDipInsightEmailOrThrow({
+              userId: row.user_id,
+              email: row.email,
+              row,
+              priceData,
+              evalResult,
+              dayChangePct: Number.isFinite(dayChangePct) ? dayChangePct : null,
+              assetType,
+              symbol,
+              prefs
+            });
+          } catch (insightErr) {
+            logger.warn(
+              `Dip insight email failed for user ${row.user_id} ${assetType}:${symbol}, sending plain opportunity email: ${insightErr?.message || insightErr}`
+            );
+            await emailService.sendOpportunitySignalEmail(row.email, payload);
+          }
+        } else {
+          await emailService.sendOpportunitySignalEmail(row.email, payload);
+        }
+      } else if (
+        passesOutbound &&
+        prefs.email !== false &&
+        prefs.opportunityEmail !== false &&
+        row.email &&
+        emailService.isConfigured() &&
+        quietBlocksOppEmail
+      ) {
+        logger.info(
+          `Opportunity email suppressed (quiet hours) user ${row.user_id} ${assetType}:${symbol}`
+        );
+      } else if (
+        passesNotifyFilters &&
+        prefs.email !== false &&
+        prefs.opportunityEmail !== false &&
+        row.email &&
+        emailService.isConfigured() &&
+        stockOutsideRth
+      ) {
+        logger.info(
+          `Opportunity email suppressed (US stock outside regular session) user ${row.user_id} ${assetType}:${symbol}`
+        );
       }
 
       logger.info(
         `Opportunity signal [${evalResult.flags.join(',')}] → user ${row.user_id} ${assetType}:${symbol}` +
-          (prefs.opportunityToasts ? '' : ' (toast muted)')
+          (prefs.opportunityToasts && passesOutbound ? '' : ' (toast muted)') +
+          (passesNotifyFilters ? '' : ' (notify tier filtered)') +
+          (stockOutsideRth ? ' (stock outside RTH)' : '')
       );
     }
   }
 
   async tryOpportunityDedupe(redisKey) {
+    return this.tryOpportunityDedupeWithTtl(redisKey, config.OPPORTUNITY_DEDUPE_TTL_SEC);
+  }
+
+  /**
+   * @param {string} redisKey
+   * @param {number} ttlSec
+   */
+  async tryOpportunityDedupeWithTtl(redisKey, ttlSec) {
+    const ex = Number.isFinite(ttlSec) && ttlSec > 0 ? ttlSec : config.OPPORTUNITY_DEDUPE_TTL_SEC;
     try {
       const setResult = await this.redis.set(redisKey, '1', {
         NX: true,
-        EX: OPPORTUNITY_DEDUPE_TTL_SEC
+        EX: ex
       });
       return setResult === 'OK';
     } catch {
       const now = Date.now();
-      const ttlMs = OPPORTUNITY_DEDUPE_TTL_SEC * 1000;
+      const ttlMs = ex * 1000;
       const until = this.opportunityDedupeMemory.get(redisKey);
       if (until && until > now) return false;
       this.opportunityDedupeMemory.set(redisKey, now + ttlMs);
