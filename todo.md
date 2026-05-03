@@ -2,6 +2,8 @@
 
 Last updated: 2026-05-03 — **OpenBB ODP wired app-wide** (equity quotes/history/technical, crypto OHLC/ticker via **`openbb-yfinance`**, **`dailyAtrService`**, **`PriceMonitor`**) behind **`OPENBB_ENABLED`**; **`openbb-platform`** on PM2 + **`backend/.env`** keys merged into **`ecosystem.openbb.config.js`**. **Direct Polygon/Massive routes remain** as fallback unless exclusivity envs set. **`openbb-service/requirements.txt`** includes **`openbb-polygon`** + **`openbb-yfinance`**. Earlier same day: Polygon **retry/stale-quote** resilience in **`charts.js`**; **`cryptoService`** normalized bar **`time`** (seconds); crypto page **defensive ticker** formatting; dashboard **crypto on Main watchlist** (poll + add/remove **`assetType`**). **AGPL reminder:** OpenBB is AGPL—review before broad commercial rollout. **Massive tier:** Still required for serious **equity** data when using **`polygon`** through OpenBB; OpenBB routes calls, it does **not** replace vendor quotas/entitlements. **Deploy:** `npm run deploy`; **`pm2 start ecosystem.openbb.config.js`** (+ **`pm2 save`**).
 
+**Also shipped (same day / follow-on):** **Supabase** global chat (migration, `/api/chat`, Realtime, **`FloatingChatDock`**), env + verify/setup scripts; dashboard **watchlist loading** scoped to the watchlist card only; **52-week range** hardening (`oppTech:v4`, batched bundle fetches, merge coalesce, UI epsilon). **Git / GitHub:** prefer **feature branch + pull request** into `main` when branch protection expects it (see **`/home/dstrad/todo.md`** → *Pull requests — doing it correctly*).
+
 ## Execution status snapshot
 
 | Track | Status | Notes |
@@ -50,7 +52,8 @@ Last updated: 2026-05-03 — **OpenBB ODP wired app-wide** (equity quotes/histor
 
 ### Last deploy (pick up here)
 
-- **Frontend + Node:** `npm run deploy` or `bash scripts/deploy-production.sh` — builds **`frontend/build`**, **`pm2 reload keepitbased-api`**, checks **`http://127.0.0.1:3001/api/health`**.
+- **Git workflow:** When `main` is protected, use **`git checkout -b feature/…` → push branch → open PR on GitHub → merge** instead of relying on push bypass. Full checklist: **`/home/dstrad/todo.md`** (section *Pull requests — doing it correctly*).
+- **Frontend + Node:** `npm run deploy` or `bash scripts/deploy-production.sh` — builds **`frontend/build`**, **`pm2 reload keepitbased-api`**, checks **`http://127.0.0.1:3001/api/health`**. Production chat needs **`REACT_APP_SUPABASE_URL`** + **`REACT_APP_SUPABASE_ANON_KEY`** in **`frontend/.env.production`** before build (script prints a reminder).
 - **OpenBB sidecar:** `pm2 start ecosystem.openbb.config.js` (loads **`backend/.env`** into **`openbb-platform`** for **`POLYGON_API_KEY`** / **`MASSIVE_*`** merge into **`~/.openbb_platform/.env`**). Probe **`http://127.0.0.1:6900/docs`**. **`OPENBB_*`** toggle in **`backend/.env`**; **`GET /api/health/config`** → **`config.OPENBB_ENABLED`**, **`OPENBB_STOCK_HISTORY_EXCLUSIVE`**, etc.
 - **Python / LangGraph:** deploy script does **not** restart **`stock-service`** — after backend/agent changes run **`pm2 restart stock-service`** (and verify **`http://127.0.0.1:5001/health`** — `opportunityGraphReady`, etc.).
 - **Persist PM2:** `pm2 save` after successful reloads (include **`openbb-platform`** whenever OpenBB should survive reboot **`pm2 resurrect`**).
