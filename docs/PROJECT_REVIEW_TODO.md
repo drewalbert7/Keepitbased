@@ -2,7 +2,7 @@
 
 ## 📋 Project Overview
 
-**North star (full roadmap):** `/home/dstrad/keepitbased/todo.md` — *AI-assisted dips → alert emails that explain context (sentiment/news/fire-sale where relevant) and suggest allocation within caps.*
+**North star (full roadmap):** [Execution roadmap `todo.md`](../todo.md) at repo root — *AI-assisted dips → alert emails that explain context (sentiment/news/fire-sale where relevant) and suggest allocation within caps.*
 
 **KeepItBased** is a professional-grade cryptocurrency and stock alert system with real-time charts, comprehensive security, and production-ready deployment. The system consists of:
 
@@ -14,7 +14,7 @@
 
 ## 🤖 **AI Stock Buy-Alert Agent (Planned)**
 
-**Canonical plan (full detail):** `/home/dstrad/keepitbased/docs/AI_BUY_ALERT_AGENT_PLAN.md`
+**Canonical plan (full detail):** [AI_BUY_ALERT_AGENT_PLAN.md](./AI_BUY_ALERT_AGENT_PLAN.md)
 
 ### **Summary**
 - Build an **AI-assisted buy-alert** pipeline: structured signals (entry zone, horizon, invalidation, confidence), delivered via existing **alerts/email**, backed by **Python/yfinance** (or upgraded data later) and **Postgres** for signal history and outcomes.
@@ -288,7 +288,7 @@ python-service/
     - [ ] Implement database sharding
     - [ ] Add CDN integration
 
-11. **AI Buy-Alert & Multi-Agent** (see *AI Stock Buy-Alert Agent* section above and `/home/dstrad/keepitbased/docs/AI_BUY_ALERT_AGENT_PLAN.md`)
+11. **AI Buy-Alert & Multi-Agent** (see *AI Stock Buy-Alert Agent* section above and [AI_BUY_ALERT_AGENT_PLAN.md](./AI_BUY_ALERT_AGENT_PLAN.md))
     - [ ] Implement Phase 0 (rules-only signals, persistence, alerts)
     - [ ] Backtesting / labeling loop for signal quality
     - [ ] Optional explainer LLM on structured payloads only
@@ -298,7 +298,7 @@ python-service/
 
 ### **After clone (required once per machine)**
 ```bash
-cd /home/dstrad/keepitbased
+cd <path-to-clone>/keepitbased   # repository root
 npm run install:all
 cp backend/.env.example backend/.env   # then edit secrets/URLs
 # Frontend production build (optional): cp frontend/env.production.example frontend/.env.production

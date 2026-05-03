@@ -34,31 +34,28 @@ npm run golden:dip-insight  # POST /agent/dip-insight (Grok + x_search)
 
 ```
 keepitbased/
-├── app/                          # Application code
-│   ├── backend/                  # Node.js backend API
-│   ├── frontend/                 # React frontend application
-│   └── python-service/           # Python stock service
-├── config/                      # Configuration files
-│   ├── nginx/                   # Nginx configurations
-│   ├── ssl/                     # SSL certificates
-│   ├── environment/             # Environment files
-│   └── deployment/              # Deployment configs
-├── scripts/                     # Management scripts
-│   ├── deployment/              # Deployment scripts
-│   ├── backup/                  # Backup scripts
-│   ├── maintenance/             # Maintenance scripts
-│   └── monitoring/              # Monitoring scripts
-├── docs/                        # Documentation
-│   ├── architecture/            # Architecture docs
-│   ├── deployment/              # Deployment guides
-│   ├── security/                # Security documentation
-│   └── api/                     # API documentation
-├── logs/                        # Application logs
-├── monitoring/                  # Monitoring configuration
-├── tests/                       # Test files
-├── infrastructure/              # Infrastructure as code
-└── docker/                      # Docker configurations
+├── backend/                 # Node.js / Express API (PostgreSQL, Redis, routes, services)
+├── frontend/                # React (CRA) + TypeScript UI
+├── python-service/          # Flask microservice (LangGraph, yfinance, agent endpoints)
+├── openbb-service/          # Optional OpenBB ODP sidecar (see openbb-service/README.md)
+├── supabase/                # SQL migrations + README (e.g. global live chat)
+├── config/                  # nginx, SSL, environment templates (no secrets in git)
+├── scripts/                 # deploy-production.sh, setup helpers, smoke/golden runners
+├── docs/                    # Guides index: docs/README.md
+├── ecosystem.config.js      # PM2 (API + stock-service)
+├── ecosystem.openbb.config.js
+├── package.json             # Root scripts: install:all, build, deploy, health checks
+└── todo.md                  # Execution roadmap (long-form review: docs/PROJECT_REVIEW_TODO.md)
 ```
+
+Typical gitignored paths: `node_modules/`, `frontend/build/`, `logs/`, local `venv/`s, `**/.env`.
+
+### Documentation index
+
+- **[docs/README.md](docs/README.md)** — table of contents for all guides under `docs/`.
+- **[docs/PROJECT_REVIEW_TODO.md](docs/PROJECT_REVIEW_TODO.md)** — project review, PR workflow, shipped-feature log.
+- **[todo.md](todo.md)** — execution roadmap / “resume here” snapshot.
+- **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** — deployment notes; production: `npm run deploy` from repo root.
 
 ## 🔧 Management Scripts
 
