@@ -27,9 +27,14 @@ export const Watchlist52WeekRange: React.FC<Props> = ({
   week52Low,
   variant = 'compact'
 }) => {
-  const hi = week52High != null ? Number(week52High) : NaN;
-  const lo = week52Low != null ? Number(week52Low) : NaN;
+  let hi = week52High != null ? Number(week52High) : NaN;
+  let lo = week52Low != null ? Number(week52Low) : NaN;
   const px = currentPrice != null ? Number(currentPrice) : NaN;
+
+  if (Number.isFinite(hi) && Number.isFinite(lo) && hi > 0 && lo > 0 && hi <= lo) {
+    const eps = Math.max(hi * 1e-6, 1e-8);
+    lo = hi - eps;
+  }
 
   if (!Number.isFinite(hi) || !Number.isFinite(lo) || hi <= lo) {
     return (

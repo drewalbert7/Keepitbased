@@ -270,24 +270,34 @@ async function buildAgentWatchlistContext({ alertService, userId, maxPositionPct
   const policyNote =
     'Sizing hints scale off your Max position size % in Agent Controls. For dollar amounts, ask the assistant in chat with your total deployable capital — it can relate Size % and signal tier to illustrative allocations. Not investment advice.';
 
-  const itemsWithRange = await Promise.all(
-    items.map(async (it) => {
-      const at = String(it.assetType || '').toLowerCase();
-      if (at !== 'stock' && at !== 'crypto') {
-        return it;
-      }
-      try {
-        const b = await getOpportunityTechnicalBundle(it.symbol, at === 'crypto' ? 'crypto' : 'stock', redis);
-        const out = { ...it };
-        if (b.week52High != null && Number.isFinite(b.week52High)) out.week52High = b.week52High;
-        if (b.week52Low != null && Number.isFinite(b.week52Low)) out.week52Low = b.week52Low;
-        return out;
-      } catch (e) {
-        logger.warn(`watchlist-context 52w bundle failed ${at}:${it.symbol}`, e.message);
-        return it;
-      }
-    })
-  );
+  /** Small batches reduce upstream 429s when many symbols each pull a daily bundle. */
+  const itemsWithRange = [];
+  const batchSize = 3;
+  for (let i = 0; i < items.length; i += batchSize) {
+    const slice = items.slice(i, i + batchSize);
+    const chunk = await Promise.all(
+      slice.map(async (it) => {
+        const at = String(it.assetType || '').toLowerCase();
+        if (at !== 'stock' && at !== 'crypto') {
+          return it;
+        }
+        try {
+          const b = await getOpportunityTechnicalBundle(it.symbol, at === 'crypto' ? 'crypto' : 'stock', redis);
+          const out = { ...it };
+          if (b.week52High != null && Number.isFinite(b.week52High)) out.week52High = b.week52High;
+          if (b.week52Low != null && Number.isFinite(b.week52Low)) out.week52Low = b.week52Low;
+          return out;
+        } catch (e) {
+          logger.warn(`watchlist-context 52w bundle failed ${at}:${it.symbol}`, e.message);
+          return it;
+        }
+      })
+    );
+    itemsWithRange.push(...chunk);
+    if (i + batchSize < items.length) {
+      await new Promise((r) => setTimeout(r, 80));
+    }
+  }
 
   return {
     generatedAt: new Date().toISOString(),

@@ -30,6 +30,7 @@ import { ResizablePair } from '../components/ResizablePair';
 import { WatchlistStockSearchInput } from '../components/WatchlistStockSearchInput';
 import { WatchlistCryptoSearchInput } from '../components/WatchlistCryptoSearchInput';
 import { Watchlist52WeekRange } from '../components/Watchlist52WeekRange';
+import LoadingSpinner from '../components/ui/LoadingSpinner';
 
 const seedMessages: AgentMessage[] = [
   {
@@ -57,6 +58,9 @@ export const AIAgentPage: React.FC = () => {
 
   const [watchlistCtx, setWatchlistCtx] = useState<WatchlistContextResponse | null>(null);
   const [watchlistLoading, setWatchlistLoading] = useState(false);
+  /** After first loadWatchlist completes (success or error); avoids empty flash on login. */
+  const [watchlistHydrated, setWatchlistHydrated] = useState(false);
+  const watchlistHydratedRef = useRef(false);
   const [watchlistError, setWatchlistError] = useState<string | null>(null);
   const { socket } = useSocket();
 
@@ -161,6 +165,10 @@ export const AIAgentPage: React.FC = () => {
     } finally {
       if (gen === watchlistLoadGenRef.current) {
         setWatchlistLoading(false);
+        if (!watchlistHydratedRef.current) {
+          watchlistHydratedRef.current = true;
+          setWatchlistHydrated(true);
+        }
       }
     }
   }, [agentPreferences.maxPositionSizePct]);
@@ -523,13 +531,25 @@ export const AIAgentPage: React.FC = () => {
             </div>
 
             {watchlistError && <p className="text-xs text-red-600 mb-2">{watchlistError}</p>}
-            {!watchlistCtx?.items.length && !watchlistLoading && (
-              <p className="text-sm text-kib-muted">
-                Add a stock or crypto above — we&apos;ll fetch a live quote, set a baseline, and show dip-band sizing hints
-                here.
-              </p>
-            )}
-            {watchlistCtx && watchlistCtx.items.length > 0 && (
+            {!watchlistHydrated ? (
+              <div
+                className="flex min-h-[min(200px,28vh)] flex-col items-center justify-center gap-3 rounded-lg border border-white/[0.06] bg-kib-surface/50 py-10"
+                role="status"
+                aria-live="polite"
+                aria-busy="true"
+              >
+                <LoadingSpinner size="md" />
+                <p className="text-xs text-kib-muted">Loading watchlist and quotes…</p>
+              </div>
+            ) : (
+              <>
+                {!watchlistCtx?.items.length && !watchlistLoading && (
+                  <p className="text-sm text-kib-muted">
+                    Add a stock or crypto above — we&apos;ll fetch a live quote, set a baseline, and show dip-band sizing hints
+                    here.
+                  </p>
+                )}
+                {watchlistCtx && watchlistCtx.items.length > 0 && (
               <>
                 <p className="text-[11px] text-slate-500 mb-3">{watchlistCtx.policyNote}</p>
 
@@ -752,6 +772,8 @@ export const AIAgentPage: React.FC = () => {
                     </table>
                   </div>
                 </div>
+              </>
+            )}
               </>
             )}
               <p className="mt-3 border-t border-white/[0.06] pt-3 text-[11px] leading-relaxed text-kib-muted">

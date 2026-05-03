@@ -7,6 +7,22 @@ const ATR_CACHE_TTL_SEC = 15 * 60; // align with “not every minute” vendor l
 const FETCH_CALENDAR_DAYS = 450;
 const WEEKLY_SESSIONS = 252;
 
+/** Ensure UI/backend consumers never see hi <= lo (flat tape / bad vendor row). */
+function normalizeWeek52Pair(high, low) {
+  let hi = high != null && Number.isFinite(Number(high)) && Number(high) > 0 ? Number(high) : null;
+  let lo = low != null && Number.isFinite(Number(low)) && Number(low) > 0 ? Number(low) : null;
+  if (hi == null || lo == null) return { week52High: hi, week52Low: lo };
+  if (hi > lo) return { week52High: hi, week52Low: lo };
+  const eps = Math.max(hi * 1e-6, 1e-8);
+  lo = hi - eps;
+  return { week52High: hi, week52Low: lo > 0 ? lo : eps };
+}
+
+function finalizeTechnicalBundle(bundle) {
+  const { week52High, week52Low } = normalizeWeek52Pair(bundle.week52High, bundle.week52Low);
+  return { ...bundle, week52High, week52Low };
+}
+
 const marketDataHeaders = (apiKey) => ({
   Authorization: `Bearer ${apiKey}`,
   'X-Polygon-API-Key': apiKey,
@@ -147,7 +163,7 @@ async function getOpportunityTechnicalBundle(symbol, assetType, redis) {
   const typ = assetType === 'crypto' ? 'crypto' : 'stock';
   const sym = String(symbol).toUpperCase();
   const smaDays = config.OPPORTUNITY_SHORT_TREND_SMA_DAYS || 200;
-  const cacheKey = `oppTech:v3:${typ}:${sym}:s${smaDays}`;
+  const cacheKey = `oppTech:v4:${typ}:${sym}:s${smaDays}`;
 
   if (redis) {
     try {
@@ -155,7 +171,7 @@ async function getOpportunityTechnicalBundle(symbol, assetType, redis) {
       if (hit != null && hit !== '') {
         const o = JSON.parse(hit);
         if (o && typeof o === 'object') {
-          return {
+          return finalizeTechnicalBundle({
             atr14:
               o.atr14 != null && Number.isFinite(Number(o.atr14)) && Number(o.atr14) > 0
                 ? Number(o.atr14)
@@ -180,7 +196,7 @@ async function getOpportunityTechnicalBundle(symbol, assetType, redis) {
               o.smaTrend != null && Number.isFinite(Number(o.smaTrend)) && Number(o.smaTrend) > 0
                 ? Number(o.smaTrend)
                 : null
-          };
+          });
         }
       }
     } catch (_) {
@@ -204,7 +220,7 @@ async function getOpportunityTechnicalBundle(symbol, assetType, redis) {
           const week52Low = trailingLowFromBars(bars, WEEKLY_SESSIONS);
           const athHigh = athHighFromBars(bars);
           const smaTrend = lastSmaFromCloses(bars, smaDays);
-          const bundle = { atr14, atr50, week52High, week52Low, athHigh, smaTrend };
+          const bundle = finalizeTechnicalBundle({ atr14, atr50, week52High, week52Low, athHigh, smaTrend });
           if (redis) {
             try {
               await redis.setEx(cacheKey, ATR_CACHE_TTL_SEC, JSON.stringify(bundle));
@@ -263,7 +279,7 @@ async function getOpportunityTechnicalBundle(symbol, assetType, redis) {
     const athHigh = athHighFromBars(bars);
     const smaTrend = lastSmaFromCloses(bars, smaDays);
 
-    const bundle = { atr14, atr50, week52High, week52Low, athHigh, smaTrend };
+    const bundle = finalizeTechnicalBundle({ atr14, atr50, week52High, week52Low, athHigh, smaTrend });
 
     if (redis) {
       try {

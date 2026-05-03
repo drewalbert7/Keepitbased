@@ -43,6 +43,16 @@ export function chartQuoteToPriceUpdatePayload(q: QuoteData): Record<string, unk
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
+/** Prefer a positive finite 52w extreme from server snapshot, else from prior client row. */
+export function coalesceWeek52Field(
+  server: number | null | undefined,
+  prev: number | null | undefined
+): number | null | undefined {
+  const pick = (v: number | null | undefined) =>
+    v != null && Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null;
+  return pick(server) ?? pick(prev) ?? undefined;
+}
+
 export function computeSizingPhase(params: {
   dropPct: number | null;
   smallTh: number;
@@ -218,6 +228,8 @@ export function mergeWatchlistPriceUpdates(
         dropPctFromBaseline,
         nextThresholdGap: gap,
         sizing,
+        week52High: row.week52High,
+        week52Low: row.week52Low,
         ...(dayHigh != null ? { dayHigh } : {}),
         ...(dayLow != null ? { dayLow } : {}),
         ...(volume != null ? { volume } : {}),
@@ -296,8 +308,8 @@ export function overlayFresherWatchlistQuotes(
         dropPctFromBaseline,
         nextThresholdGap: gap,
         sizing,
-        week52High: row.week52High ?? p.week52High,
-        week52Low: row.week52Low ?? p.week52Low
+        week52High: coalesceWeek52Field(row.week52High, p.week52High),
+        week52Low: coalesceWeek52Field(row.week52Low, p.week52Low)
       };
     })
   };
