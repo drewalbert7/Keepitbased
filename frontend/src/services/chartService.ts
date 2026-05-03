@@ -46,9 +46,11 @@ export interface QuoteData {
   marketCap: number;
   companyName: string;
   timestamp: string;
-  sourceUsed?: 'snapshot' | 'agg_minute' | 'agg_day' | string;
+  sourceUsed?: 'snapshot' | 'agg_minute' | 'agg_day' | 'openbb_polygon_daily' | string;
   partialData?: boolean;
   lastUpdated?: string;
+  /** True when live vendor fetch failed but a prior quote was reused from Redis. */
+  quoteStale?: boolean;
 }
 
 export interface StockInfo {

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 import { authService } from '../services/authService';
@@ -114,6 +115,21 @@ const ProfilePage: React.FC = () => {
               <label className="block text-sm font-medium text-slate-300">Email</label>
               <div className="mt-1 text-kib-fg">{user?.email}</div>
             </div>
+
+            {user?.isSignupInviteAdmin ? (
+              <div className="pt-4 border-t border-kib-line mt-4">
+                <p className="text-sm font-medium text-kib-fg">Administration</p>
+                <p className="text-xs text-kib-muted mt-1 mb-2">
+                  Invite-only signup: rotate the shared invitation code. This panel is omitted for other accounts.
+                </p>
+                <Link
+                  to="/profile/signup-invite-admin"
+                  className="inline-flex items-center rounded-md border border-white/15 bg-white/[0.04] px-3 py-2 text-sm font-medium text-kib-fg hover:border-kib-cyber/50 hover:bg-white/[0.07]"
+                >
+                  Manage signup invitation code →
+                </Link>
+              </div>
+            ) : null}
           </div>
         </div>
 

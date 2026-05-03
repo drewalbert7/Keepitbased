@@ -17,11 +17,18 @@ import {
 } from '../services/aiAgentService';
 import { removeWatchlistSymbol } from '../services/watchlistApi';
 import { useSocket } from '../contexts/SocketContext';
-import { chartQuoteToPriceUpdatePayload, mergeWatchlistPriceUpdates } from '../utils/watchlistDerived';
+import {
+  chartQuoteToPriceUpdatePayload,
+  cryptoTickerToPriceUpdatePayload,
+  mergeWatchlistPriceUpdates,
+  overlayFresherWatchlistQuotes
+} from '../utils/watchlistDerived';
 import { getStockQuote, type QuoteData } from '../services/chartService';
+import { getCryptoTicker, polygonPairFromCryptoBase, type CryptoTicker } from '../services/cryptoService';
 import { OpportunityPolicyPanel } from '../components/OpportunityPolicyPanel';
 import { ResizablePair } from '../components/ResizablePair';
 import { WatchlistStockSearchInput } from '../components/WatchlistStockSearchInput';
+import { WatchlistCryptoSearchInput } from '../components/WatchlistCryptoSearchInput';
 import { Watchlist52WeekRange } from '../components/Watchlist52WeekRange';
 
 const seedMessages: AgentMessage[] = [
@@ -75,57 +82,127 @@ export const AIAgentPage: React.FC = () => {
 
   const watchlistRef = useRef(watchlistCtx);
   watchlistRef.current = watchlistCtx;
+  const watchlistLoadGenRef = useRef(0);
 
-  const watchlistStockSignature = useMemo(() => {
+  /** Drives ~10s polling for live stock + crypto quotes on visible watchlist rows */
+  const watchlistPollSignature = useMemo(() => {
     if (!watchlistCtx?.items?.length) return '';
-    const syms = new Set<string>();
-    for (const i of watchlistCtx.items) {
-      if (i.assetType === 'stock') syms.add(i.symbol.toUpperCase());
-    }
-    return Array.from(syms).sort().join(',');
+    return watchlistCtx.items
+      .map((i) => `${i.assetType}:${i.symbol.toUpperCase()}`)
+      .sort()
+      .join(',');
   }, [watchlistCtx?.items]);
 
   const loadWatchlist = useCallback(async () => {
+    const gen = ++watchlistLoadGenRef.current;
     setWatchlistLoading(true);
     setWatchlistError(null);
     try {
       const data = await fetchAgentWatchlistContext(agentPreferences.maxPositionSizePct);
+      if (gen !== watchlistLoadGenRef.current) return;
+
       const stockSymbols = Array.from(
         new Set(data.items.filter((i) => i.assetType === 'stock').map((i) => i.symbol.toUpperCase()))
       );
       let merged = data;
       if (stockSymbols.length) {
         const results = await Promise.all(stockSymbols.map((s) => getStockQuote(s).catch(() => null)));
+        if (gen !== watchlistLoadGenRef.current) return;
         const payloads = results
           .filter((q): q is QuoteData => q !== null)
           .map(chartQuoteToPriceUpdatePayload);
         if (payloads.length) {
-          merged = mergeWatchlistPriceUpdates(data, payloads, Date.now()) ?? data;
+          merged = mergeWatchlistPriceUpdates(merged, payloads, Date.now()) ?? merged;
         }
       }
-      setWatchlistCtx(merged);
+
+      const cryptoPolyKeys = Array.from(
+        new Set(
+          merged.items
+            .filter((i) => i.assetType === 'crypto')
+            .map((i) => polygonPairFromCryptoBase(i.symbol))
+        )
+      );
+      if (cryptoPolyKeys.length) {
+        const cr = await Promise.all(cryptoPolyKeys.map((p) => getCryptoTicker(p).catch(() => null)));
+        if (gen !== watchlistLoadGenRef.current) return;
+        const tickerMap = new Map<string, CryptoTicker | null>();
+        cryptoPolyKeys.forEach((poly, idx) => {
+          tickerMap.set(poly, cr[idx]);
+        });
+        const cryptoPayloads: Array<Record<string, unknown>> = [];
+        for (const row of merged.items) {
+          if (row.assetType !== 'crypto') continue;
+          const poly = polygonPairFromCryptoBase(row.symbol);
+          const t = tickerMap.get(poly);
+          if (t) cryptoPayloads.push(cryptoTickerToPriceUpdatePayload(t, row.symbol));
+        }
+        if (cryptoPayloads.length) {
+          merged = mergeWatchlistPriceUpdates(merged, cryptoPayloads, Date.now()) ?? merged;
+        }
+      }
+
+      if (gen !== watchlistLoadGenRef.current) return;
+
+      setWatchlistCtx((prev) => {
+        if (gen !== watchlistLoadGenRef.current) return prev;
+        return overlayFresherWatchlistQuotes(merged, prev);
+      });
     } catch {
-      setWatchlistError('Could not load watchlist prices.');
+      if (gen === watchlistLoadGenRef.current) {
+        setWatchlistError('Could not load watchlist prices.');
+      }
     } finally {
-      setWatchlistLoading(false);
+      if (gen === watchlistLoadGenRef.current) {
+        setWatchlistLoading(false);
+      }
     }
   }, [agentPreferences.maxPositionSizePct]);
 
   useEffect(() => {
-    if (!watchlistStockSignature) return;
+    if (!watchlistPollSignature) return;
     let cancelled = false;
 
     const runBatch = async () => {
       const ctx = watchlistRef.current;
-      const symbols =
-        ctx?.items?.filter((i) => i.assetType === 'stock').map((i) => i.symbol.toUpperCase()) ?? [];
-      const unique = Array.from(new Set(symbols));
-      if (!unique.length) return;
-      const results = await Promise.all(unique.map((s) => getStockQuote(s).catch(() => null)));
-      if (cancelled) return;
-      const payloads = results
-        .filter((q): q is QuoteData => q !== null)
-        .map(chartQuoteToPriceUpdatePayload);
+      if (!ctx?.items?.length) return;
+
+      const stockSyms = Array.from(
+        new Set(ctx.items.filter((i) => i.assetType === 'stock').map((i) => i.symbol.toUpperCase()))
+      );
+      const cryptoPolys = Array.from(
+        new Set(
+          ctx.items
+            .filter((i) => i.assetType === 'crypto')
+            .map((i) => polygonPairFromCryptoBase(i.symbol))
+        )
+      );
+
+      const payloads: Array<Record<string, unknown>> = [];
+
+      if (stockSyms.length) {
+        const results = await Promise.all(stockSyms.map((s) => getStockQuote(s).catch(() => null)));
+        if (cancelled) return;
+        payloads.push(
+          ...results
+            .filter((q): q is QuoteData => q !== null)
+            .map(chartQuoteToPriceUpdatePayload)
+        );
+      }
+
+      if (cryptoPolys.length) {
+        const cr = await Promise.all(cryptoPolys.map((p) => getCryptoTicker(p).catch(() => null)));
+        if (cancelled) return;
+        const tickerMap = new Map<string, CryptoTicker | null>();
+        cryptoPolys.forEach((poly, idx) => tickerMap.set(poly, cr[idx]));
+        for (const row of ctx.items) {
+          if (row.assetType !== 'crypto') continue;
+          const poly = polygonPairFromCryptoBase(row.symbol);
+          const t = tickerMap.get(poly);
+          if (t) payloads.push(cryptoTickerToPriceUpdatePayload(t, row.symbol));
+        }
+      }
+
       if (!payloads.length) return;
       setWatchlistCtx((prev) => mergeWatchlistPriceUpdates(prev, payloads, Date.now()));
     };
@@ -136,7 +213,7 @@ export const AIAgentPage: React.FC = () => {
       cancelled = true;
       window.clearInterval(handle);
     };
-  }, [watchlistStockSignature]);
+  }, [watchlistPollSignature]);
 
   useEffect(() => {
     void loadWatchlist();
@@ -233,9 +310,9 @@ export const AIAgentPage: React.FC = () => {
     return 'text-slate-300';
   };
 
-  const handleRemoveTicker = async (symbol: string) => {
+  const handleRemoveTicker = async (symbol: string, assetType: 'stock' | 'crypto' = 'stock') => {
     try {
-      await removeWatchlistSymbol(symbol);
+      await removeWatchlistSymbol(symbol, assetType);
       toast.success(`${symbol} removed from watchlist`);
       await loadWatchlist();
     } catch (error: unknown) {
@@ -367,31 +444,222 @@ export const AIAgentPage: React.FC = () => {
               breakpoint="lg"
               left={
             <div className="min-w-0 space-y-5 rounded-lg border border-white/[0.08] bg-kib-card p-4 sm:p-5">
-            <div className="mb-5 flex flex-col gap-3 border-b border-white/[0.06] pb-5 sm:flex-row sm:items-end">
-              <label className="flex-1 block text-sm font-medium text-slate-300" htmlFor="watchlist-stock-search-input">
-                Add US stock
-                <WatchlistStockSearchInput
-                  onSymbolAdded={() => void loadWatchlist()}
-                  disabled={watchlistLoading}
-                />
-              </label>
-              <p className="text-xs text-slate-500 sm:max-w-xs sm:pb-1">
-                Search by company name or ticker; only verified listings can be added. Quotes match the{' '}
-                <strong>Charts</strong> API (polled ~10s here). Redis/socket snapshots merge when available — snapshot
-                data only, not broker depth.
+            <div className="mb-5 flex flex-col gap-4 border-b border-white/[0.06] pb-5">
+              <div className="grid gap-5 sm:grid-cols-2 sm:gap-6">
+                <label className="block text-sm font-medium text-slate-300" htmlFor="watchlist-stock-search-input">
+                  Add US stock
+                  <WatchlistStockSearchInput
+                    onSymbolAdded={() => void loadWatchlist()}
+                    disabled={watchlistLoading}
+                  />
+                </label>
+                <label className="block text-sm font-medium text-slate-300" htmlFor="watchlist-crypto-search-input">
+                  Add crypto
+                  <WatchlistCryptoSearchInput
+                    onSymbolAdded={() => void loadWatchlist()}
+                    disabled={watchlistLoading}
+                  />
+                  <p className="mt-1.5 text-[11px] text-kib-muted">
+                    Same Main list as stocks. Quotes from Polygon/crypto API (~10s poll + socket merge).
+                  </p>
+                </label>
+              </div>
+              <p className="text-xs text-slate-500 sm:hidden">
+                Stocks: search by name or ticker. Crypto: pick a pair from Polygon list.
+              </p>
+              <p className="hidden text-xs text-slate-500 sm:block sm:max-w-2xl">
+                US equities are verified listings; crypto uses Polygon pair discovery. Watchlist polls ~10s; Redis/socket
+                snapshots merge when available — not broker feeds.
               </p>
             </div>
 
             {watchlistError && <p className="text-xs text-red-600 mb-2">{watchlistError}</p>}
             {!watchlistCtx?.items.length && !watchlistLoading && (
               <p className="text-sm text-kib-muted">
-                Add a ticker above — we&apos;ll fetch a live quote, set a baseline, and show dip-band sizing hints here.
+                Add a stock or crypto above — we&apos;ll fetch a live quote, set a baseline, and show dip-band sizing hints
+                here.
               </p>
             )}
             {watchlistCtx && watchlistCtx.items.length > 0 && (
               <>
                 <p className="text-[11px] text-slate-500 mb-3">{watchlistCtx.policyNote}</p>
-                <div className="overflow-x-auto rounded-lg border border-white/[0.06] bg-kib-surface">
+
+                {/* Mobile / tablet: full data, compact cards */}
+                <div className="lg:hidden space-y-2.5 max-h-[min(70vh,560px)] overflow-y-auto overscroll-y-contain pb-1">
+                  <div className="flex flex-wrap items-center gap-2 rounded-md border border-white/[0.06] bg-kib-surface/80 px-2.5 py-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-kib-muted">Sort</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(
+                        [
+                          ['symbol', 'Symbol'] as const,
+                          ['dayPct', 'Day %'] as const,
+                          ['vsBase', 'vs base'] as const
+                        ] as const
+                      ).map(([key, label]) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => toggleWlSort(key)}
+                          className={`rounded-md px-2 py-1 text-[11px] font-medium tabular-nums transition-colors ${
+                            wlSort.key === key
+                              ? 'bg-white/[0.12] text-kib-fg ring-1 ring-kib-cyber/35'
+                              : 'bg-white/[0.04] text-kib-muted hover:bg-white/[0.08]'
+                          }`}
+                        >
+                          {label}
+                          {wlSort.key === key ? (wlSort.dir === 1 ? ' ↑' : ' ↓') : ''}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {sortedWatchlistItems.map((row) => {
+                    const pct = row.sizing.suggestedPortfolioPct;
+                    const qStatus = quoteStatusLabel(row.quoteAgeSec);
+                    return (
+                      <article
+                        key={`m-${row.assetType}:${row.alertId}:${row.symbol}`}
+                        className={`rounded-xl border border-white/[0.08] bg-kib-surface/90 p-3 shadow-sm ${
+                          row.active ? '' : 'opacity-90'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2 border-b border-white/[0.06] pb-2.5">
+                          <div className="min-w-0 flex-1">
+                            {row.assetType === 'stock' ? (
+                              <Link
+                                to={`/charts?symbol=${encodeURIComponent(row.symbol)}`}
+                                className="block font-semibold font-mono text-base text-kib-fg hover:text-kib-cyber"
+                              >
+                                {row.symbol}
+                              </Link>
+                            ) : (
+                              <Link
+                                to={`/crypto?symbol=${encodeURIComponent(row.symbol)}`}
+                                className="block font-semibold font-mono text-base text-kib-fg hover:text-kib-cyber"
+                              >
+                                {row.symbol}
+                              </Link>
+                            )}
+                            {!row.active && (
+                              <span className="mt-1 inline-block text-[10px] font-semibold uppercase tracking-wide text-amber-500">
+                                paused
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleRemoveTicker(
+                                row.symbol,
+                                String(row.assetType).toLowerCase() === 'crypto' ? 'crypto' : 'stock'
+                              )
+                            }
+                            className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-red-500 hover:bg-red-500/10"
+                          >
+                            Remove
+                          </button>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5 text-xs">
+                          <div>
+                            <p className="text-[10px] font-medium uppercase tracking-wide text-kib-muted">Last</p>
+                            <p className="mt-0.5 font-semibold tabular-nums text-kib-fg">
+                              {formatQuote(row.currentPrice, row.assetType)}
+                            </p>
+                            <p className={`mt-0.5 text-[10px] tabular-nums ${qStatus.cls}`}>
+                              {qStatus.text}
+                              {row.quoteAgeSec != null ? ` · ${row.quoteAgeSec}s` : ''}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[10px] font-medium uppercase tracking-wide text-kib-muted">Day %</p>
+                            <p
+                              className={`mt-0.5 font-semibold tabular-nums ${changeColorClass(row.dayChangePct ?? undefined)}`}
+                            >
+                              {formatDayChangePct(row)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-medium uppercase tracking-wide text-kib-muted">
+                              Baseline
+                            </p>
+                            <p className="mt-0.5 tabular-nums text-slate-300">
+                              {formatQuote(row.baselinePrice, row.assetType)}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[10px] font-medium uppercase tracking-wide text-kib-muted">
+                              vs baseline
+                            </p>
+                            <p
+                              className={`mt-0.5 font-semibold tabular-nums ${vsBaselineColor(row)}`}
+                            >
+                              {vsBaselineDisplay(row)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-medium uppercase tracking-wide text-kib-muted">Volume</p>
+                            <p className="mt-0.5 tabular-nums text-slate-300">{formatVolume(row.volume)}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[10px] font-medium uppercase tracking-wide text-kib-muted">Size %</p>
+                            <p className="mt-0.5 font-semibold tabular-nums text-kib-fg">{pct}%</p>
+                          </div>
+                          <div className="col-span-2">
+                            <p className="text-[10px] font-medium uppercase tracking-wide text-kib-muted">
+                              Day range (H / L)
+                            </p>
+                            <p className="mt-0.5 tabular-nums text-slate-300">
+                              {row.dayHigh != null && row.dayLow != null ? (
+                                <>
+                                  {formatQuote(row.dayHigh, row.assetType)} /{' '}
+                                  {formatQuote(row.dayLow, row.assetType)}
+                                </>
+                              ) : (
+                                '—'
+                              )}
+                            </p>
+                          </div>
+                          <div className="col-span-2">
+                            <p className="text-[10px] font-medium uppercase tracking-wide text-kib-muted">Next dip</p>
+                            <p className="mt-0.5 text-slate-300">
+                              {row.nextThresholdGap ? (
+                                <>
+                                  <span className="font-medium text-kib-fg/90 capitalize">
+                                    {row.nextThresholdGap.next}
+                                  </span>
+                                  <span className="text-kib-muted"> · </span>
+                                  ~{row.nextThresholdGap.pctRemaining.toFixed(2)}% to threshold
+                                </>
+                              ) : (
+                                <span className="text-slate-500">—</span>
+                              )}
+                            </p>
+                          </div>
+                          <div className="col-span-2">
+                            <p className="text-[10px] font-medium uppercase tracking-wide text-kib-muted">Signal</p>
+                            <p className="mt-0.5">
+                              <span className="font-semibold text-kib-cyber/95">{row.sizing.tierLabel}</span>
+                            </p>
+                            <p className="mt-1 text-[11px] leading-snug text-kib-muted line-clamp-3" title={row.sizing.rationale}>
+                              {row.sizing.rationale}
+                            </p>
+                          </div>
+                          <div className="col-span-2 rounded-lg bg-black/20 px-2.5 py-2">
+                            <Watchlist52WeekRange
+                              variant="fluid"
+                              assetType={row.assetType}
+                              currentPrice={row.currentPrice}
+                              week52High={row.week52High}
+                              week52Low={row.week52Low}
+                            />
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+
+                <div className="hidden lg:block overflow-x-auto rounded-lg border border-white/[0.06] bg-kib-surface">
                   <div className="max-h-[min(520px,65vh)] overflow-y-auto overscroll-x-contain">
                     <table className="w-full min-w-[1240px] text-sm">
                       <thead className="sticky top-0 z-10 border-b border-white/[0.06] bg-kib-surface/95 backdrop-blur-sm">
@@ -439,7 +707,7 @@ export const AIAgentPage: React.FC = () => {
                           const pct = row.sizing.suggestedPortfolioPct;
                           return (
                             <tr
-                              key={row.alertId}
+                              key={`${row.assetType}:${row.alertId}:${row.symbol}`}
                               className={`transition-colors hover:bg-white/[0.03] ${
                                 row.active ? '' : 'opacity-80'
                               }`}
@@ -536,7 +804,12 @@ export const AIAgentPage: React.FC = () => {
                               <td className="px-3 py-2.5 pr-4 text-right align-top">
                                 <button
                                   type="button"
-                                  onClick={() => void handleRemoveTicker(row.symbol)}
+                                  onClick={() =>
+                              void handleRemoveTicker(
+                                row.symbol,
+                                String(row.assetType).toLowerCase() === 'crypto' ? 'crypto' : 'stock'
+                              )
+                            }
                                   className="text-xs font-medium text-red-600 hover:text-red-700 hover:underline"
                                 >
                                   Remove
@@ -549,9 +822,6 @@ export const AIAgentPage: React.FC = () => {
                     </table>
                   </div>
                 </div>
-                <p className="mt-2 text-[11px] text-slate-500 lg:hidden">
-                  Tip: widen the window or scroll horizontally to see Next dip and Signal columns.
-                </p>
               </>
             )}
               <p className="mt-3 border-t border-white/[0.06] pt-3 text-[11px] leading-relaxed text-kib-muted">

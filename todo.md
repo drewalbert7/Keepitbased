@@ -1,12 +1,12 @@
 # KeepItBased Professional Implementation Plan
 
-Last updated: 2026-05-03 — **Crypto charts UX parity** shipped (`CryptoPage` mirrors stock `ChartPage` shell, controls, feed strip, presets, sidebar indicators). **`cryptoChartTechnical.ts`** + **`CryptoChart` `onIndicatorSummary`**. **Deploy verified:** `npm run deploy` (frontend build + `pm2 reload keepitbased-api`, `/api/health` OK).
+Last updated: 2026-05-03 — **OpenBB ODP wired app-wide** (equity quotes/history/technical, crypto OHLC/ticker via **`openbb-yfinance`**, **`dailyAtrService`**, **`PriceMonitor`**) behind **`OPENBB_ENABLED`**; **`openbb-platform`** on PM2 + **`backend/.env`** keys merged into **`ecosystem.openbb.config.js`**. **Direct Polygon/Massive routes remain** as fallback unless exclusivity envs set. **`openbb-service/requirements.txt`** includes **`openbb-polygon`** + **`openbb-yfinance`**. Earlier same day: Polygon **retry/stale-quote** resilience in **`charts.js`**; **`cryptoService`** normalized bar **`time`** (seconds); crypto page **defensive ticker** formatting; dashboard **crypto on Main watchlist** (poll + add/remove **`assetType`**). **AGPL reminder:** OpenBB is AGPL—review before broad commercial rollout. **Massive tier:** Still required for serious **equity** data when using **`polygon`** through OpenBB; OpenBB routes calls, it does **not** replace vendor quotas/entitlements. **Deploy:** `npm run deploy`; **`pm2 start ecosystem.openbb.config.js`** (+ **`pm2 save`**).
 
 ## Execution status snapshot
 
 | Track | Status | Notes |
 |-------|--------|--------|
-| **Phase 0** — Charts / regression | **✅ Complete (MVP)** | `npm run test:charts`, lightweight-charts, Redis caching; **stock + crypto** chart pages aligned (layout/controls/sidebar). Optional polish in §2 “Remaining known issues”. |
+| **Phase 0** — Charts / regression | **✅ Complete (MVP)** | Same + **optional OpenBB-first** paths for **`/charts/*`** & **`/crypto/*`** (`sourceUsed`: `openbb_equity`, `openbb_polygon_daily`, etc.). Optional polish in §2 “Remaining known issues”. |
 | **Phase 1** — LangGraph / agent gateway | **✅ Complete (core)** | `POST /agent/opportunities`, `/agent/dip-insight`, Node `/api/agent/chat`; persistence `agent_runs`/`agent_messages`; Grok dip emails + SES + Profile prefs. |
 | **§11 Phase A** — Contracts | **✅ Complete** | `DeepAlertOutput` scaffold, prefs merge, `researchAlertGates`, `SECTION_11_PHASE_A.md`. |
 | **§11 “speed path”** | **✅ Shipped** | Deterministic dip → Grok + **x_search** (no X API) → email; optional artifact gate when `researchDigestEmail` is on. |
@@ -14,6 +14,7 @@ Last updated: 2026-05-03 — **Crypto charts UX parity** shipped (`CryptoPage` m
 | **§11 Phase D** — Fusion gate | **🟡 MVP shipped** | `researchFusionGate` + `correlationRuleV1` on dip-insight path when **`researchDigestEmail`** true → else plain opportunity email. **Open:** digest dedupe keys, async queue, full `ResearchAlertEvaluator`. |
 | **§11 Phase C** — Agent context | **🟡 MVP shipped** | Internal **`/research/artifacts`** + **`research_context_loader`** + reply digest + **`opportunity_scout`** scoring/LLM (**`news_context`**, risk bumps). **Open:** **`signal_fusion_scorer`**, vol from history, filing rows. |
 | **§9 Go-live checklist** | Open | Hard gates before declaring “launch”: queues, DR, etc. |
+| **Situation room** — global awareness / “major events” | **Planned** | In-house feed (no reliance on monitor-the-situation.com); **dashboard UI directly under watchlist**; doubles as **live context for AI agents**. Full plan: **§ Situation room / global monitor** below. |
 
 ## Product vision (north star — whole project guide)
 
@@ -50,13 +51,14 @@ Last updated: 2026-05-03 — **Crypto charts UX parity** shipped (`CryptoPage` m
 ### Last deploy (pick up here)
 
 - **Frontend + Node:** `npm run deploy` or `bash scripts/deploy-production.sh` — builds **`frontend/build`**, **`pm2 reload keepitbased-api`**, checks **`http://127.0.0.1:3001/api/health`**.
+- **OpenBB sidecar:** `pm2 start ecosystem.openbb.config.js` (loads **`backend/.env`** into **`openbb-platform`** for **`POLYGON_API_KEY`** / **`MASSIVE_*`** merge into **`~/.openbb_platform/.env`**). Probe **`http://127.0.0.1:6900/docs`**. **`OPENBB_*`** toggle in **`backend/.env`**; **`GET /api/health/config`** → **`config.OPENBB_ENABLED`**, **`OPENBB_STOCK_HISTORY_EXCLUSIVE`**, etc.
 - **Python / LangGraph:** deploy script does **not** restart **`stock-service`** — after backend/agent changes run **`pm2 restart stock-service`** (and verify **`http://127.0.0.1:5001/health`** — `opportunityGraphReady`, etc.).
-- **Persist PM2:** `pm2 save` after successful reloads.
+- **Persist PM2:** `pm2 save` after successful reloads (include **`openbb-platform`** whenever OpenBB should survive reboot **`pm2 resurrect`**).
 
 ### Where things stand
 
-- **Charts:** **`/charts`** — stock dashboard (`ChartPage`); **`/crypto`** — crypto dashboard (**Polygon** OHLC + ticker polling), now **UX-aligned** with stocks (see **Recent session — Crypto dashboard** above). Watchlist deep links use **`/charts?symbol=…`** vs **`/crypto?symbol=…`** / **`?pair=…`**.
-- **Dashboard:** `/dashboard` — chat + **watchlist table** (quotes, baseline, dip signals). **`/api/agent/chat`** → Python **`POST /agent/opportunities`** with **`watchlistContext`**.
+- **Charts:** **`/charts`** — stock dashboard (`ChartPage`); **`/crypto`** — crypto dashboard (when **`OPENBB_ENABLED`**: OpenBB **`yfinance`** OHLC/ticker **first**, else **Polygon → Binance → CoinGecko**). **UX-aligned** with stocks (see **Recent session — Crypto dashboard** above). Watchlist deep links use **`/charts?symbol=…`** vs **`/crypto?symbol=…`** / **`?pair=…`**.
+- **Dashboard:** `/dashboard` — chat + **watchlist table** (quotes, baseline, dip signals). **`/api/agent/chat`** → Python **`POST /agent/opportunities`** with **`watchlistContext`**. **Planned:** **`Situation room`** panel **immediately below the watchlist** — live geopolitical / macro / maritime / aviation awareness (see **§ Situation room / global monitor**).
 - **Alerts:** **`evaluateWatchlistOpportunity`** + **`PriceMonitor`** → Socket **`opportunitySignal`**, **`opportunity_signals`** DB, **`GET /api/opportunity-signals`**.
 - **Dip briefing emails:** **`ENABLE_DIP_INSIGHT_EMAIL`** + Profile **`dipInsightEmail`** / **`agentMaxPositionSizePct`** → Python **`POST /agent/dip-insight`** (Grok + **`x_search`**) → SES; fallback plain opportunity email; audit **`agent_runs`** (`source=dip_insight`). **`docs/RESEARCH_AGENT.md`**, **`npm run golden:dip-insight`**, **`GET /api/health/config`** (`smtpConfigured`, `dipInsightGloballyEnabled`).
 - **Research fusion (Phase D slice):** If Profile **`researchDigestEmail`** is **true**, **`evaluateDipInsightFusionGate`** requires **`correlationRuleV1`** (dip flags ∧ ≥1 **`research_artifact`** in **`RESEARCH_FUSION_LOOKBACK_HOURS`**); otherwise **plain** opportunity email only. If **`researchDigestEmail`** is **false**, dip-insight behavior is unchanged (speed path).
@@ -72,6 +74,8 @@ Last updated: 2026-05-03 — **Crypto charts UX parity** shipped (`CryptoPage` m
 
 ### Parallel (optional, smaller)
 
+- **Situation room (global monitor):** phased plan + GitHub starting points in **§ Situation room / global monitor**; **dashboard** section **below watchlist**; agent feed **SR-5**.
+- **OpenBB / market data:** post-deploy **`openbb-service`** `pip install -r requirements.txt` after **`requirements.txt`** changes; optional **`OPENBB_EXCLUSIVE_ALL=true`** smoke test vs hybrid mode; **`scripts/smoke-openbb.sh`** TBD if we want CI parity.
 - **Phase E slice:** dashboard card “**last dip briefing**” / link to recent **`agent_runs`**.
 - **Phase F:** **frozen-response** golden for `/agent/dip-insight` (no live LLM spend in CI).
 - **Infra:** **`DISABLE_RESEARCH_EMAILS`** when fused digests ship; DMARC DNS (ops).
@@ -95,8 +99,59 @@ Last updated: 2026-05-03 — **Crypto charts UX parity** shipped (`CryptoPage` m
 
 ### Backlog (non-blocking)
 
-- [ ] **Upgrade market-data API tier** — Move Massive/Polygon (or chosen vendor) to a plan with **full historical depth** and complete stock/crypto entitlements for charts and agent tools. Starter tiers often cap equity history (~12–24 months), which limits long-range charts and backtests.
+- [ ] **Upgrade market-data API tier** — Same need **even with OpenBB** for **equity** paths that use **`openbb-polygon`**: OpenBB proxies Polygon/Massive; it does **not** lift rate limits or unlock snapshots by itself. Move to a plan with depth + entitlements consistent with dashboards + **`PriceMonitor`**. (**Crypto via `yfinance`** in OpenBB can reduce Polygon crypto load but is not a substitute for Polygon crypto where you rely on Massive aggregates.)
 - [ ] **True streaming market data — defer until Execution agent** — Current stack uses **snapshot** REST pulls, chart **polling** (~3–10s when snapshot-backed), and watchlist **`PriceMonitor` ~1 min** cadence → Redis → Socket **`priceUpdate`** (push of batch snapshots, not exchange tick-by-tick). When integrating an **execution agent** (orders, slips, NBBO-aware logic), plan: vendor **WebSocket** trade/quote streams, correct **entitlements**, a small ingestion/fan-out service, and socket scaling — out of scope for the **research + alert** agent milestone.
+- [ ] **Situation room / global monitor** — See **§ Situation room / global monitor (build plan)** below (dashboard placement + agent-facing feed).
+
+## Situation room / global monitor (build plan)
+
+**Why build (not embed a third-party “situation” site):** [monitor-the-situation.com](https://monitor-the-situation.com) is **not open-source** and has **no documented public API**, so a **first-party pipeline** from public / licensed sources gives **full control**, **“major events only”** gating, **clean embedding** on **keepitbased.com**, and a **stable contract** for **LangGraph / opportunity / research** agents.
+
+### Product placement
+
+- **UI:** On **`/dashboard`**, a **full-width section immediately below the watchlist table** (above or beside chat per final layout): map + **event stream** + filters (region, category, min severity, time window).
+- **Agent use:** Persist normalized **`situation_events`** (or reuse/extend **`research_artifacts`** with a `source_kind` / `payload` schema) + **`GET /api/internal/situation/recent`** (or Python tool) so **`opportunity_scout`**, **dip-insight**, and future **research** nodes can pull **last N hours of major global context** without scraping HTML.
+
+### Architecture (high level)
+
+1. **Ingest workers** (Python cron or Node `bull`/Redis queue): poll or stream each provider on a **conservative cadence**; respect **rate limits** and **ToS**; write **raw** blobs only if needed for audit.
+2. **Normalize** to a single schema: `id`, `occurred_at`, `lat`, `lon` (optional), `title`, `summary`, `category` (conflict / protest / aviation / maritime / macro / health / weather / other), `severity` (0–5 or S0–S5), `source`, `source_url`, `dedupe_key`.
+3. **Filter:** **Stage 1** rules (keywords, GDELT **Goldstein** / quad class, ACLED **disorder_type**, AIS anomaly heuristics). **Stage 2** optional **LLM skim** (Grok/xAI already in stack) → bool `major_only` + 1-line rationale; **never** invent facts—only **classify/filter** sourced rows.
+4. **Serve:** Node **`/api/situation/feed`** (auth) + Redis cache; optional **Socket.IO** “pulse” for new **S4+** items.
+5. **Map:** **`react-leaflet`** + OSM (**or** **[MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js)** if we want vector tiles / heavier styling later).
+
+### Recommended OSS / repos (starting points — verify license & activity before pinning)
+
+| Area | Recommendation | Links |
+|------|----------------|--------|
+| **GDELT** (events / news-derived signals) | Modern Python client covering REST surfaces; **`gdeltdoc`** for Doc API-only simplicity; **`gdeltPyR`** legacy reference | [RBozydar/py-gdelt](https://github.com/RBozydar/py-gdelt) · [alex9smith/gdelt-doc-api](https://github.com/alex9smith/gdelt-doc-api) · [linwoodc3/gdeltPyR](https://github.com/linwoodc3/gdeltPyR) |
+| **RSS / wires** | Curated **Reuters / AP / UN / reliefweb** etc. (**ToS**/robots permitting); **`feedparser`** + **`httpx`/`aiohttp`** fetch | Standard [feedparser](https://github.com/kurtmckee/feedparser) · optional fast path [bug-ops/feedparser-rs](https://github.com/bug-ops/feedparser-rs) |
+| **ACLED** (conflict & protest — **registration + terms**) | Official **OAuth API** ([docs](https://acleddata.com/acled-api-documentation)); **no** first-party SDK — thin internal `requests` wrapper | Implement **`acled_client.py`** in-repo; optionally mirror **Humanitarian Data Exchange** ACLED snapshots for bulk backfill ([HDX org](https://data.humdata.org/organization/acled)) |
+| **Aviation / ADS-B** | **OpenSky** is the safest default OSS story (rate limits / auth evolve — check latest policy) | [openskynetwork/opensky-api](https://github.com/openskynetwork/opensky-api) · [open-aviation/pyopensky](https://github.com/open-aviation/pyopensky) (live + historical patterns) · **ADS-B Exchange** alternatives: evaluate **commercial ToS** before production |
+| **Maritime AIS** | **`aisstream.io`** WebSocket (free tier, API key); official examples multi-language | [aisstream/example](https://github.com/aisstream/example) · [aisstream/ais-message-models](https://github.com/aisstream/ais-message-models) · **AISHub** “contribute-to-receive” model if self-host AIS stream |
+| **Map (React)** | **`react-leaflet`** + **`leaflet`**; cluster plugin if dense points | [PaulLeCam/react-leaflet](https://github.com/PaulLeCam/react-leaflet) · [Leaflet](https://github.com/Leaflet/Leaflet) · optional clustering [yuzhva/react-leaflet-markercluster](https://github.com/yuzhva/react-leaflet-markercluster) |
+
+### Build phases (suggested order)
+
+| Phase | Scope | Outcome |
+|-------|--------|--------|
+| **SR-0 — Schema & API** | DB table + **`/api/situation/feed`**, pagination, **`dedupe_key`**, admin env flags | Blank UI shell on dashboard stub |
+| **SR-1 — GDELT + RSS MVP** | Ingest hourly (or 15m) slices; rule-based **severity** + cap N/day | Scrollable feed under watchlist; map optional |
+| **SR-2 — Map** | Lat/lon from GDELT/ACLED/RSS geo; **heat / markers**; region filter | Parity with “situation board” feel |
+| **SR-3 — ACLED** | Registered API; conflict layer toggles | Richer conflict/protest fidelity |
+| **SR-4 — OpenSky + AIS** | Bounding-box subscriptions; throttle; **never** overload free APIs | Aviation + shipping “activity” overlays (density, not brokerage advice) |
+| **SR-5 — Agent** | Internal tool + prompts: “summarize verified major events last 24h”; inject into **`research_context`** path | Agents cite **situation_feed** row IDs |
+
+### Risks / compliance
+
+- **ToS:** Wire services, AIS vendors, and **ACLED** have **explicit use/redistribution clauses** — legal review before public SaaS caching.
+- **Rate limits:** Use ** backoff**, **aggregation**, avoid per-user scraping of upstream.
+- **False positives:** “Major” filtering is **heuristic + optional LLM**; surface **provider + link** always.
+- **Security:** Treat URLs as untrusted; **sanitize** summaries for XSS; SSRF-safe fetcher for server-side preview if any.
+
+### Parallel work with §11
+
+- Complements **Phase B** (`research_artifacts`) as a **macro/geopolitical** channel; **do not** conflate with **ticker news** from Polygon—keep **separate ingestion** jobs and **fuse in agent layer** only when relevant (e.g. energy shipping + oil names).
 
 ## 1) Program Goals
 
@@ -123,7 +178,7 @@ Last updated: 2026-05-03 — **Crypto charts UX parity** shipped (`CryptoPage` m
   - candle/quote sanitization
   - quote/history metadata (`sourceUsed`, `partialData`, `lastUpdated`)
   - stock quote source fallback (`snapshot` -> `agg_minute` -> `agg_day`)
-- Redis caching added for `/charts/history` and `/charts/quote` with source/interval TTL strategy.
+- Redis caching added for `/charts/history` and `/charts/quote` with source/interval TTL strategy; **extended stale quote key** (**`charts:quote:stale:*`**) for resilience; **upstream retries** (429/transient 5xx) on Massive REST in **`charts.js`**, **`crypto.js`**, **`dailyAtrService`**.
 - Regression suite added:
   - `backend/scripts/chartRegressionCheck.js`
   - `npm run test:charts`
@@ -335,6 +390,7 @@ Most of the original queue **shipped** (AgentOutput contract, LangGraph gateway,
 ### Production deploy (this host)
 
 - **App + static:** from repo root `npm run deploy` (runs `scripts/deploy-production.sh` — build, `pm2 reload keepitbased-api`, `/api/health` check, `pm2 save`).
+- **OpenBB:** first time per host: `cd openbb-service && ./start.sh` (or rely on PM2). **`pm2 start ecosystem.openbb.config.js`** reads **`backend/.env`** automatically. Set **`OPENBB_ENABLED=true`** in **`backend/.env`** (api process load). After OpenBB dep changes: refresh venv `pip install -r openbb-service/requirements.txt`.
 - **Python agent:** `pm2 restart stock-service` then `curl -sf http://127.0.0.1:5001/health` (opportunity graph + LLM must be healthy).
 - **Ingestion cron** runs inside **`keepitbased-api`**; enable with **`ENABLE_RESEARCH_INGESTION=true`** in `backend/.env`.
 - **Test opportunity email (plain HTML, same template as PriceMonitor):** `npm run email:test-opportunity` from repo root — requires an active **stock** **`user_alerts`** row with **`baseline_price`**, and email notifications on. Optional **`TEST_USER_ID`**. Subject prefix **`[TEST]`**.

@@ -1,0 +1,7 @@
+# Open Data Platform: API server + Polygon connector (your Polygon/Massive key).
+# AGPL-3.0 — review license before production use (https://github.com/OpenBB-finance/OpenBB).
+openbb>=4.4.0
+openbb-platform-api>=1.0.0
+openbb-polygon>=1.0.0
+# Crypto `crypto/price/historical` in Node routes (no Polygon key required for public data).
+openbb-yfinance>=1.0.0

@@ -80,10 +80,11 @@ export const CryptoPage: React.FC = () => {
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [wsError, setWsError] = useState<string | null>(null);
 
-  const formatCompact = useCallback(
-    (value: number) => Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(value),
-    []
-  );
+  const formatCompact = useCallback((value: number | null | undefined) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '—';
+    return Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(n);
+  }, []);
 
   const getSourceStatus = (source: string): { label: string; className: string } => {
     if (source === 'polygon_ticker' && isConnected) {
@@ -213,9 +214,11 @@ export const CryptoPage: React.FC = () => {
     const refreshTicker = async () => {
       try {
         const ticker = await getCryptoTicker(selectedPair);
-        if (!active) return;
+        if (!active || !ticker || typeof ticker !== 'object') return;
         setTickerData((prev) => (prev ? { ...prev, ...ticker } : ticker));
-        setQuoteLastUpdated(ticker.timestamp || new Date().toISOString());
+        setQuoteLastUpdated(
+          typeof ticker.timestamp === 'string' && ticker.timestamp ? ticker.timestamp : new Date().toISOString()
+        );
         setQuoteSource('polygon_ticker');
         setConnectionStatus('open');
         setIsConnected(true);
@@ -266,7 +269,14 @@ export const CryptoPage: React.FC = () => {
   };
 
   const currentTicker = tickerData;
-  const quoteChangePositive = (currentTicker?.change ?? 0) >= 0;
+  const quoteChange = Number(currentTicker?.change);
+  const quoteChangePct = Number(currentTicker?.changePercent);
+  const quoteChangePositive = Number.isFinite(quoteChange) ? quoteChange >= 0 : true;
+  const pctLabel = Number.isFinite(quoteChangePct) ? quoteChangePct.toFixed(2) : '—';
+  const tradesLabel =
+    typeof currentTicker?.trades === 'number' && Number.isFinite(currentTicker.trades)
+      ? Math.round(currentTicker.trades).toLocaleString()
+      : '—';
   const displayName = formatPairName(selectedPair);
 
   const crosshairTimeMs = useMemo(() => {
@@ -445,7 +455,7 @@ export const CryptoPage: React.FC = () => {
                     </p>
                     <p className={`text-sm mt-1 font-medium ${quoteChangePositive ? 'text-green-400' : 'text-red-400'}`}>
                       {quoteChangePositive ? '+' : ''}
-                      {formatCryptoPrice(currentTicker.change)} ({currentTicker.changePercent.toFixed(2)}%)
+                      {formatCryptoPrice(currentTicker.change)} ({pctLabel}%)
                     </p>
                   </div>
 
@@ -456,9 +466,13 @@ export const CryptoPage: React.FC = () => {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-400">Change</span>
-                      <span className={`font-semibold ${currentTicker.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {currentTicker.change >= 0 ? '+' : ''}
-                        {formatCryptoPrice(currentTicker.change)} ({currentTicker.changePercent.toFixed(2)}%)
+                      <span
+                        className={`font-semibold ${
+                          Number.isFinite(quoteChange) && quoteChange >= 0 ? 'text-green-400' : 'text-red-400'
+                        }`}
+                      >
+                        {Number.isFinite(quoteChange) && quoteChange >= 0 ? '+' : ''}
+                        {formatCryptoPrice(currentTicker.change)} ({pctLabel}%)
                       </span>
                     </div>
                     <div className="flex justify-between">
@@ -489,7 +503,7 @@ export const CryptoPage: React.FC = () => {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-400">24h Trades</span>
-                      <span>{currentTicker.trades.toLocaleString()}</span>
+                      <span>{tradesLabel}</span>
                     </div>
                   </div>
                 </div>

@@ -40,6 +40,11 @@ const config = {
   JWT_SECRET: process.env.JWT_SECRET || 'fallback-jwt-secret-change-in-production-' + Date.now(),
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '7d',
 
+  /** One-time bootstrap: plaintext invite code seeded into DB `app_settings` if unset. Remove after first deploy / admin rotates. */
+  INVITE_SIGNUP_CODE: process.env.INVITE_SIGNUP_CODE || '',
+  /** Comma-separated user emails allowed to rotate invite code (`GET|PUT /api/admin/signup-invite`). */
+  ADMIN_SIGNUP_EMAILS: process.env.ADMIN_SIGNUP_EMAILS || '',
+
   // API Keys
   ALPHA_VANTAGE_API_KEY: process.env.ALPHA_VANTAGE_API_KEY || 'demo',
   MASSIVE_API_KEY: process.env.MASSIVE_API_KEY || '',
@@ -53,6 +58,45 @@ const config = {
    * legacy Polygon keys often still work on https://api.polygon.io
    */
   MARKET_DATA_API_URL: (process.env.MARKET_DATA_API_URL || 'https://api.polygon.io').replace(/\/$/, ''),
+
+  /**
+   * Optional OpenBB ODP REST hub (Polygon + other connectors). AGPL-3.0 — legal review advised.
+   * Run: `./openbb-service/start.sh` or `pm2 start ecosystem.openbb.config.js`
+   * Docs: https://docs.openbb.co/odp/python/extensions/interface/openbb-api
+   */
+  OPENBB_ENABLED: process.env.OPENBB_ENABLED === 'true',
+  OPENBB_API_URL: (process.env.OPENBB_API_URL || 'http://127.0.0.1:6900').replace(/\/$/, ''),
+  OPENBB_API_PREFIX: (process.env.OPENBB_API_PREFIX || '/api/v1').replace(/\/$/, ''),
+  /** Provider for `/equity/price/historical` via OpenBB (polygon uses your POLYGON/MASSIVE key in OpenBB .env). */
+  OPENBB_EQUITY_PROVIDER: process.env.OPENBB_EQUITY_PROVIDER || 'polygon',
+
+  /**
+   * Crypto routes via OpenBB `crypto/price/historical` (typically yfinance — install `openbb-yfinance` in openbb-service).
+   * See: https://docs.openbb.co/odp/python/reference/crypto/price/historical
+   */
+  OPENBB_CRYPTO_PROVIDER: process.env.OPENBB_CRYPTO_PROVIDER || 'yfinance',
+
+  /** When true, flip all OpenBB exclusive toggles below to on. */
+  OPENBB_EXCLUSIVE_ALL: process.env.OPENBB_EXCLUSIVE_ALL === 'true',
+
+  /**
+   * Stock quote: OpenBB only (no Node snapshot/aggs). Aliases + OPENBB_EXCLUSIVE_ALL.
+   */
+  OPENBB_STOCK_QUOTE_EXCLUSIVE:
+    process.env.OPENBB_STOCK_QUOTE_EXCLUSIVE === 'true' ||
+    process.env.OPENBB_EXCLUSIVE === 'true' ||
+    process.env.OPENBB_EXCLUSIVE_ALL === 'true',
+
+  /**
+   * Stock `/charts/history` + `/charts/technical`: OpenBB only after cache miss (no Node Massive aggs).
+   */
+  OPENBB_STOCK_HISTORY_EXCLUSIVE:
+    process.env.OPENBB_STOCK_HISTORY_EXCLUSIVE === 'true' ||
+    process.env.OPENBB_EXCLUSIVE_ALL === 'true',
+
+  /** Crypto `/crypto/ticker` + `/crypto/ohlc`: OpenBB only after OpenBB path misses (no Polygon/Binance/CG in Node). */
+  OPENBB_CRYPTO_EXCLUSIVE:
+    process.env.OPENBB_CRYPTO_EXCLUSIVE === 'true' || process.env.OPENBB_EXCLUSIVE_ALL === 'true',
   COINAPI_KEY: process.env.COINAPI_KEY || '',
   
   // Email
@@ -68,6 +112,20 @@ const config = {
   CHARTS_QUOTE_RATE_MAX: parseInt(process.env.CHARTS_QUOTE_RATE_MAX) || 120,
   CHARTS_HISTORY_RATE_WINDOW_MS: parseInt(process.env.CHARTS_HISTORY_RATE_WINDOW_MS) || 60000,
   CHARTS_HISTORY_RATE_MAX: parseInt(process.env.CHARTS_HISTORY_RATE_MAX) || 60,
+
+  /**
+   * Massive/Polygon REST retries on 429 / transient 5xx (charts quote + history).
+   * Spreads burst load from parallel watchlist quote polling.
+   */
+  POLYGON_UPSTREAM_MAX_ATTEMPTS: (() => {
+    const n = parseInt(process.env.POLYGON_UPSTREAM_MAX_ATTEMPTS, 10);
+    return Number.isFinite(n) && n >= 1 ? Math.min(n, 8) : 4;
+  })(),
+  /** Longer Redis key: last good stock quote when live fetch fails (still 200 to client). */
+  CHARTS_QUOTE_STALE_TTL_SEC: (() => {
+    const n = parseInt(process.env.CHARTS_QUOTE_STALE_TTL_SEC, 10);
+    return Number.isFinite(n) && n >= 60 ? Math.min(n, 604800) : 259200;
+  })(),
 
   /** POST /api/agent/apply — per-user alert creation */
   AGENT_APPLY_RATE_WINDOW_MS: parseInt(process.env.AGENT_APPLY_RATE_WINDOW_MS) || 60000,

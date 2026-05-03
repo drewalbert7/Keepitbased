@@ -257,6 +257,17 @@ async function runInitializeDatabase() {
       ON research_artifacts(source);
     `);
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key VARCHAR(128) PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    const signupInvite = require('../services/signupInviteCodeService');
+    await signupInvite.seedFromEnvIfUnset();
+
     // Add migration for reset token columns (safely add if they don't exist)
     await client.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token VARCHAR(500);

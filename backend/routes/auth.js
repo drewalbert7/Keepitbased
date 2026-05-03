@@ -11,6 +11,20 @@ const logger = require('../utils/logger');
 const config = require('../config');
 const emailService = require('../services/emailService');
 const { mergeNotificationPreferences } = require('../utils/notificationPreferences');
+const signupInviteCodeService = require('../services/signupInviteCodeService');
+const { isSignupInviteAdmin } = require('../utils/signupInviteAdmin');
+const cryptoSecurity = require('../utils/cryptoSecurity');
+
+function serializeUserSafe(userRow) {
+  return {
+    id: userRow.id,
+    email: userRow.email,
+    firstName: userRow.first_name,
+    lastName: userRow.last_name,
+    notificationPreferences: mergeNotificationPreferences(userRow.notification_preferences),
+    isSignupInviteAdmin: isSignupInviteAdmin(userRow.email)
+  };
+}
 
 // Development mode flag for graceful fallback
 const isDevelopment = process.env.NODE_ENV === 'development';
@@ -36,7 +50,11 @@ router.post('/register', sanitizeInput, registrationRateLimit, [
   validateEmail,
   validatePassword,
   body('firstName').isLength({ min: 1, max: 50 }).withMessage('First name must be between 1 and 50 characters').trim(),
-  body('lastName').isLength({ min: 1, max: 50 }).withMessage('Last name must be between 1 and 50 characters').trim()
+  body('lastName').isLength({ min: 1, max: 50 }).withMessage('Last name must be between 1 and 50 characters').trim(),
+  body('inviteCode')
+    .isLength({ min: 12, max: 512 })
+    .withMessage('Invitation code must be between 12 and 512 characters')
+    .trim()
 ], handleValidationErrors, async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -44,7 +62,25 @@ router.post('/register', sanitizeInput, registrationRateLimit, [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { email, password, firstName, lastName } = req.body;
+    const { email, password, firstName, lastName, inviteCode } = req.body;
+
+    const inviteReady = await signupInviteCodeService.inviteCodeConfigured();
+    if (!inviteReady) {
+      logger.warn(`Registration rejected: signup invite code not configured (ip=${req.ip})`);
+      return res.status(503).json({
+        message: 'Account signup is temporarily unavailable.'
+      });
+    }
+
+    const inviteOk = await signupInviteCodeService.verifyInviteCode(inviteCode || '');
+    if (!inviteOk) {
+      cryptoSecurity.createAuditLog('invite_signup_denied', req.ip, {
+        endpoint: '/register',
+        ip: req.ip,
+        userAgent: req.get('User-Agent')
+      });
+      return res.status(403).json({ message: 'Invalid invitation code.' });
+    }
 
     // Check if user already exists
     const existingUser = await db.query('SELECT id FROM users WHERE email = $1', [email]);
@@ -75,13 +111,7 @@ router.post('/register', sanitizeInput, registrationRateLimit, [
     res.status(201).json({
       message: 'User created successfully',
       token,
-      user: {
-        id: user.id,
-        email: user.email,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        notificationPreferences: mergeNotificationPreferences(null)
-      }
+      user: serializeUserSafe({ ...user, notification_preferences: null })
     });
   } catch (error) {
     logger.error('Error registering user:', error);
@@ -142,13 +172,7 @@ router.post('/login', sanitizeInput, authRateLimit, [
     res.json({
       message: 'Login successful',
       token,
-      user: {
-        id: user.id,
-        email: user.email,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        notificationPreferences: mergeNotificationPreferences(user.notification_preferences)
-      }
+      user: serializeUserSafe(user)
     });
   } catch (error) {
     logger.error('Error logging in user:', error);
@@ -170,11 +194,7 @@ router.get('/me', auth, async (req, res) => {
 
     const user = result.rows[0];
     res.json({
-      id: user.id,
-      email: user.email,
-      firstName: user.first_name,
-      lastName: user.last_name,
-      notificationPreferences: mergeNotificationPreferences(user.notification_preferences),
+      ...serializeUserSafe(user),
       createdAt: user.created_at
     });
   } catch (error) {

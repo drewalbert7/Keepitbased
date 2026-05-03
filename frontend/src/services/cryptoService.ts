@@ -252,6 +252,31 @@ cryptoApi.interceptors.response.use(
   }
 );
 
+/**
+ * Bar timestamps from providers are ms; Lightweight Charts expects **Unix seconds**.
+ */
+export function normalizeCryptoBarTimeSeconds(t: number): number {
+  if (!Number.isFinite(t)) return 0;
+  if (Math.abs(t) > 100_000_000_000) return Math.floor(t / 1000);
+  return Math.floor(t);
+}
+
+/** Watchlist/base symbol → Polygon pair used by `/api/crypto/*` routes */
+export function polygonPairFromCryptoBase(base: string): string {
+  const b = String(base || '')
+    .trim()
+    .toUpperCase()
+    .replace(/^X:/, '')
+    .replace(/USDT?$/, '')
+    .replace(/USD$/, '')
+    .replace(/[^A-Z0-9]/g, '');
+  return b ? `X:${b}USD` : 'X:BTCUSD';
+}
+
+function encodeCryptoPair(pair: string): string {
+  return encodeURIComponent(pair);
+}
+
 // Get available trading pairs with queue management
 export const getCryptoPairs = async (): Promise<{
   pairs: CryptoPair[];
@@ -267,7 +292,7 @@ export const getCryptoPairs = async (): Promise<{
 // Get current ticker/quote for a pair with queue management
 export const getCryptoTicker = async (pair: string): Promise<CryptoTicker> => {
   return requestQueue.add(async () => {
-    const response = await cryptoApi.get(`/ticker/${pair}`);
+    const response = await cryptoApi.get(`/ticker/${encodeCryptoPair(pair)}`);
     return response.data;
   });
 };
@@ -282,18 +307,20 @@ export const getCryptoOHLC = async (
   return requestQueue.add(async () => {
     const limit = calculateCandleCount(interval, timeRange);
     
-    const response = await cryptoApi.get(`/ohlc/${pair}`, {
+    const response = await cryptoApi.get(`/ohlc/${encodeCryptoPair(pair)}`, {
       params: { 
         interval: KRAKEN_INTERVALS[interval],
         limit,
         ...(since && { since })
       }
     });
-    
-    // Data is already in milliseconds from backend, no conversion needed
-    const processedData = response.data.data.map((candle: CryptoCandle) => ({
+
+    const raw = response.data?.data;
+    const arr = Array.isArray(raw) ? raw : [];
+
+    const processedData = arr.map((candle: CryptoCandle) => ({
       ...candle,
-      time: candle.time // Use milliseconds directly
+      time: normalizeCryptoBarTimeSeconds(Number(candle.time))
     }));
     
     return {
@@ -309,7 +336,7 @@ export const getCryptoTrades = async (
   pair: string,
   since?: string
 ): Promise<CryptoTrades> => {
-  const response = await cryptoApi.get(`/trades/${pair}`, {
+  const response = await cryptoApi.get(`/trades/${encodeCryptoPair(pair)}`, {
     params: { ...(since && { since }) }
   });
   return response.data;
@@ -320,7 +347,7 @@ export const getCryptoOrderBook = async (
   pair: string,
   count: number = 100
 ): Promise<CryptoOrderBook> => {
-  const response = await cryptoApi.get(`/orderbook/${pair}`, {
+  const response = await cryptoApi.get(`/orderbook/${encodeCryptoPair(pair)}`, {
     params: { count }
   });
   return response.data;
@@ -331,7 +358,7 @@ export const getCryptoSpread = async (
   pair: string,
   since?: string
 ): Promise<CryptoSpread> => {
-  const response = await cryptoApi.get(`/spread/${pair}`, {
+  const response = await cryptoApi.get(`/spread/${encodeCryptoPair(pair)}`, {
     params: { ...(since && { since }) }
   });
   return response.data;
@@ -356,28 +383,31 @@ export const formatPairName = (pair: string): string => {
 };
 
 // Format crypto price with appropriate decimals
-export const formatCryptoPrice = (price: number, decimals: number = 2): string => {
-  if (price >= 1000) {
-    return price.toFixed(2);
-  } else if (price >= 1) {
-    return price.toFixed(4);
-  } else if (price >= 0.01) {
-    return price.toFixed(6);
-  } else {
-    return price.toFixed(8);
+export const formatCryptoPrice = (price: number | null | undefined, decimals: number = 2): string => {
+  const n = Number(price);
+  if (!Number.isFinite(n)) return '—';
+  if (n >= 1000) {
+    return n.toFixed(2);
+  } else if (n >= 1) {
+    return n.toFixed(4);
+  } else if (n >= 0.01) {
+    return n.toFixed(6);
   }
+  return n.toFixed(8);
 };
 
 // Format crypto volume
-export const formatCryptoVolume = (volume: number): string => {
-  if (volume >= 1e9) {
-    return `${(volume / 1e9).toFixed(2)}B`;
-  } else if (volume >= 1e6) {
-    return `${(volume / 1e6).toFixed(2)}M`;
-  } else if (volume >= 1e3) {
-    return `${(volume / 1e3).toFixed(2)}K`;
+export const formatCryptoVolume = (volume: number | null | undefined): string => {
+  const v = Number(volume);
+  if (!Number.isFinite(v)) return '—';
+  if (v >= 1e9) {
+    return `${(v / 1e9).toFixed(2)}B`;
+  } else if (v >= 1e6) {
+    return `${(v / 1e6).toFixed(2)}M`;
+  } else if (v >= 1e3) {
+    return `${(v / 1e3).toFixed(2)}K`;
   }
-  return volume.toFixed(2);
+  return v.toFixed(2);
 };
 
 // Get interval label for display (TradingView style)

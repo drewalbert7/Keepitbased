@@ -33,7 +33,13 @@ function authErrorMessage(error: unknown, fallback: string): string {
 
 interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<AuthActionResult>;
-  register: (firstName: string, lastName: string, email: string, password: string) => Promise<AuthActionResult>;
+  register: (
+    firstName: string,
+    lastName: string,
+    email: string,
+    password: string,
+    inviteCode: string
+  ) => Promise<AuthActionResult>;
   logout: () => void;
   updateUser: (userData: Partial<User>) => void;
 }
@@ -131,11 +137,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     firstName: string,
     lastName: string,
     email: string,
-    password: string
+    password: string,
+    inviteCode: string
   ): Promise<AuthActionResult> => {
     try {
       dispatch({ type: 'SET_LOADING', payload: true });
-      const { user, token } = await authService.register(firstName, lastName, email, password);
+      const { user, token } = await authService.register(
+        firstName,
+        lastName,
+        email,
+        password,
+        inviteCode
+      );
       
       localStorage.setItem('token', token);
       authService.setToken(token);

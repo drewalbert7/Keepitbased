@@ -10,14 +10,21 @@ export async function fetchWatchlist(): Promise<WatchlistResponse> {
   return data;
 }
 
-export async function addWatchlistSymbol(symbol: string): Promise<WatchlistResponse> {
-  const { data } = await axios.post<WatchlistResponse>('/watchlist/symbols', { symbol });
+export async function addWatchlistSymbol(
+  symbol: string,
+  assetType: 'stock' | 'crypto' = 'stock'
+): Promise<WatchlistResponse> {
+  const { data } = await axios.post<WatchlistResponse>('/watchlist/symbols', { symbol, assetType });
   return data;
 }
 
-export async function removeWatchlistSymbol(symbol: string): Promise<WatchlistResponse> {
+export async function removeWatchlistSymbol(
+  symbol: string,
+  assetType: 'stock' | 'crypto' = 'stock'
+): Promise<WatchlistResponse> {
   const { data } = await axios.delete<WatchlistResponse>(
-    `/watchlist/symbols/${encodeURIComponent(symbol)}`
+    `/watchlist/symbols/${encodeURIComponent(symbol)}`,
+    { params: { assetType } }
   );
   return data;
 }

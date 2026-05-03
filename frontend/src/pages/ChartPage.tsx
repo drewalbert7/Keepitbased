@@ -125,13 +125,23 @@ export const ChartPage: React.FC = () => {
       try {
         historyData = await getStockHistory(symbol, actualPeriod, actualInterval);
       } catch (histErr: unknown) {
-        const status = (histErr as { response?: { status?: number } })?.response?.status;
+        const ax = histErr as { response?: { status?: number; data?: { retryable?: boolean; message?: string } } };
+        const status = ax?.response?.status;
+        const retryMsg =
+          typeof ax?.response?.data?.message === 'string' ? ax.response.data.message : '';
+        const rateLimited =
+          status === 429 ||
+          (status === 503 && (ax?.response?.data?.retryable === true || /rate/i.test(retryMsg)));
         if (status === 403) {
           setDataErrorMessage('Massive entitlement does not include this symbol/timeframe yet.');
         } else if (status === 404) {
           setDataErrorMessage(`Symbol ${symbol} was not found.`);
-        } else if (status === 429) {
-          setDataErrorMessage('Rate limit reached. Please retry in a moment.');
+        } else if (rateLimited) {
+          setDataErrorMessage(
+            retryMsg && /retry/i.test(retryMsg)
+              ? retryMsg
+              : 'Rate limit reached. Please retry in a moment.'
+          );
         } else {
           setDataErrorMessage('Could not load price history. Check connection and retry.');
         }

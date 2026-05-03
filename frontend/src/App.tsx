@@ -9,6 +9,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import ProfilePage from './pages/ProfilePage';
+import ProfileAdminSignupInvitePage from './pages/ProfileAdminSignupInvitePage';
 import { ChartPage } from './pages/ChartPage';
 import { CryptoPage } from './pages/CryptoPage';
 import AIAgentPage from './pages/AIAgentPage';
@@ -69,6 +70,11 @@ const AppRoutes: React.FC = () => {
             <Route path="/profile" element={
               <ProtectedRoute>
                 <ProfilePage />
+              </ProtectedRoute>
+            } />
+            <Route path="/profile/signup-invite-admin" element={
+              <ProtectedRoute>
+                <ProfileAdminSignupInvitePage />
               </ProtectedRoute>
             } />
             <Route path="/charts" element={

@@ -64,6 +64,24 @@ router.get('/detailed', async (req, res) => {
     health.status = 'degraded';
   }
 
+  if (config.OPENBB_ENABLED) {
+    try {
+      const openbbClient = require('../services/openbbClient');
+      const ob = await openbbClient.probeStatus();
+      health.services.openbb = ob.ok
+        ? { status: 'ok', url: ob.url || config.OPENBB_API_URL }
+        : { status: 'error', error: ob.error || 'unreachable', url: config.OPENBB_API_URL };
+      if (!ob.ok) health.status = 'degraded';
+    } catch (e) {
+      health.services.openbb = {
+        status: 'error',
+        error: e.message,
+        url: config.OPENBB_API_URL
+      };
+      health.status = 'degraded';
+    }
+  }
+
   // Check Redis (if available)
   try {
     // This is a placeholder - implement Redis check if needed
@@ -102,6 +120,14 @@ router.get('/config', (req, res) => {
     RATE_LIMIT_WINDOW_MS: config.RATE_LIMIT_WINDOW_MS,
     RATE_LIMIT_MAX_REQUESTS: config.RATE_LIMIT_MAX_REQUESTS,
     PYTHON_SERVICE_URL: config.PYTHON_SERVICE_URL,
+    OPENBB_ENABLED: !!config.OPENBB_ENABLED,
+    OPENBB_EXCLUSIVE_ALL: !!config.OPENBB_EXCLUSIVE_ALL,
+    OPENBB_STOCK_QUOTE_EXCLUSIVE: !!config.OPENBB_STOCK_QUOTE_EXCLUSIVE,
+    OPENBB_STOCK_HISTORY_EXCLUSIVE: !!config.OPENBB_STOCK_HISTORY_EXCLUSIVE,
+    OPENBB_CRYPTO_EXCLUSIVE: !!config.OPENBB_CRYPTO_EXCLUSIVE,
+    OPENBB_EQUITY_PROVIDER: config.OPENBB_EQUITY_PROVIDER || '',
+    OPENBB_CRYPTO_PROVIDER: config.OPENBB_CRYPTO_PROVIDER || '',
+    OPENBB_API_URL: config.OPENBB_API_URL || '',
     hasJwtSecret: !!config.JWT_SECRET,
     hasDatabaseUrl: !!config.DATABASE_URL,
     hasRedisUrl: !!config.REDIS_URL,

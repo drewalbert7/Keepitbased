@@ -144,8 +144,6 @@ async function getOpportunityTechnicalBundle(symbol, assetType, redis) {
     smaTrend: null
   };
 
-  if (!apiKey) return { ...empty };
-
   const typ = assetType === 'crypto' ? 'crypto' : 'stock';
   const sym = String(symbol).toUpperCase();
   const smaDays = config.OPPORTUNITY_SHORT_TREND_SMA_DAYS || 200;
@@ -190,17 +188,70 @@ async function getOpportunityTechnicalBundle(symbol, assetType, redis) {
     }
   }
 
+  if (config.OPENBB_ENABLED) {
+    try {
+      const openbbClient = require('./openbbClient');
+      const obBars = await openbbClient.fetchDailyBarsForTechnicalBundle(
+        assetType === 'crypto' ? 'crypto' : 'stock',
+        sym
+      );
+      if (obBars && obBars.length >= 40) {
+        const bars = obBars.map(sanitizeBar).filter(Boolean);
+        if (bars.length >= 40) {
+          const atr14 = wilderAtrN(bars, 14);
+          const atr50 = wilderAtrN(bars, 50);
+          const week52High = trailingHighFromBars(bars, WEEKLY_SESSIONS);
+          const week52Low = trailingLowFromBars(bars, WEEKLY_SESSIONS);
+          const athHigh = athHighFromBars(bars);
+          const smaTrend = lastSmaFromCloses(bars, smaDays);
+          const bundle = { atr14, atr50, week52High, week52Low, athHigh, smaTrend };
+          if (redis) {
+            try {
+              await redis.setEx(cacheKey, ATR_CACHE_TTL_SEC, JSON.stringify(bundle));
+            } catch (_) {
+              /* ignore */
+            }
+          }
+          return bundle;
+        }
+      }
+    } catch (_) {
+      /* fall through to Polygon */
+    }
+  }
+
+  if (!apiKey) return { ...empty };
+
   const ticker = polygonTicker(assetType === 'crypto' ? 'crypto' : 'stock', symbol);
   const to = new Date();
   const from = new Date(to.getTime() - FETCH_CALENDAR_DAYS * MS_PER_DAY);
 
   try {
     const url = `${config.MARKET_DATA_API_URL}/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/1/day/${from.toISOString().slice(0, 10)}/${to.toISOString().slice(0, 10)}`;
-    const { data } = await axios.get(url, {
-      params: { adjusted: true, sort: 'asc', limit: 5000, apiKey },
-      headers: marketDataHeaders(apiKey),
-      timeout: 25000
-    });
+    const maxAttempts = config.POLYGON_UPSTREAM_MAX_ATTEMPTS || 4;
+    let data;
+    let lastErr;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        const res = await axios.get(url, {
+          params: { adjusted: true, sort: 'asc', limit: 5000, apiKey },
+          headers: marketDataHeaders(apiKey),
+          timeout: 25000
+        });
+        data = res.data;
+        break;
+      } catch (e) {
+        lastErr = e;
+        const status = e.response?.status;
+        const retryable = status === 429 || status === 408 || status === 502 || status === 503 || status === 504;
+        if (!retryable || attempt === maxAttempts) throw e;
+        let waitMs = 280 * 2 ** (attempt - 1);
+        const ra = e.response?.headers?.['retry-after'];
+        if (ra != null && !Number.isNaN(Number(ra))) waitMs = Math.max(waitMs, Number(ra) * 1000);
+        await new Promise((r) => setTimeout(r, Math.min(waitMs, 12_000)));
+      }
+    }
+    if (!data) throw lastErr || new Error('No bundle response');
 
     const results = Array.isArray(data?.results) ? data.results : [];
     const bars = results.map(sanitizeBar).filter(Boolean);

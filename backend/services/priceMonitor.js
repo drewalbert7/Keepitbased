@@ -17,6 +17,7 @@ const emailService = require('./emailService');
 const { tryDipInsightEmailOrThrow } = require('./dipInsightEmailService');
 const { evaluateDipInsightFusionGate } = require('./researchFusionGate');
 const { getOpportunityTechnicalBundle } = require('./dailyAtrService');
+const openbbClient = require('./openbbClient');
 
 class PriceMonitor {
   constructor(io) {
@@ -40,6 +41,14 @@ class PriceMonitor {
 
   async getCryptoPrice(symbol) {
     try {
+      if (config.OPENBB_ENABLED) {
+        try {
+          const row = await openbbClient.fetchCryptoPriceMonitorRow(symbol);
+          if (row) return row;
+        } catch (_e) {
+          /* fall through */
+        }
+      }
       if (this.polygonCryptoUnavailable) {
         return this.getCryptoPriceFromBinance(symbol);
       }
@@ -95,6 +104,14 @@ class PriceMonitor {
 
   async getStockPrice(symbol) {
     try {
+      if (config.OPENBB_ENABLED) {
+        try {
+          const row = await openbbClient.fetchStockPriceMonitorRow(symbol);
+          if (row) return row;
+        } catch (_e) {
+          /* fall through */
+        }
+      }
       if (this.polygonStocksUnavailable) {
         return null;
       }

@@ -3,9 +3,28 @@
  * patches can refresh dip bands without waiting for the next HTTP poll.
  */
 import type { QuoteData } from '../services/chartService';
+import type { CryptoTicker } from '../services/cryptoService';
 import type { WatchlistContextResponse, WatchlistSizing } from '../services/aiAgentService';
 
 /** Shape a Chart service quote like a `priceUpdate` row for `mergeWatchlistPriceUpdates`. */
+export function cryptoTickerToPriceUpdatePayload(
+  ticker: CryptoTicker,
+  alertBaseSymbol: string
+): Record<string, unknown> {
+  const ts = Date.parse(ticker.timestamp);
+  return {
+    type: 'crypto',
+    symbol: String(alertBaseSymbol).toUpperCase(),
+    price: ticker.price,
+    timestamp: Number.isFinite(ts) ? ts : Date.now(),
+    change24h: ticker.changePercent,
+    changePercent: ticker.changePercent,
+    dayHigh: ticker.high,
+    dayLow: ticker.low,
+    volume: ticker.volume
+  };
+}
+
 export function chartQuoteToPriceUpdatePayload(q: QuoteData): Record<string, unknown> {
   const ts = Date.parse(q.timestamp);
   return {
@@ -13,6 +32,8 @@ export function chartQuoteToPriceUpdatePayload(q: QuoteData): Record<string, unk
     symbol: String(q.symbol || '').toUpperCase(),
     price: q.price,
     changePercent: q.changePercent,
+    /** Matches PriceMonitor stock payload: dollar change vs open for session snapshot */
+    change24h: q.change,
     timestamp: Number.isFinite(ts) ? ts : Date.now(),
     dayHigh: q.high,
     dayLow: q.low,
@@ -133,8 +154,8 @@ export function mergeWatchlistPriceUpdates(
       const ts = hit.timestamp != null ? Number(hit.timestamp) : nowMs;
       const quoteAgeSec = Math.max(0, Math.round((nowMs - ts) / 1000));
 
-      let dayChangePct: number | null = null;
-      let dayChangeAbs: number | null = null;
+      let dayChangePct: number | null = row.dayChangePct ?? null;
+      let dayChangeAbs: number | null = row.dayChangeAbs ?? null;
       if (row.assetType === 'stock') {
         if (hit.changePercent != null && Number.isFinite(Number(hit.changePercent))) {
           dayChangePct = Number(hit.changePercent);
@@ -170,12 +191,22 @@ export function mergeWatchlistPriceUpdates(
         row.thresholds.large
       );
 
-      const dayHigh = hit.dayHigh != null && Number.isFinite(Number(hit.dayHigh)) ? Number(hit.dayHigh) : null;
-      const dayLow = hit.dayLow != null && Number.isFinite(Number(hit.dayLow)) ? Number(hit.dayLow) : null;
+      const dayHigh =
+        hit.dayHigh != null && Number.isFinite(Number(hit.dayHigh))
+          ? Number(hit.dayHigh)
+          : row.dayHigh ?? null;
+      const dayLow =
+        hit.dayLow != null && Number.isFinite(Number(hit.dayLow))
+          ? Number(hit.dayLow)
+          : row.dayLow ?? null;
       const volume =
-        hit.volume != null && Number.isFinite(Number(hit.volume)) ? Number(hit.volume) : null;
+        hit.volume != null && Number.isFinite(Number(hit.volume))
+          ? Number(hit.volume)
+          : row.volume ?? null;
       const prevClose =
-        hit.prevClose != null && Number.isFinite(Number(hit.prevClose)) ? Number(hit.prevClose) : null;
+        hit.prevClose != null && Number.isFinite(Number(hit.prevClose))
+          ? Number(hit.prevClose)
+          : row.prevClose ?? null;
 
       return {
         ...row,
@@ -191,6 +222,82 @@ export function mergeWatchlistPriceUpdates(
         ...(dayLow != null ? { dayLow } : {}),
         ...(volume != null ? { volume } : {}),
         ...(prevClose != null ? { prevClose } : {})
+      };
+    })
+  };
+}
+
+/**
+ * After a full HTTP refresh, keep client-side quote fields when they are strictly fresher than the
+ * server snapshot (avoids flicker when a slow `watchlist-context` response returns after socket/poll updates).
+ */
+export function overlayFresherWatchlistQuotes(
+  server: WatchlistContextResponse,
+  prev: WatchlistContextResponse | null
+): WatchlistContextResponse {
+  if (!prev?.items?.length) return server;
+
+  const maxPct = server.maxPositionPct;
+  const prevById = new Map(prev.items.map((r) => [r.alertId, r]));
+
+  return {
+    ...server,
+    items: server.items.map((row) => {
+      const p = prevById.get(row.alertId);
+      if (!p) return row;
+
+      const serverAge = row.quoteAgeSec;
+      const prevAge = p.quoteAgeSec;
+      const prevHasPrice = p.currentPrice != null && Number.isFinite(Number(p.currentPrice));
+
+      const usePrevQuote =
+        prevHasPrice &&
+        (row.currentPrice == null ||
+          !Number.isFinite(Number(row.currentPrice)) ||
+          (prevAge != null && serverAge != null && prevAge < serverAge) ||
+          (prevAge != null && serverAge == null));
+
+      if (!usePrevQuote) return row;
+
+      const price = Number(p.currentPrice);
+      const baseline = row.baselinePrice;
+      let dropPctFromBaseline: number | null = null;
+      if (baseline != null && baseline > 0 && Number.isFinite(price)) {
+        dropPctFromBaseline = Number((((baseline - price) / baseline) * 100).toFixed(4));
+      }
+
+      const sizing = computeSizingPhase({
+        dropPct: dropPctFromBaseline,
+        smallTh: row.thresholds.small,
+        mediumTh: row.thresholds.medium,
+        largeTh: row.thresholds.large,
+        maxPositionPct: maxPct,
+        active: row.active
+      });
+
+      const gap = nextThresholdGap(
+        dropPctFromBaseline,
+        row.thresholds.small,
+        row.thresholds.medium,
+        row.thresholds.large
+      );
+
+      return {
+        ...row,
+        currentPrice: price,
+        dayChangePct: p.dayChangePct ?? row.dayChangePct,
+        dayChangeAbs: p.dayChangeAbs ?? row.dayChangeAbs,
+        quoteAgeSec: p.quoteAgeSec ?? row.quoteAgeSec,
+        dayHigh: p.dayHigh ?? row.dayHigh,
+        dayLow: p.dayLow ?? row.dayLow,
+        volume: p.volume ?? row.volume,
+        prevClose: p.prevClose ?? row.prevClose,
+        priceUnavailableReason: usePrevQuote ? null : row.priceUnavailableReason,
+        dropPctFromBaseline,
+        nextThresholdGap: gap,
+        sizing,
+        week52High: row.week52High ?? p.week52High,
+        week52Low: row.week52Low ?? p.week52Low
       };
     })
   };

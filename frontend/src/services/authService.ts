@@ -73,16 +73,18 @@ class AuthService {
   }
 
   async register(
-    firstName: string, 
-    lastName: string, 
-    email: string, 
-    password: string
+    firstName: string,
+    lastName: string,
+    email: string,
+    password: string,
+    inviteCode: string
   ): Promise<RegisterResponse> {
     const response = await axios.post<RegisterResponse>('/auth/register', {
       firstName,
       lastName,
       email,
-      password
+      password,
+      inviteCode
     });
     return response.data;
   }
@@ -137,6 +139,26 @@ class AuthService {
       token,
       newPassword
     });
+    return response.data;
+  }
+
+  async getAdminSignupInviteStatus(): Promise<{ configured: boolean; updatedAt: string | null }> {
+    const response = await axios.get<{ configured: boolean; updatedAt: string | null }>(
+      '/admin/signup-invite'
+    );
+    return response.data;
+  }
+
+  async rotateSignupInvite(newInviteCode: string, currentPassword: string): Promise<{
+    message: string;
+    configured: boolean;
+    updatedAt: string | null;
+  }> {
+    const response = await axios.put<{
+      message: string;
+      configured: boolean;
+      updatedAt: string | null;
+    }>('/admin/signup-invite', { newInviteCode, currentPassword });
     return response.data;
   }
 }

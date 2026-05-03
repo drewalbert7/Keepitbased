@@ -32,7 +32,9 @@ export interface User {
      */
     opportunityStockMarketHoursOnly?: boolean;
   };
-  createdAt: string;
+  createdAt?: string;
+  /** True when backend lists this user's email under ADMIN_SIGNUP_EMAILS — can rotate signup invite code. */
+  isSignupInviteAdmin?: boolean;
 }
 
 export interface AuthState {

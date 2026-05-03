@@ -1,5 +1,5 @@
 const express = require('express');
-const { body, param, validationResult } = require('express-validator');
+const { body, param, query, validationResult } = require('express-validator');
 const rateLimit = require('express-rate-limit');
 const auth = require('../middleware/auth');
 const logger = require('../utils/logger');
@@ -68,14 +68,21 @@ router.post(
   '/symbols',
   auth,
   watchlistLimiter,
-  [body('symbol').isString().trim().isLength({ min: 1, max: 16 })],
+  [
+    body('symbol').isString().trim().isLength({ min: 1, max: 24 }),
+    body('assetType').optional().isIn(['stock', 'crypto'])
+  ],
   async (req, res) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
       }
-      const data = await watchlistService.addStock(req.user.id, req.body.symbol, alertService);
+      const assetType = req.body.assetType === 'crypto' ? 'crypto' : 'stock';
+      const data =
+        assetType === 'crypto'
+          ? await watchlistService.addCrypto(req.user.id, req.body.symbol, alertService)
+          : await watchlistService.addStock(req.user.id, req.body.symbol, alertService);
       return res.status(201).json(data);
     } catch (error) {
       const code = error.statusCode || 500;
@@ -93,14 +100,18 @@ router.delete(
   watchlistLimiter,
   watchlistDeleteLimiter,
   requireDeleteConfirmation,
-  [param('symbol').isString().trim().isLength({ min: 1, max: 16 })],
+  [
+    param('symbol').isString().trim().isLength({ min: 1, max: 24 }),
+    query('assetType').optional().isIn(['stock', 'crypto'])
+  ],
   async (req, res) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
       }
-      const data = await watchlistService.removeStock(req.user.id, req.params.symbol, alertService);
+      const assetType = req.query.assetType === 'crypto' ? 'crypto' : 'stock';
+      const data = await watchlistService.removeSymbol(req.user.id, req.params.symbol, assetType, alertService);
       return res.json(data);
     } catch (error) {
       const code = error.statusCode || 500;

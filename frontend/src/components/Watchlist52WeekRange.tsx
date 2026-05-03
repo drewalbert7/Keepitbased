@@ -5,6 +5,8 @@ type Props = {
   currentPrice: number | null | undefined;
   week52High?: number | null;
   week52Low?: number | null;
+  /** `fluid` = full width of parent (mobile cards); default narrow bar for table cells */
+  variant?: 'compact' | 'fluid';
 };
 
 function fmtPrice(price: number | null | undefined, assetType: string): string {
@@ -22,7 +24,8 @@ export const Watchlist52WeekRange: React.FC<Props> = ({
   assetType,
   currentPrice,
   week52High,
-  week52Low
+  week52Low,
+  variant = 'compact'
 }) => {
   const hi = week52High != null ? Number(week52High) : NaN;
   const lo = week52Low != null ? Number(week52Low) : NaN;
@@ -44,8 +47,11 @@ export const Watchlist52WeekRange: React.FC<Props> = ({
     ? `Last ${fmtPrice(px, assetType)} · ~${clamped.toFixed(0)}% along trailing ~52-week range (daily bars)`
     : 'Trailing ~52-week range from daily highs and lows';
 
+  const shell =
+    variant === 'fluid' ? 'w-full max-w-none min-w-0' : 'w-full min-w-[112px] max-w-[176px]';
+
   return (
-    <div className="w-full min-w-[112px] max-w-[176px]" title={title}>
+    <div className={shell} title={title}>
       <div className="flex justify-between gap-1 text-[10px] tabular-nums leading-none text-slate-500">
         <span className="min-w-0 truncate">{fmtPrice(lo, assetType)}</span>
         <span className="min-w-0 truncate text-right">{fmtPrice(hi, assetType)}</span>

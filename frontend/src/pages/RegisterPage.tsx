@@ -11,14 +11,20 @@ const RegisterPage: React.FC = () => {
     lastName: '',
     email: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    inviteCode: ''
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.firstName || !formData.lastName || !formData.email || !formData.password) {
-      toast.error('Please fill in all fields');
+    if (!formData.firstName || !formData.lastName || !formData.email || !formData.password || !formData.inviteCode) {
+      toast.error('Please fill in all fields, including invitation code');
+      return;
+    }
+
+    if (formData.inviteCode.trim().length < 12) {
+      toast.error('Invitation code must be at least 12 characters');
       return;
     }
 
@@ -36,7 +42,8 @@ const RegisterPage: React.FC = () => {
       formData.firstName,
       formData.lastName,
       formData.email,
-      formData.password
+      formData.password,
+      formData.inviteCode.trim()
     );
     if (!result.ok) {
       toast.error(result.message);
@@ -97,6 +104,28 @@ const RegisterPage: React.FC = () => {
                 onChange={handleChange}
               />
             </div>
+          </div>
+
+          <div>
+            <label htmlFor="inviteCode" className="block text-sm font-medium text-slate-300">
+              Invitation code
+            </label>
+            <input
+              id="inviteCode"
+              name="inviteCode"
+              type="password"
+              autoComplete="off"
+              required
+              minLength={12}
+              maxLength={512}
+              className="input-field mt-1 font-mono"
+              placeholder="From your invite (12+ characters)"
+              value={formData.inviteCode}
+              onChange={handleChange}
+            />
+            <p className="mt-1 text-xs text-kib-muted">
+              New accounts require a valid invitation code. The code is not published on this site.
+            </p>
           </div>
 
           <div>

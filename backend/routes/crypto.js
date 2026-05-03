@@ -4,6 +4,7 @@ const axios = require('axios');
 const rateLimit = require('express-rate-limit');
 const logger = require('../utils/logger');
 const config = require('../config');
+const openbbClient = require('../services/openbbClient');
 const { publicCryptoSecurity } = require('../middleware/cryptoSecurity');
 
 const getMarketDataApiKey = () => config.POLYGON_API_KEY || config.MASSIVE_API_KEY;
@@ -45,36 +46,57 @@ const ensurePolygonApiKey = () => {
   }
 };
 
+const sleepPolygon = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Same retry budget as charts; reduces burst 429 during crypto page load (OHLC + ticker + refs). */
+const polygonUpstreamMaxAttempts = () => Number(config.POLYGON_UPSTREAM_MAX_ATTEMPTS || 4);
+
 const makePolygonRequest = async (endpoint, params = {}) => {
-  try {
-    ensurePolygonApiKey();
-    const apiKey = getMarketDataApiKey();
-    const response = await axios.get(`${getMarketDataBaseUrl()}${endpoint}`, {
-      params: {
-        ...params,
-        apiKey
-      },
-      timeout: 15000,
-      headers: {
-        'User-Agent': 'KeepItBased/1.0',
-        Authorization: `Bearer ${apiKey}`,
-        'X-Polygon-API-Key': apiKey
-      },
-      validateStatus: function (status) {
-        return status >= 200 && status < 500;
+  ensurePolygonApiKey();
+  const apiKey = getMarketDataApiKey();
+  const url = `${getMarketDataBaseUrl()}${endpoint}`;
+  let lastError;
+  const maxAttempts = polygonUpstreamMaxAttempts();
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const response = await axios.get(url, {
+        params: {
+          ...params,
+          apiKey
+        },
+        timeout: 15000,
+        headers: {
+          'User-Agent': 'KeepItBased/1.0',
+          Authorization: `Bearer ${apiKey}`,
+          'X-Polygon-API-Key': apiKey
+        }
+      });
+      return response.data;
+    } catch (error) {
+      lastError = error;
+      const status = error.response?.status;
+      if (error.code === 'ECONNABORTED') {
+        throw new Error('Request timeout - Polygon API is slow to respond');
       }
-    });
-    
-    return response.data;
-  } catch (error) {
-    if (error.code === 'ECONNABORTED') {
-      throw new Error('Request timeout - Polygon API is slow to respond');
+      if (error.code === 'ENOTFOUND') {
+        throw new Error('Unable to connect to Polygon API - network error');
+      }
+
+      const retryable = status === 429 || status === 408 || status === 502 || status === 503 || status === 504;
+      if (retryable && attempt < maxAttempts) {
+        let waitMs = 280 * 2 ** (attempt - 1);
+        const ra = error.response?.headers?.['retry-after'];
+        if (ra != null && !Number.isNaN(Number(ra))) {
+          waitMs = Math.max(waitMs, Number(ra) * 1000);
+        }
+        await sleepPolygon(Math.min(waitMs, 12_000));
+        continue;
+      }
+      throw error;
     }
-    if (error.code === 'ENOTFOUND') {
-      throw new Error('Unable to connect to Polygon API - network error');
-    }
-    throw error;
   }
+  throw lastError;
 };
 
 const POLYGON_INTERVAL_TO_MINUTES = {
@@ -329,7 +351,23 @@ router.get('/ticker/:pair', polygonApiLimiter, async (req, res) => {
         error: 'Missing pair parameter'
       });
     }
-    
+
+    if (openbbClient.isEnabled()) {
+      const ob = await openbbClient.fetchCryptoTickerMapped(pair);
+      if (ob && Number.isFinite(ob.price) && ob.price > 0) {
+        res.set('Cache-Control', 'public, max-age=30');
+        res.json(ob);
+        return;
+      }
+      if (openbbClient.cryptoExclusiveEffective()) {
+        return res.status(503).json({
+          message: 'OpenBB-exclusive: crypto ticker unavailable',
+          retryable: true,
+          openbbCryptoExclusive: true
+        });
+      }
+    }
+
     let formattedTicker;
     try {
       const response = await makePolygonRequest(`/v2/snapshot/locale/global/markets/crypto/tickers/${encodeURIComponent(pair)}`);
@@ -441,41 +479,72 @@ router.get('/ohlc/:pair', polygonApiLimiter, async (req, res) => {
     const effectiveIntervalMinutes = multiplier * POLYGON_INTERVAL_TO_MINUTES[timespan];
     const lookbackDays = since ? Math.max(1, Math.ceil((Date.now() - Number(since) * 1000) / 86400000)) : getLookbackDays(limitNum, effectiveIntervalMinutes);
     const to = new Date();
-    const from = new Date(to.getTime() - (lookbackDays * 24 * 60 * 60 * 1000));
+    const from = new Date(to.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
 
     let processedData;
     let lastId = 0;
-    try {
-      const response = await makePolygonRequest(
-        `/v2/aggs/ticker/${encodeURIComponent(pair)}/range/${multiplier}/${timespan}/${from.toISOString().slice(0, 10)}/${to.toISOString().slice(0, 10)}`,
-        { adjusted: true, sort: 'asc', limit: limitNum }
+
+    if (openbbClient.isEnabled()) {
+      const obBars = await openbbClient.fetchCryptoOhlcvAsPolygonLike(
+        pair,
+        effectiveIntervalMinutes,
+        limitNum
       );
-
-      const ohlcArray = response.results || [];
-      if (!Array.isArray(ohlcArray) || ohlcArray.length === 0) {
-        throw new Error('Invalid OHLC data received from Polygon');
+      if (obBars && obBars.length) {
+        processedData = obBars.map((candle) => ({
+          time: Number(candle.t),
+          open: Number(candle.o),
+          high: Number(candle.h),
+          low: Number(candle.l),
+          close: Number(candle.c),
+          vwap: Number(candle.vw ?? candle.c),
+          volume: Number(candle.v ?? 0),
+          trades: Number(candle.n ?? 0)
+        })).filter((candle) => !isNaN(candle.time) && !isNaN(candle.open));
+        lastId = processedData.length;
       }
+    }
 
-      processedData = ohlcArray.map((candle) => ({
-        time: Number(candle.t),
-        open: Number(candle.o),
-        high: Number(candle.h),
-        low: Number(candle.l),
-        close: Number(candle.c),
-        vwap: Number(candle.vw ?? candle.c),
-        volume: Number(candle.v ?? 0),
-        trades: Number(candle.n ?? 0)
-      })).filter((candle) => !isNaN(candle.time) && !isNaN(candle.open));
-      lastId = response.queryCount || response.resultsCount || 0;
-    } catch (polygonError) {
-      logWithCooldown(`ohlc-polygon-${pair}`, 'warn', `Polygon OHLC unavailable for ${pair}; using fallback providers.`);
+    if (!processedData || !processedData.length) {
+      if (openbbClient.isEnabled() && openbbClient.cryptoExclusiveEffective()) {
+        return res.status(503).json({
+          message: 'OpenBB-exclusive: crypto OHLC unavailable',
+          retryable: true,
+          openbbCryptoExclusive: true
+        });
+      }
       try {
-        processedData = await getBinanceOHLC(pair, effectiveIntervalMinutes, limitNum);
-        lastId = processedData.length;
-      } catch (binanceError) {
-        logWithCooldown(`ohlc-binance-${pair}`, 'warn', `Binance OHLC fallback failed for ${pair}; using CoinGecko.`);
-        processedData = await getCoinGeckoOHLC(pair, effectiveIntervalMinutes, limitNum);
-        lastId = processedData.length;
+        const response = await makePolygonRequest(
+          `/v2/aggs/ticker/${encodeURIComponent(pair)}/range/${multiplier}/${timespan}/${from.toISOString().slice(0, 10)}/${to.toISOString().slice(0, 10)}`,
+          { adjusted: true, sort: 'asc', limit: limitNum }
+        );
+
+        const ohlcArray = response.results || [];
+        if (!Array.isArray(ohlcArray) || ohlcArray.length === 0) {
+          throw new Error('Invalid OHLC data received from Polygon');
+        }
+
+        processedData = ohlcArray.map((candle) => ({
+          time: Number(candle.t),
+          open: Number(candle.o),
+          high: Number(candle.h),
+          low: Number(candle.l),
+          close: Number(candle.c),
+          vwap: Number(candle.vw ?? candle.c),
+          volume: Number(candle.v ?? 0),
+          trades: Number(candle.n ?? 0)
+        })).filter((candle) => !isNaN(candle.time) && !isNaN(candle.open));
+        lastId = response.queryCount || response.resultsCount || 0;
+      } catch (polygonError) {
+        logWithCooldown(`ohlc-polygon-${pair}`, 'warn', `Polygon OHLC unavailable for ${pair}; using fallback providers.`);
+        try {
+          processedData = await getBinanceOHLC(pair, effectiveIntervalMinutes, limitNum);
+          lastId = processedData.length;
+        } catch (binanceError) {
+          logWithCooldown(`ohlc-binance-${pair}`, 'warn', `Binance OHLC fallback failed for ${pair}; using CoinGecko.`);
+          processedData = await getCoinGeckoOHLC(pair, effectiveIntervalMinutes, limitNum);
+          lastId = processedData.length;
+        }
       }
     }
 

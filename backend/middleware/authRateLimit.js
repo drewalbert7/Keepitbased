@@ -107,8 +107,36 @@ const passwordResetRateLimit = rateLimit({
   }
 });
 
+/**
+ * Admin-only: PUT /api/admin/signup-invite — per authenticated user id
+ */
+const adminSignupInvitePutLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  message: {
+    error: 'Too many invite rotations',
+    message: 'Too many invitation code updates. Try again later.',
+    retryAfter: 3600
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const id = req.user?.id ?? 'anonymous';
+    return `admin-invite-put:${id}`;
+  },
+  handler: (req, res) => {
+    logger.warn(`Admin invite PUT rate limit for user=${req.user?.id} ip=${req.ip}`);
+    res.status(429).json({
+      error: 'Rate limit exceeded',
+      message: 'Too many invitation code updates. Try again later.',
+      retryAfter: 3600
+    });
+  }
+});
+
 module.exports = {
   authRateLimit,
   registrationRateLimit,
-  passwordResetRateLimit
+  passwordResetRateLimit,
+  adminSignupInvitePutLimit
 };

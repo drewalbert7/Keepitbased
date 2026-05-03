@@ -4,6 +4,7 @@ const axios = require('axios');
 const rateLimit = require('express-rate-limit');
 const logger = require('../utils/logger');
 const config = require('../config');
+const openbbClient = require('../services/openbbClient');
 const { getRedisClient } = require('../utils/redis');
 
 const getMarketDataApiKey = () => config.POLYGON_API_KEY || config.MASSIVE_API_KEY;
@@ -31,14 +32,13 @@ const fetchAggregateBarsMerged = async (endpoint, params = {}) => {
   const maxPages = 60;
 
   while (nextUrl && pages < maxPages) {
-    metrics.upstreamRequests += 1;
-    const response = await axios.get(nextUrl, {
+    /** Use bounded retries (+ Retry-After) like `makeMassiveRequest`; raw axios was brittle on watchlist bursts. */
+    const body = await axiosGetMassiveJson(nextUrl, {
       params: firstPage ? { ...params, apiKey } : undefined,
       headers: marketDataHeaders(apiKey),
       timeout: 25000
     });
     firstPage = false;
-    const body = response.data;
     if (Array.isArray(body.results)) {
       merged.push(...body.results);
     }
@@ -180,6 +180,37 @@ const stableSerialize = (input) => {
 
 const buildUpstreamKey = (endpoint, params) => `${endpoint}?${stableSerialize(params || {})}`;
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Single GET to Massive/Polygon with bounded retries (watchlist opens many parallel quotes → 429 bursts).
+ */
+const axiosGetMassiveJson = async (url, axiosConfig) => {
+  const maxAttempts = config.POLYGON_UPSTREAM_MAX_ATTEMPTS || 4;
+  let lastError;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      metrics.upstreamRequests += 1;
+      const response = await axios.get(url, axiosConfig);
+      return response.data;
+    } catch (error) {
+      lastError = error;
+      const status = error.response?.status;
+      const retryable = status === 429 || status === 408 || status === 502 || status === 503 || status === 504;
+      if (!retryable || attempt === maxAttempts) {
+        throw error;
+      }
+      let waitMs = 280 * 2 ** (attempt - 1);
+      const ra = error.response?.headers?.['retry-after'];
+      if (ra != null && !Number.isNaN(Number(ra))) {
+        waitMs = Math.max(waitMs, Number(ra) * 1000);
+      }
+      await sleep(Math.min(waitMs, 12_000));
+    }
+  }
+  throw lastError;
+};
+
 const makeMassiveRequest = async (endpoint, params = {}) => {
   const apiKey = getMarketDataApiKey();
   if (!apiKey) {
@@ -192,18 +223,16 @@ const makeMassiveRequest = async (endpoint, params = {}) => {
     return upstreamInflight.get(requestKey);
   }
 
-  metrics.upstreamRequests += 1;
-  const requestPromise = axios.get(`${config.MARKET_DATA_API_URL}${endpoint}`, {
+  const requestPromise = axiosGetMassiveJson(`${config.MARKET_DATA_API_URL}${endpoint}`, {
     params: {
       ...params,
       apiKey
     },
     headers: marketDataHeaders(apiKey),
     timeout: 20000
-  }).then((response) => response.data)
-    .finally(() => {
-      upstreamInflight.delete(requestKey);
-    });
+  }).finally(() => {
+    upstreamInflight.delete(requestKey);
+  });
 
   upstreamInflight.set(requestKey, requestPromise);
   return requestPromise;
@@ -229,6 +258,8 @@ const getQuoteCacheTtl = (sourceUsed) => {
   if (sourceUsed === 'agg_minute') return 10;
   return 60;
 };
+
+const quoteStaleKey = (symbolUpper) => `charts:quote:stale:${symbolUpper}`;
 
 const safeGetCache = async (key) => {
   try {
@@ -292,7 +323,8 @@ const sanitizeQuote = (raw = {}) => {
     timestamp: raw.timestamp || new Date().toISOString(),
     sourceUsed: raw.sourceUsed || 'unknown',
     partialData: Boolean(raw.partialData),
-    lastUpdated: raw.lastUpdated || new Date().toISOString()
+    lastUpdated: raw.lastUpdated || new Date().toISOString(),
+    quoteStale: Boolean(raw.quoteStale)
   };
 };
 
@@ -391,13 +423,24 @@ router.get('/history/:symbol', historyRateLimiter, async (req, res) => {
     const { multiplier, timespan } = intervalToAgg(interval);
     const { from, to } = resolveHistoryRange(period);
 
-    const rawBars = await fetchAggregatesChunked(
-      symbol.toUpperCase(),
-      multiplier,
-      timespan,
-      from,
-      to
-    );
+    let rawBars = [];
+    let historyFromOpenBb = false;
+    if (openbbClient.isEnabled()) {
+      rawBars = await openbbClient.fetchEquityHistoricalAsPolygonBars(upperSymbol, interval, from, to);
+      if (rawBars.length) historyFromOpenBb = true;
+    }
+
+    if (!rawBars.length) {
+      if (openbbClient.isEnabled() && config.OPENBB_STOCK_HISTORY_EXCLUSIVE) {
+        return res.status(503).json({
+          message: 'OpenBB-exclusive: equity history unavailable for this range',
+          retryable: true,
+          openbbHistoryExclusive: true
+        });
+      }
+      rawBars = await fetchAggregatesChunked(symbol.toUpperCase(), multiplier, timespan, from, to);
+    }
+
     const data = rawBars.map(sanitizeCandle).filter(Boolean);
 
     const requestedFromMs = from.getTime();
@@ -418,7 +461,7 @@ router.get('/history/:symbol', historyRateLimiter, async (req, res) => {
       period,
       interval,
       timestamp: new Date().toISOString(),
-      sourceUsed: 'massive_aggs',
+      sourceUsed: historyFromOpenBb ? 'openbb_equity' : 'massive_aggs',
       partialData: data.length === 0,
       lastUpdated: new Date().toISOString(),
       coverage: {
@@ -444,22 +487,83 @@ router.get('/history/:symbol', historyRateLimiter, async (req, res) => {
     if (error.response?.status === 403) {
       return res.status(403).json({ message: 'Massive market-data entitlement required for historical charts' });
     }
-    
+    if (error.response?.status === 429) {
+      return res.status(503).json({
+        message: 'Market data rate-limited; retry shortly',
+        retryable: true
+      });
+    }
+
     res.status(500).json({ message: 'Failed to get chart data' });
   }
 });
 
 // Get current quote with detailed info
 router.get('/quote/:symbol', quoteRateLimiter, async (req, res) => {
+  metrics.quoteRequests += 1;
+  const { symbol } = req.params;
+  const upper = symbol.toUpperCase();
   try {
-    metrics.quoteRequests += 1;
-    const { symbol } = req.params;
-    const upper = symbol.toUpperCase();
     const cacheKey = `charts:quote:${upper}`;
     const cachedQuote = await safeGetCache(cacheKey);
     if (cachedQuote) {
       metrics.quoteCacheHits += 1;
       return res.json(cachedQuote);
+    }
+
+    /** OpenBB hub: Polygon daily bars (`openbb-polygon`) → quote-shaped snapshot — optional. */
+    if (openbbClient.isEnabled()) {
+      const mapped = await openbbClient.fetchEquityQuoteMapped(upper);
+      if (mapped && Number.isFinite(Number(mapped.price)) && mapped.price > 0) {
+        let quoteFromOpenBb = mapped;
+        if (!openbbClient.quoteExclusiveEffective()) {
+          try {
+            const info = await makeMassiveRequest('/v3/reference/tickers', {
+              ticker: upper,
+              market: 'stocks',
+              limit: 1
+            });
+            quoteFromOpenBb = {
+              ...mapped,
+              companyName: info.results?.[0]?.name || mapped.companyName,
+              marketCap: Number(info.results?.[0]?.market_cap ?? mapped.marketCap ?? 0)
+            };
+          } catch (_infoErr) {
+            // non-fatal
+          }
+        }
+
+        const payload = sanitizeQuote({
+          ...quoteFromOpenBb,
+          sourceUsed: 'openbb_polygon_daily',
+          partialData: true,
+          lastUpdated: new Date().toISOString(),
+          timestamp: mapped.timestamp || new Date().toISOString()
+        });
+
+        await safeSetCache(cacheKey, payload, getQuoteCacheTtl('agg_day'));
+        await safeSetCache(quoteStaleKey(upper), payload, config.CHARTS_QUOTE_STALE_TTL_SEC || 259200);
+        return res.json(payload);
+      }
+
+      if (openbbClient.quoteExclusiveEffective() && openbbClient.isEnabled()) {
+        const staleEx = await safeGetCache(quoteStaleKey(upper));
+        if (staleEx && staleEx.symbol === upper && Number.isFinite(Number(staleEx.price))) {
+          logger.warn(`charts quote OpenBB-exclusive stale fallback for ${upper}`);
+          const payload = sanitizeQuote({
+            ...staleEx,
+            quoteStale: true,
+            partialData: true,
+            lastUpdated: staleEx.lastUpdated || staleEx.timestamp || new Date().toISOString()
+          });
+          return res.json(payload);
+        }
+        return res.status(503).json({
+          message: 'OpenBB-exclusive mode: quote unavailable (sidecar returned no rows)',
+          retryable: true,
+          openbbExclusive: true
+        });
+      }
     }
 
     let quoteData;
@@ -557,12 +661,30 @@ router.get('/quote/:symbol', quoteRateLimiter, async (req, res) => {
     });
 
     await safeSetCache(cacheKey, payload, getQuoteCacheTtl(sourceUsed));
+    await safeSetCache(quoteStaleKey(upper), payload, config.CHARTS_QUOTE_STALE_TTL_SEC || 259200);
     res.json(payload);
   } catch (error) {
     logger.error(`Error getting quote for ${req.params.symbol}: ${error.message}`);
-    
+
+    const stale = await safeGetCache(quoteStaleKey(upper));
+    if (stale && stale.symbol === upper && Number.isFinite(Number(stale.price))) {
+      logger.warn(
+        `charts quote: serving stale cache for ${upper} (upstream ${error.response?.status || 'error'})`
+      );
+      const payload = sanitizeQuote({
+        ...stale,
+        quoteStale: true,
+        partialData: true,
+        lastUpdated: stale.lastUpdated || stale.timestamp || new Date().toISOString()
+      });
+      return res.json(payload);
+    }
+
     if (error.response?.status === 404) {
       return res.status(404).json({ message: 'Symbol not found' });
+    }
+    if (error.response?.status === 429) {
+      return res.status(503).json({ message: 'Market data rate-limited; retry shortly', retryable: true });
     }
     res.status(500).json({ message: 'Failed to get quote' });
   }
@@ -618,12 +740,31 @@ router.get('/technical/:symbol', async (req, res) => {
     const days = PERIOD_TO_DAYS[period] || 180;
     const to = new Date();
     const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
-    const response = await makeMassiveRequest(
-      `/v2/aggs/ticker/${encodeURIComponent(symbol.toUpperCase())}/range/1/day/${from.toISOString().slice(0, 10)}/${to.toISOString().slice(0, 10)}`,
-      { adjusted: true, sort: 'asc', limit: 5000 }
-    );
+    let rawResults = [];
+    if (openbbClient.isEnabled()) {
+      rawResults = await openbbClient.fetchEquityHistoricalAsPolygonBars(
+        symbol.toUpperCase(),
+        '1d',
+        from,
+        to
+      );
+    }
+    if (!rawResults.length) {
+      if (openbbClient.isEnabled() && config.OPENBB_STOCK_HISTORY_EXCLUSIVE) {
+        return res.status(503).json({
+          message: 'OpenBB-exclusive: technical history unavailable',
+          retryable: true,
+          openbbHistoryExclusive: true
+        });
+      }
+      const response = await makeMassiveRequest(
+        `/v2/aggs/ticker/${encodeURIComponent(symbol.toUpperCase())}/range/1/day/${from.toISOString().slice(0, 10)}/${to.toISOString().slice(0, 10)}`,
+        { adjusted: true, sort: 'asc', limit: 5000 }
+      );
+      rawResults = response.results || [];
+    }
 
-    const candles = (response.results || [])
+    const candles = rawResults
       .map((c) => sanitizeCandle(c))
       .filter(Boolean)
       .map((c) => ({
