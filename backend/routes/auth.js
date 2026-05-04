@@ -12,6 +12,7 @@ const config = require('../config');
 const emailService = require('../services/emailService');
 const { mergeNotificationPreferences } = require('../utils/notificationPreferences');
 const signupInviteCodeService = require('../services/signupInviteCodeService');
+const userSignupPasscodeService = require('../services/userSignupPasscodeService');
 const { isSignupInviteAdmin } = require('../utils/signupInviteAdmin');
 const cryptoSecurity = require('../utils/cryptoSecurity');
 
@@ -19,6 +20,7 @@ function serializeUserSafe(userRow) {
   return {
     id: userRow.id,
     email: userRow.email,
+    username: userRow.username || null,
     firstName: userRow.first_name,
     lastName: userRow.last_name,
     notificationPreferences: mergeNotificationPreferences(userRow.notification_preferences),
@@ -40,6 +42,7 @@ const getDevelopmentFallback = async (email) => {
     id: 1,
     email: 'test@example.com',
     password_hash: '$2a$12$I8YdG.r51mYdUqTEJIUii.ssswnDy7dzeFnsMfsAojK/uAKQQfSJe',
+    username: 'testuser',
     first_name: 'Test',
     last_name: 'User'
   };
@@ -49,11 +52,13 @@ const getDevelopmentFallback = async (email) => {
 router.post('/register', sanitizeInput, registrationRateLimit, [
   validateEmail,
   validatePassword,
-  body('firstName').isLength({ min: 1, max: 50 }).withMessage('First name must be between 1 and 50 characters').trim(),
-  body('lastName').isLength({ min: 1, max: 50 }).withMessage('Last name must be between 1 and 50 characters').trim(),
+  body('username')
+    .matches(/^[a-zA-Z0-9_]{3,32}$/)
+    .withMessage('Username must be 3–32 characters: letters, numbers, or underscore only')
+    .trim(),
   body('inviteCode')
-    .isLength({ min: 12, max: 512 })
-    .withMessage('Invitation code must be between 12 and 512 characters')
+    .isLength({ min: 8, max: 512 })
+    .withMessage('Invitation or passcode must be between 8 and 512 characters')
     .trim()
 ], handleValidationErrors, async (req, res) => {
   try {
@@ -62,24 +67,40 @@ router.post('/register', sanitizeInput, registrationRateLimit, [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { email, password, firstName, lastName, inviteCode } = req.body;
+    const { email, password, username, inviteCode } = req.body;
+    const usernameNorm = String(username).trim().toLowerCase();
 
-    const inviteReady = await signupInviteCodeService.inviteCodeConfigured();
-    if (!inviteReady) {
-      logger.warn(`Registration rejected: signup invite code not configured (ip=${req.ip})`);
+    const globalInviteReady = await signupInviteCodeService.inviteCodeConfigured();
+    const personalInviteReady = await userSignupPasscodeService.anyUserHasSignupPasscode();
+    if (!globalInviteReady && !personalInviteReady) {
+      logger.warn(`Registration rejected: no signup channel configured (ip=${req.ip})`);
       return res.status(503).json({
         message: 'Account signup is temporarily unavailable.'
       });
     }
 
-    const inviteOk = await signupInviteCodeService.verifyInviteCode(inviteCode || '');
-    if (!inviteOk) {
+    let invitedByUserId = null;
+    let inviteAccepted = false;
+    if (globalInviteReady) {
+      const globalOk = await signupInviteCodeService.verifyInviteCode(inviteCode || '');
+      if (globalOk) {
+        inviteAccepted = true;
+      }
+    }
+    if (!inviteAccepted) {
+      const personal = await userSignupPasscodeService.verifyUserPasscode(inviteCode || '');
+      if (personal.ok) {
+        inviteAccepted = true;
+        invitedByUserId = personal.inviterUserId;
+      }
+    }
+    if (!inviteAccepted) {
       cryptoSecurity.createAuditLog('invite_signup_denied', req.ip, {
         endpoint: '/register',
         ip: req.ip,
         userAgent: req.get('User-Agent')
       });
-      return res.status(403).json({ message: 'Invalid invitation code.' });
+      return res.status(403).json({ message: 'Invalid invitation code or passcode.' });
     }
 
     // Check if user already exists
@@ -88,16 +109,30 @@ router.post('/register', sanitizeInput, registrationRateLimit, [
       return res.status(409).json({ message: 'User already exists' });
     }
 
+    const dupName = await db.query(
+      'SELECT id FROM users WHERE LOWER(username) = LOWER($1)',
+      [usernameNorm]
+    );
+    if (dupName.rows.length > 0) {
+      return res.status(409).json({ message: 'Username is already taken' });
+    }
+
     // Hash password
     const saltRounds = 12;
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
-    // Create user
-    const result = await db.query(`
-      INSERT INTO users (email, password_hash, first_name, last_name, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, NOW(), NOW())
-      RETURNING id, email, first_name, last_name, created_at
-    `, [email, passwordHash, firstName, lastName]);
+    // Create user (display names deprecated — username only for new accounts)
+    const result = await db.query(
+      `
+      INSERT INTO users (
+        email, password_hash, username, first_name, last_name,
+        invited_by_user_id, created_at, updated_at
+      )
+      VALUES ($1, $2, $3, NULL, NULL, $4, NOW(), NOW())
+      RETURNING id, email, username, first_name, last_name, created_at
+    `,
+      [email, passwordHash, usernameNorm, invitedByUserId]
+    );
 
     const user = result.rows[0];
 
@@ -135,10 +170,13 @@ router.post('/login', sanitizeInput, authRateLimit, [
 
     try {
       // Try database first
-      const result = await db.query(`
-        SELECT id, email, password_hash, first_name, last_name, notification_preferences
+      const result = await db.query(
+        `
+        SELECT id, email, password_hash, username, first_name, last_name, notification_preferences
         FROM users WHERE email = $1
-      `, [email]);
+      `,
+        [email]
+      );
 
       if (result.rows.length > 0) {
         user = result.rows[0];
@@ -183,10 +221,13 @@ router.post('/login', sanitizeInput, authRateLimit, [
 // Get current user
 router.get('/me', auth, async (req, res) => {
   try {
-    const result = await db.query(`
-      SELECT id, email, first_name, last_name, notification_preferences, created_at
+    const result = await db.query(
+      `
+      SELECT id, email, username, first_name, last_name, notification_preferences, created_at
       FROM users WHERE id = $1
-    `, [req.user.id]);
+    `,
+      [req.user.id]
+    );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'User not found' });
@@ -266,16 +307,22 @@ router.post('/recover-username', [
     const { email } = req.body;
 
     // Find user by email
-    const result = await db.query('SELECT email FROM users WHERE email = $1', [email]);
-    
+    const result = await db.query(
+      'SELECT email, username FROM users WHERE email = $1',
+      [email]
+    );
+
     if (result.rows.length === 0) {
       // Don't reveal if email exists or not for security
       return res.json({ message: 'If an account with that email exists, the username has been sent to the email address.' });
     }
 
+    const row = result.rows[0];
+    const uname = row.username ? String(row.username) : '';
+
     // Send username recovery email
     logger.info(`Username recovery requested for email: ${email}`);
-    await emailService.sendUsernameRecovery(email);
+    await emailService.sendUsernameRecovery(email, uname);
     
     res.json({ message: 'If an account with that email exists, the username has been sent to the email address.' });
   } catch (error) {

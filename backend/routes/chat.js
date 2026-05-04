@@ -31,11 +31,13 @@ function chat503(res) {
 
 async function loadDisplayName(userId) {
   const r = await db.query(
-    `SELECT first_name, last_name, email FROM users WHERE id = $1`,
+    `SELECT username, first_name, last_name, email FROM users WHERE id = $1`,
     [userId]
   );
   if (!r.rows.length) return 'User';
   const row = r.rows[0];
+  const un = (row.username || '').trim();
+  if (un) return un.slice(0, 120);
   const fn = (row.first_name || '').trim();
   const ln = (row.last_name || '').trim();
   const combined = `${fn} ${ln}`.trim();

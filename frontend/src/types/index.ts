@@ -2,6 +2,9 @@
 export interface User {
   id: number;
   email: string;
+  /** Public handle (unique, lowercase in API). */
+  username?: string | null;
+  /** Legacy — new signups use `username` only. */
   firstName: string | null;
   lastName: string | null;
   notificationPreferences?: {
@@ -126,11 +129,11 @@ export interface LoginFormData {
 }
 
 export interface RegisterFormData {
-  firstName: string;
-  lastName: string;
+  username: string;
   email: string;
   password: string;
   confirmPassword: string;
+  inviteCode: string;
 }
 
 // API Response types

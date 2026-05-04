@@ -609,3 +609,131 @@ class LlmClient:
                 content = message.get("content", "")
                 return str(content).strip()
         return ""
+
+    def _markdown_chat(self, system: str, user: str, *, timeout: int = 60) -> str:
+        """Single-turn markdown prose via chat completions (Grok or OpenAI)."""
+        if self.provider == "openai" and self.openai_api_key:
+            payload = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                "temperature": 0.35,
+            }
+            response = requests.post(
+                f"{self.openai_base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.openai_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            text = self._extract_chat_text(response.json())
+            if text:
+                return text
+        if self.provider == "grok" and self.grok_api_key:
+            headers = {
+                "Authorization": f"Bearer {self.grok_api_key}",
+                "Content-Type": "application/json",
+            }
+            chat_payload = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                "temperature": 0.35,
+            }
+            response = requests.post(
+                f"{self.grok_base_url}/chat/completions",
+                headers=headers,
+                json=chat_payload,
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            text = self._extract_chat_text(response.json())
+            if text:
+                return text
+        raise RuntimeError("No LLM provider configured for markdown chat")
+
+    def answer_educational_qa(
+        self,
+        prompt: str,
+        conversation_block: str,
+        *,
+        watchlist_digest: str,
+        research_digest: str,
+    ) -> str:
+        """Dashboard Q&A: plain-language answer using only supplied context for market facts."""
+        system = (
+            "You are a financial education assistant for a watchlist and dip-alert app. "
+            "Answer the user's question in clear Markdown.\n"
+            "Rules:\n"
+            "- Use ONLY the facts in CONTEXT blocks for prices, symbols, headlines, or portfolio hints. "
+            "If context is missing something, say so — do not invent quotes or news.\n"
+            "- No buy/sell commands; no guaranteed returns; remind the user to verify material facts.\n"
+            "- Keep the answer focused; use short sections or bullets when helpful.\n"
+        )
+        user = (
+            f"RECENT_CONVERSATION:\n{conversation_block}\n\n"
+            f"WATCHLIST_AND_SIZING_CONTEXT:\n{watchlist_digest}\n\n"
+            f"RECENT_HEADLINES_CONTEXT:\n{research_digest}\n\n"
+            f"USER_QUESTION:\n{prompt}\n"
+        )
+        try:
+            out = self._markdown_chat(system, user, timeout=65)
+            self.last_used_provider = self.provider or "template"
+            self.last_fallback_used = False
+            return out.strip()
+        except Exception as exc:
+            logger.warning("answer_educational_qa fallback: %s", exc)
+        self.last_used_provider = "template"
+        self.last_fallback_used = True
+        return (
+            "**Educational note:** The live model is unavailable, so this is a generic pointer only.\n\n"
+            "- For definitions (e.g. RSI), see reputable finance glossaries or your broker’s education center.\n"
+            "- For moves on a specific symbol, check the app’s quotes and ingested headlines once Grok is configured on the Python service.\n"
+        )
+
+    def compose_scan_user_reply(
+        self,
+        prompt: str,
+        conversation_block: str,
+        packet: Dict[str, Any],
+    ) -> str:
+        """After opportunity scan: answer the user's actual question using only the JSON packet + thread."""
+        system = (
+            "You are a financial education assistant. The user ran a watchlist opportunity scan. "
+            "Write a concise Markdown reply that answers their question in plain English.\n"
+            "Rules:\n"
+            "- Use ONLY numbers, symbols, scores, and flags present in SCAN_PACKET JSON. Do not invent data.\n"
+            "- Summarize tradeoffs (momentum vs event risk, etc.) when relevant.\n"
+            "- If SCAN_PACKET has zero candidates, explain possible reasons (filters, confidence floor) without blaming the user.\n"
+            "- No buy/sell instructions; educational framing only.\n"
+        )
+        pack_json = json.dumps(packet, ensure_ascii=False, default=str)[:12000]
+        user = (
+            f"RECENT_CONVERSATION:\n{conversation_block}\n\n"
+            f"SCAN_PACKET_JSON:\n{pack_json}\n\n"
+            f"USER_MESSAGE:\n{prompt}\n"
+        )
+        try:
+            out = self._markdown_chat(system, user, timeout=65)
+            self.last_used_provider = self.provider or "template"
+            self.last_fallback_used = False
+            return out.strip()
+        except Exception as exc:
+            logger.warning("compose_scan_user_reply fallback: %s", exc)
+        self.last_used_provider = "template"
+        self.last_fallback_used = True
+        cands = packet.get("topCandidates") or []
+        if not cands:
+            return (
+                "The scan returned **no candidates** above your confidence floor. "
+                "Try lowering the floor or widening the watchlist, then run **Scan & rank** again."
+            )
+        lines = [f"- **{c.get('symbol')}** — score `{c.get('score')}`, confidence `{c.get('confidence')}`" for c in cands[:5]]
+        return "Here is a quick recap from the scan (template fallback; configure Grok for richer prose):\n\n" + "\n".join(lines)

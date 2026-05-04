@@ -159,11 +159,145 @@ def _infer_asset_type(symbol: str, prompt: str = '') -> str:
     return 'stock'
 
 
+_QA_HINTS = (
+    "what is ",
+    "what are ",
+    "what does ",
+    "what's ",
+    "define ",
+    "explain ",
+    "why did ",
+    "why does ",
+    "why is ",
+    "why are ",
+    "how does ",
+    "how do ",
+    "meaning of ",
+    "tell me about ",
+    "can you explain",
+    "difference between ",
+    "what is rsi",
+    "what is macd",
+    "what is pe ",
+    "what is a ",
+    "what is an ",
+)
+_SCAN_HINTS = (
+    "rank ",
+    "scan ",
+    "top opportunit",
+    "analyze my watchlist",
+    "analyze my active",
+    "best candidates",
+    "score my",
+    "opportunities on my",
+    "strongest dip",
+    "ranked candidate",
+    "rank symbols",
+)
+
+
+def _resolve_intent_from_ui_and_prompt(state: OpportunityState) -> str:
+    """Return opportunity_scan or educational_qa."""
+    prompt = (state.get("prompt") or "").strip()
+    raw = str(state.get("assistant_intent") or "smart").strip().lower()
+    if raw == "ask_question":
+        return "educational_qa"
+    if raw == "scan_rank":
+        return "opportunity_scan"
+    if raw not in ("smart", ""):
+        return "opportunity_scan"
+    pl = prompt.lower()
+    scan_score = sum(1 for h in _SCAN_HINTS if h in pl)
+    qa_score = sum(1 for h in _QA_HINTS if h in pl)
+    if qa_score > scan_score:
+        return "educational_qa"
+    if "?" in prompt and scan_score == 0:
+        return "educational_qa"
+    if scan_score > 0:
+        return "opportunity_scan"
+    return "opportunity_scan"
+
+
+def _format_conversation_for_llm(history: Optional[Any], max_turns: int = 8) -> str:
+    if not isinstance(history, list) or not history:
+        return "(No prior turns in this thread.)"
+    lines: List[str] = []
+    for turn in history[-max_turns:]:
+        if not isinstance(turn, dict):
+            continue
+        role = str(turn.get("role") or "").strip().lower()
+        content = str(turn.get("content") or "").strip()
+        if not content:
+            continue
+        if role in ("user", "human"):
+            lines.append(f"User: {content[:1200]}")
+        elif role in ("assistant", "agent", "ai"):
+            lines.append(f"Assistant: {content[:1200]}")
+    if not lines:
+        return "(No prior turns in this thread.)"
+    return "\n".join(lines)
+
+
 def intent_router(state: OpportunityState) -> OpportunityState:
     prompt = (state.get("prompt") or "").strip()
     if not prompt:
         return {"error": "prompt is required"}
-    return {"intent": "opportunity_scan"}
+    resolved = _resolve_intent_from_ui_and_prompt(state)
+    return {"intent": resolved}
+
+
+def qa_advisor(state: OpportunityState) -> OpportunityState:
+    """Grounded educational Q&A using watchlist digest + optional recent headlines (no ranking)."""
+    try:
+        uid = int(state.get("user_id") or 0)
+        prompt = (state.get("prompt") or "").strip()
+        wl_digest = format_dashboard_watchlist_digest(state.get("watchlist_context"))
+        conv = _format_conversation_for_llm(state.get("conversation_history"))
+
+        syms = _extract_prompt_tickers(prompt)[:6]
+        if not syms:
+            syms = sorted(_active_symbols_from_watchlist_payload(state))[:6]
+        rc: Dict[str, Any] = {"artifacts": [], "lookbackHours": 24}
+        if uid > 0 and syms:
+            hours = int(os.getenv("RESEARCH_CONTEXT_LOOKBACK_HOURS", "24") or "24")
+            try:
+                rc = fetch_research_artifacts(uid, syms, hours=hours, limit=24) or rc
+            except Exception as exc:
+                logger.warning("qa_advisor research fetch: %s", exc)
+        research_digest = format_research_artifacts_digest(rc)
+
+        body = LLM_CLIENT.answer_educational_qa(
+            prompt,
+            conv,
+            watchlist_digest=wl_digest or "(No watchlist rows in context.)",
+            research_digest=research_digest or "(No recent ingested headlines for these symbols.)",
+        )
+        return {"research_context": rc, "qa_reply_body": body}
+    except Exception as exc:
+        logger.warning("qa_advisor: %s", exc)
+        return {
+            "research_context": {"artifacts": [], "lookbackHours": 24},
+            "qa_reply_body": f"Could not complete Q&A ({exc}). Try again or check Python logs.",
+        }
+
+
+def compose_scan_reply(state: OpportunityState) -> OpportunityState:
+    """After scoring: one Grok pass to answer the user's question in plain language from the packet only."""
+    try:
+        prompt = (state.get("prompt") or "").strip()
+        conv = _format_conversation_for_llm(state.get("conversation_history"))
+        candidates = state.get("candidates") or []
+        scanned = state.get("symbols") or []
+        packet = {
+            "symbolsScanned": [str(s).upper() for s in scanned[:12]],
+            "topCandidates": candidates[:10],
+        }
+        body = LLM_CLIENT.compose_scan_user_reply(prompt, conv, packet)
+        return {"composed_reply_body": body}
+    except Exception as exc:
+        logger.warning("compose_scan_reply: %s", exc)
+        return {"composed_reply_body": ""}
 
 
 def market_data_loader(state: OpportunityState) -> OpportunityState:
@@ -480,7 +614,7 @@ def response_formatter(state: OpportunityState) -> OpportunityState:
     err = state.get("error")
     if err == "watchlist_empty":
         return {
-            "output": {"schemaVersion": "v1", "topCandidates": []},
+            "output": {"schemaVersion": "v1", "topCandidates": [], "assistantPath": "scan"},
             "reply": (
                 "Watchlist-only mode found **no active** dashboard symbols to scan. "
                 "Add tickers (or unpause rows), or turn off **Watchlist only** for a broader universe. "
@@ -490,8 +624,22 @@ def response_formatter(state: OpportunityState) -> OpportunityState:
         }
     if err:
         return {
-            "output": {"schemaVersion": "v1", "topCandidates": []},
+            "output": {"schemaVersion": "v1", "topCandidates": [], "assistantPath": "scan"},
             "reply": f"Agent error: {state['error']}",
+        }
+
+    if state.get("intent") == "educational_qa":
+        qa_body = str(state.get("qa_reply_body") or "").strip()
+        if not qa_body:
+            qa_body = (
+                "I could not generate a detailed answer (LLM unavailable). "
+                "Try again with **Ask a question** mode and Grok configured on the Python service."
+            )
+        # Digests were already in the LLM context; reply is the model answer only (no duplicate blocks).
+        return {
+            "output": {"schemaVersion": "v1", "topCandidates": [], "assistantPath": "qa"},
+            "reply": qa_body,
+            "as_of": state.get("as_of") or datetime.now(timezone.utc).isoformat(),
         }
 
     candidates = state.get("candidates", [])
@@ -499,16 +647,20 @@ def response_formatter(state: OpportunityState) -> OpportunityState:
     scanned_txt = ", ".join(str(s).upper() for s in scanned[:12])
     if scanned_txt and len(scanned) > 12:
         scanned_txt += ", …"
-    prefix = (
-        f"Analyzed **{len(scanned)}** active watchlist symbol(s): {scanned_txt}. "
-        if scanned_txt
-        else ""
-    )
-    reply = (
-        f"{prefix}"
-        f"Surfaced {len(candidates)} ranked candidate(s). "
-        "Review scores, risk flags, and suggested limit bands before taking action."
-    )
+    composed = str(state.get("composed_reply_body") or "").strip()
+    if composed:
+        reply = composed
+    else:
+        prefix = (
+            f"Analyzed **{len(scanned)}** active watchlist symbol(s): {scanned_txt}. "
+            if scanned_txt
+            else ""
+        )
+        reply = (
+            f"{prefix}"
+            f"Surfaced {len(candidates)} ranked candidate(s). "
+            "Review scores, risk flags, and suggested limit bands before taking action."
+        )
 
     wl_digest = format_dashboard_watchlist_digest(state.get("watchlist_context"))
     if wl_digest:
@@ -519,7 +671,7 @@ def response_formatter(state: OpportunityState) -> OpportunityState:
         reply = f"{research_digest}\n\n---\n\n{reply}"
 
     iar = state.get("internal_alert_result")
-    out: Dict[str, Any] = {"schemaVersion": "v1", "topCandidates": candidates}
+    out: Dict[str, Any] = {"schemaVersion": "v1", "topCandidates": candidates, "assistantPath": "scan"}
     if isinstance(iar, dict):
         out["internalAlertResult"] = iar
         if iar.get("alert"):

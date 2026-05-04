@@ -1,15 +1,18 @@
 # KeepItBased Professional Implementation Plan
 
-Last updated: 2026-05-03 — **OpenBB ODP wired app-wide** (equity quotes/history/technical, crypto OHLC/ticker via **`openbb-yfinance`**, **`dailyAtrService`**, **`PriceMonitor`**) behind **`OPENBB_ENABLED`**; **`openbb-platform`** on PM2 + **`backend/.env`** keys merged into **`ecosystem.openbb.config.js`**. **Direct Polygon/Massive routes remain** as fallback unless exclusivity envs set. **`openbb-service/requirements.txt`** includes **`openbb-polygon`** + **`openbb-yfinance`**. Earlier same day: Polygon **retry/stale-quote** resilience in **`charts.js`**; **`cryptoService`** normalized bar **`time`** (seconds); crypto page **defensive ticker** formatting; dashboard **crypto on Main watchlist** (poll + add/remove **`assetType`**). **AGPL reminder:** OpenBB is AGPL—review before broad commercial rollout. **Massive tier:** Still required for serious **equity** data when using **`polygon`** through OpenBB; OpenBB routes calls, it does **not** replace vendor quotas/entitlements. **Deploy:** `npm run deploy`; **`pm2 start ecosystem.openbb.config.js`** (+ **`pm2 save`**).
+Last updated: **2026-05-04** — **Dashboard agent UX:** modes **Scan & rank** / **Ask a question** / **Smart**; LangGraph **`educational_qa`** + **`compose_scan_reply`**; Node→Python **`AGENT_PYTHON_TIMEOUT_MS`** (default 120s, `backend/.env.example`); request **`assistantIntent`** + **`conversationHistory`**; **`runMetadata`** includes `assistantIntentResolved` / `conversationTurns`; UI **backup-mode** banner + **progressive reply** reveal (post-response, not live SSE). **Auth / signup:** **`username`** (3–32, unique) replaces first/last on **register** + **Profile**; **per-user signup passcode** (`GET`/`PUT /api/users/profile/signup-passcode`, `backend/services/userSignupPasscodeService.js`); signup allowed if **global invite** and/or **any** personal passcode exists; **`invited_by_user_id`** on new rows when a passcode matched. Display: **`Navigation`**, **`ChatContext`**, **`ProfileAdminSignupInvite`** copy. **Ops:** `frontend/src/components/layout/Navbar.tsx` may still be **root-owned** on disk — `sudo chown "$USER:$USER"` then align welcome line with username (app shell uses **`Navigation`**).
 
-**Also shipped (same day / follow-on):** **Supabase** global chat (migration, `/api/chat`, Realtime, **`FloatingChatDock`**), env + verify/setup scripts; dashboard **watchlist loading** scoped to the watchlist card only; **52-week range** hardening (`oppTech:v4`, batched bundle fetches, merge coalesce, UI epsilon). **Git / GitHub:** prefer **feature branch + pull request** into `main` when branch protection expects it (see [docs/PROJECT_REVIEW_TODO.md](docs/PROJECT_REVIEW_TODO.md) → *Pull requests — doing it correctly*).
+**Prior (2026-05-03):** **OpenBB ODP** app-wide (equity/crypto via **`openbb-yfinance`** / Polygon, **`OPENBB_ENABLED`**, PM2 **`openbb-platform`**); **AI agent backlog** + **[TradingAgents](https://github.com/tauricresearch/tradingagents)** notes in **§3.1**; Polygon retry/stale-quote; crypto dashboard parity; **Supabase** global chat + **`FloatingChatDock`**; watchlist/52-week hardening. **AGPL / Massive / deploy:** unchanged — `npm run deploy`, OpenBB AGPL review. **Git:** [PR workflow](docs/PROJECT_REVIEW_TODO.md) when `main` is protected.
+
+**Also shipped (follow-on):** Same as prior line; **§3.1** checklist items marked done where implemented below.
 
 ## Execution status snapshot
 
 | Track | Status | Notes |
 |-------|--------|--------|
 | **Phase 0** — Charts / regression | **✅ Complete (MVP)** | Same + **optional OpenBB-first** paths for **`/charts/*`** & **`/crypto/*`** (`sourceUsed`: `openbb_equity`, `openbb_polygon_daily`, etc.). Optional polish in §2 “Remaining known issues”. |
-| **Phase 1** — LangGraph / agent gateway | **✅ Complete (core)** | `POST /agent/opportunities`, `/agent/dip-insight`, Node `/api/agent/chat`; persistence `agent_runs`/`agent_messages`; Grok dip emails + SES + Profile prefs. |
+| **Phase 1** — LangGraph / agent gateway | **✅ Complete (core)** | `POST /agent/opportunities` (+ **QA / compose** branches, `assistantIntent`, history), `/agent/dip-insight`, Node `/api/agent/chat` + **`AGENT_PYTHON_TIMEOUT_MS`**; persistence `agent_runs`/`agent_messages`; Grok dip emails + SES + Profile prefs. |
+| **Auth / signup & identity** | **✅ Shipped** | **`username`** register + profile; **personal signup passcode** + dual gate vs global invite; DB **`username`**, **`signup_passcode_hash`**, **`invited_by_user_id`** (`database.js` init); `userSignupPasscodeService`; email username recovery body. |
 | **§11 Phase A** — Contracts | **✅ Complete** | `DeepAlertOutput` scaffold, prefs merge, `researchAlertGates`, `SECTION_11_PHASE_A.md`. |
 | **§11 “speed path”** | **✅ Shipped** | Deterministic dip → Grok + **x_search** (no X API) → email; optional artifact gate when `researchDigestEmail` is on. |
 | **§11 Phase B** — Ingestion | **🟡 MVP shipped** | `research_artifacts` + Polygon `/v2/reference/news` + cron worker; all-watchlist tickers; dedupe `content_hash`. **Open:** dedicated queue worker, X + EDGAR (see §11). |
@@ -50,6 +53,13 @@ Last updated: 2026-05-03 — **OpenBB ODP wired app-wide** (equity quotes/histor
 - **Data loading:** OHLC cache in **`useRef`** (avoids unstable `loadCryptoData` deps). No success toast on every load (closer to stocks).
 - **Not in this pass:** Deeper `SimpleChart` vs `CryptoChart` feature parity (e.g. full `TradingViewTimeline` wire-up if desired); true **YTD** range if backend adds it.
 
+### Recent session — Agent chat UX + auth (2026-05-04, done)
+
+- **Python:** `intent_router` → **`educational_qa`** (`qa_advisor`) vs scan; **`compose_scan_reply`** after **`opportunity_scout`**; **`LlmClient`** `answer_educational_qa`, `compose_scan_user_reply`, `_markdown_chat`; **`stock_service`** passes `assistantIntent` / `conversationHistory`.
+- **Node:** `agent.js` proxy timeout from **`config.AGENT_PYTHON_TIMEOUT_MS`**; chat body sanitization; **`runMetadata`** merge.
+- **Frontend:** **`AIAgentPage`** mode tabs, backup banner, progressive reveal; **`aiAgentService`** `ChatWithAgentOptions`.
+- **Auth:** **`auth.js`** register username + dual invite; **`users.js`** profile username + signup-passcode routes; **`emailService`** recovery; **`RegisterPage`** / **`ProfilePage`** / **`AuthContext`** / **`authService`** / **`types`**.
+
 ### Last deploy (pick up here)
 
 - **Git workflow:** When `main` is protected, use **`git checkout -b feature/…` → push branch → open PR on GitHub → merge** instead of relying on push bypass. Full checklist: [docs/PROJECT_REVIEW_TODO.md](docs/PROJECT_REVIEW_TODO.md) (section *Pull requests — doing it correctly*).
@@ -61,7 +71,8 @@ Last updated: 2026-05-03 — **OpenBB ODP wired app-wide** (equity quotes/histor
 ### Where things stand
 
 - **Charts:** **`/charts`** — stock dashboard (`ChartPage`); **`/crypto`** — crypto dashboard (when **`OPENBB_ENABLED`**: OpenBB **`yfinance`** OHLC/ticker **first**, else **Polygon → Binance → CoinGecko**). **UX-aligned** with stocks (see **Recent session — Crypto dashboard** above). Watchlist deep links use **`/charts?symbol=…`** vs **`/crypto?symbol=…`** / **`?pair=…`**.
-- **Dashboard:** `/dashboard` — chat + **watchlist table** (quotes, baseline, dip signals). **`/api/agent/chat`** → Python **`POST /agent/opportunities`** with **`watchlistContext`**. **Planned:** **`Situation room`** panel **immediately below the watchlist** — live geopolitical / macro / maritime / aviation awareness (see **§ Situation room / global monitor**).
+- **Dashboard:** `/dashboard` — assistant **modes** + chat + **watchlist table**. **`/api/agent/chat`** → Python **`POST /agent/opportunities`** with **`watchlistContext`**, **`assistantIntent`**, **`conversationHistory`**. **Planned:** **`Situation room`** (see **§ Situation room / global monitor**).
+- **Auth / Profile:** **`/register`** — **`username`** + invite **or** personal passcode (8+); **`/profile`** — username + **Invite friends** passcode (`GET`/`PUT /api/users/profile/signup-passcode`); admin global invite unchanged (`/profile/signup-invite-admin`).
 - **Alerts:** **`evaluateWatchlistOpportunity`** + **`PriceMonitor`** → Socket **`opportunitySignal`**, **`opportunity_signals`** DB, **`GET /api/opportunity-signals`**.
 - **Dip briefing emails:** **`ENABLE_DIP_INSIGHT_EMAIL`** + Profile **`dipInsightEmail`** / **`agentMaxPositionSizePct`** → Python **`POST /agent/dip-insight`** (Grok + **`x_search`**) → SES; fallback plain opportunity email; audit **`agent_runs`** (`source=dip_insight`). **`docs/RESEARCH_AGENT.md`**, **`npm run golden:dip-insight`**, **`GET /api/health/config`** (`smtpConfigured`, `dipInsightGloballyEnabled`).
 - **Research fusion (Phase D slice):** If Profile **`researchDigestEmail`** is **true**, **`evaluateDipInsightFusionGate`** requires **`correlationRuleV1`** (dip flags ∧ ≥1 **`research_artifact`** in **`RESEARCH_FUSION_LOOKBACK_HOURS`**); otherwise **plain** opportunity email only. If **`researchDigestEmail`** is **false**, dip-insight behavior is unchanged (speed path).
@@ -255,6 +266,35 @@ Last updated: 2026-05-03 — **OpenBB ODP wired app-wide** (equity quotes/histor
 - Mode A: `recommend_only` (default at launch).
 - Mode B: `auto_apply_low_risk` (feature-flagged).
 - Mode C: broader automation only after evaluation targets are met.
+
+### §3.1 Dashboard AI chat — improvement backlog + TradingAgents (future)
+
+**Context:** `/api/agent/chat` → Python **`POST /agent/opportunities`**: watchlist scan **or** **`educational_qa`**, plus post-scan **`compose_scan_reply`**. Node **`ENABLE_LANGGRAPH_AGENT`**, configurable **`AGENT_PYTHON_TIMEOUT_MS`** (default 120s), and local-template fallback still shape behavior when Python is down.
+
+#### Improvement checklist (dashboard agent / Grok-quality)
+
+- [x] **Product clarity:** UI modes **Scan & rank** / **Ask a question** / **Smart** (`AIAgentPage`).
+- [x] **Intent routing:** **`assistantIntent`** + Smart heuristics → **`educational_qa`** vs **`opportunity_scan`** (`intent_router` / graph edges).
+- [x] **Compose-reply node:** **`compose_scan_reply`** + **`LlmClient.compose_scan_user_reply`** after **`opportunity_scout`**.
+- [x] **Timeouts & transparency:** **`AGENT_PYTHON_TIMEOUT_MS`** + UI when **`fallbackUsed`**.
+- [x] **Multi-turn memory:** **`conversationHistory`** (last turns) into QA + compose prompts.
+- [ ] **Streaming:** True SSE/token stream from Grok (current UI: **progressive reveal** after full response only).
+- [ ] **Parallelism / batching:** Reduce wall time for multi-symbol LLM work (bounded concurrency or one batched Grok call for blurbs).
+- [ ] **Model tuning:** Expose or document per-task temperature / model tier (prose vs JSON extraction) via env (`LLM_*`).
+
+#### [TradingAgents](https://github.com/tauricresearch/tradingagents) — how it differs + how we could use it later
+
+Upstream project (**Apache-2.0**): **multi-agent** LangGraph-style framework modeled on a trading desk — **Fundamentals / Sentiment / News / Technical** analysts → **bullish vs bearish researcher debate** → **Trader** → **Risk** → **Portfolio Manager** approve/reject → **simulated exchange**. API shape: `TradingAgentsGraph().propagate(ticker, analysis_date)` with config for **LLM provider** (OpenAI, Google, Anthropic, **xAI Grok**, DeepSeek, Qwen, GLM, OpenRouter, Ollama, Azure), **debate rounds**, **deep vs quick** models. Ships **CLI**, **Docker**, **checkpoint resume** (LangGraph), and a **persistent decision log** (`~/.tradingagents/memory/…`) with **reflection** on next run (realized return vs SPY, inject into PM prompt).
+
+| Dimension | KeepItBased (today) | TradingAgents (upstream) |
+|-----------|---------------------|---------------------------|
+| **Primary job** | User-scoped **watchlist** scan, dip context, **educational** alerts + emails; deterministic triggers | Per-ticker **research simulation** toward a **trade decision** in a sandbox narrative |
+| **Agent shape** | One **linear** opportunity graph + separate **`/agent/dip-insight`** | Many **specialized roles** + **debate** + approval chain |
+| **Inputs** | Node **`watchlistContext`**, internal alerts, charts/news **we already ingest** | CLI/config-driven ticker + date; external feeds (e.g. **Alpha Vantage** in their README) — would need mapping to our Polygon/OpenBB stack |
+| **Outputs** | `AgentOutputV1` + `reply` + optional alert apply | Structured **decision** object + simulated execution story |
+| **Persistence** | `agent_runs` / `agent_messages`, email audit | File-based memory + optional SQLite checkpoints |
+
+**Integration ideas (when we pick this up):** Treat TradingAgents as an **optional depth layer**, not a replacement for our **policy-grounded** watchlist scan — e.g. **(1)** HTTP or subprocess **sidecar** / Python venv: “deep dive” on **one symbol** from dashboard → `propagate(SYMBOL, date)` → stream or paste summary back into our reply; **(2)** **borrow patterns** only (debate node, structured-output agents, checkpointing) inside our `python-service` LangGraph; **(3)** align **Grok** config with theirs (`xai` provider) but keep **our** tools as source of truth for quotes/alerts. **Caveats:** upstream is **research / non-advice** framing; **cost and latency** are much higher than our current scan; **no drop-in** for multi-symbol watchlist ranking without custom nodes or post-processing. **License:** Apache-2.0 is compatible with careful dependency hygiene (contrast **AGPL** notes elsewhere in this doc for OpenBB).
 
 ## 4) Step-by-Step Execution Plan
 

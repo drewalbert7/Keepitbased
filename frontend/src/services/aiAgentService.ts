@@ -74,6 +74,8 @@ export const inferAlertAssetType = (symbol: string, prompt?: string): 'crypto' |
 export interface AgentOutputV1 {
   schemaVersion: 'v1';
   topCandidates: AgentCandidate[];
+  /** Python: `scan` vs educational `qa` path. */
+  assistantPath?: 'scan' | 'qa';
   /** Python LangGraph optional internal alert create (server-side only). */
   internalAlertResult?: Record<string, unknown>;
 }
@@ -91,6 +93,9 @@ export interface AgentChatResponse {
     };
     providerUsed: string;
     fallbackUsed: boolean;
+    assistantIntentRequested?: string;
+    assistantIntentResolved?: string;
+    conversationTurns?: number;
   };
   preferencesUsed: AgentPreferences;
   policy: {
@@ -154,12 +159,27 @@ export const createAgentReply = (prompt: string): string => {
   return `${plan.summary}\n\n${alertText}\n\nNext step: review and apply this plan to your live alerts.`;
 };
 
+export type AssistantIntentMode = 'scan_rank' | 'ask_question' | 'smart';
+
+export interface ChatWithAgentOptions {
+  assistantIntent?: AssistantIntentMode;
+  conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
+}
+
 export const chatWithAgent = async (
   prompt: string,
   mode: 'recommend_only' | 'auto_apply_low_risk' = 'recommend_only',
-  preferences?: AgentPreferences
+  preferences?: AgentPreferences,
+  options?: ChatWithAgentOptions
 ): Promise<AgentChatResponse> => {
-  const response = await axios.post<AgentChatResponse>('/agent/chat', { prompt, mode, preferences });
+  const payload: Record<string, unknown> = { prompt, mode, preferences };
+  if (options?.assistantIntent) {
+    payload.assistantIntent = options.assistantIntent;
+  }
+  if (options?.conversationHistory?.length) {
+    payload.conversationHistory = options.conversationHistory;
+  }
+  const response = await axios.post<AgentChatResponse>('/agent/chat', payload);
   return response.data;
 };
 

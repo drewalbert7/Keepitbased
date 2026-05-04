@@ -126,7 +126,8 @@ class EmailService {
     }
   }
 
-  async sendWelcome(email, firstName) {
+  async sendWelcome(email, displayName) {
+    const greet = displayName && String(displayName).trim() ? String(displayName).trim() : 'there';
     try {
       const html = `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -135,7 +136,7 @@ class EmailService {
           </div>
           
           <div style="background: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-            <h2 style="color: #333; margin-bottom: 20px;">Hi ${firstName}!</h2>
+            <h2 style="color: #333; margin-bottom: 20px;">Hi ${greet}!</h2>
             
             <p style="font-size: 16px; line-height: 1.6; color: #555;">
               Thanks for joining KeepItBased! You're now ready to never miss another buying opportunity in crypto and stocks.
@@ -181,7 +182,8 @@ class EmailService {
     }
   }
 
-  async sendUsernameRecovery(email) {
+  async sendUsernameRecovery(email, username) {
+    const uname = username && String(username).trim() ? String(username).trim() : null;
     try {
       const html = `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -193,17 +195,22 @@ class EmailService {
             <h2 style="color: #333; margin-bottom: 20px;">Username Recovery Request</h2>
             
             <p style="font-size: 16px; line-height: 1.6; color: #555;">
-              You requested to recover your username for KeepItBased.
+              You requested to recover your sign-in details for KeepItBased.
             </p>
             
             <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #667eea;">
-              <p style="margin: 0; font-size: 18px; font-weight: 600; color: #333;">
-                Your username is: <span style="color: #667eea;">${email}</span>
+              <p style="margin: 0; font-size: 16px; font-weight: 600; color: #333;">
+                Sign in with your <strong>email</strong>: <span style="color: #667eea;">${email}</span>
               </p>
+              ${
+                uname
+                  ? `<p style="margin: 12px 0 0 0; font-size: 16px; font-weight: 600; color: #333;">Your public <strong>username</strong>: <span style="color: #667eea;">@${uname}</span></p>`
+                  : '<p style="margin: 12px 0 0 0; font-size: 14px; color: #555;">You have not set a username yet — add one under Profile after you sign in.</p>'
+              }
             </div>
             
             <p style="font-size: 16px; line-height: 1.6; color: #555;">
-              You can now use this email address to log in to your KeepItBased account.
+              Your password is unchanged. Use “Forgot password” on the login page if you need to reset it.
             </p>
             
             <div style="text-align: center; margin: 30px 0;">

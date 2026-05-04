@@ -12,6 +12,7 @@ import {
   chatWithAgent,
   fetchAgentWatchlistContext,
   inferAlertAssetType,
+  type AssistantIntentMode,
   type WatchlistContextItem,
   type WatchlistContextResponse
 } from '../services/aiAgentService';
@@ -37,7 +38,7 @@ const seedMessages: AgentMessage[] = [
     id: 'm-1',
     role: 'system',
     content:
-      'Welcome to your dashboard. Ask for strategies, watchlist ideas, position sizing, or risk guardrails. If you want dollar-sized allocation ideas, share your total deployable capital and which symbols or signal tiers you mean — answers are educational only.',
+      'Choose a mode below: **Scan & rank** runs your watchlist through the opportunity scanner (scores + live context). **Ask a question** is for definitions and “why / how” explanations grounded in your list and recent headlines. **Smart** picks a path from your wording. Everything here is educational only — not personalized investment advice.',
     timestamp: new Date().toISOString()
   }
 ];
@@ -85,6 +86,12 @@ export const AIAgentPage: React.FC = () => {
       eventRiskPenalty: 0.15
     }
   });
+
+  /** Matches backend `assistantIntent`: scan vs Q&A vs heuristic routing. */
+  const [assistantMode, setAssistantMode] = useState<AssistantIntentMode>('smart');
+  /** Progressive character reveal after the full reply arrives (not live token streaming). */
+  const [streamReplyDisplay, setStreamReplyDisplay] = useState(true);
+  const revealRafRef = useRef<number | null>(null);
 
   const latestPlan = useMemo(() => {
     return currentPlan;
@@ -172,6 +179,15 @@ export const AIAgentPage: React.FC = () => {
       }
     }
   }, [agentPreferences.maxPositionSizePct]);
+
+  useEffect(() => {
+    return () => {
+      if (revealRafRef.current != null) {
+        cancelAnimationFrame(revealRafRef.current);
+        revealRafRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!watchlistPollSignature) return;
@@ -362,34 +378,78 @@ export const AIAgentPage: React.FC = () => {
     }
   };
 
-  const addMessage = (role: AgentMessage['role'], content: string) => {
+  const addMessage = (role: AgentMessage['role'], content: string): string => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     setMessages((prev) => [
       ...prev,
       {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        id,
         role,
         content,
         timestamp: new Date().toISOString()
       }
     ]);
+    return id;
   };
+
+  const revealReplyProgressively = useCallback((messageId: string, full: string) => {
+    if (!full.length) return;
+    let idx = 0;
+    const chunk = Math.max(2, Math.min(8, Math.ceil(full.length / 120)));
+    const tick = () => {
+      idx = Math.min(full.length, idx + chunk);
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, content: full.slice(0, idx) } : m))
+      );
+      if (idx < full.length) {
+        revealRafRef.current = requestAnimationFrame(tick);
+      } else {
+        revealRafRef.current = null;
+      }
+    };
+    revealRafRef.current = requestAnimationFrame(tick);
+  }, []);
 
   const handleSend = async () => {
     if (!input.trim() || isBusy) return;
+    if (revealRafRef.current != null) {
+      cancelAnimationFrame(revealRafRef.current);
+      revealRafRef.current = null;
+    }
     const prompt = input.trim();
+    const conversationHistory = messages
+      .filter((m) => m.role === 'user' || m.role === 'agent')
+      .slice(-12)
+      .map((m) => ({
+        role: (m.role === 'agent' ? 'assistant' : 'user') as 'user' | 'assistant',
+        content: m.content
+      }));
+
     setInput('');
     setIsBusy(true);
     addMessage('user', prompt);
+    const agentMessageId = addMessage('agent', '');
 
     try {
-      const response = await chatWithAgent(prompt, 'recommend_only', agentPreferences);
+      const response = await chatWithAgent(prompt, 'recommend_only', agentPreferences, {
+        assistantIntent: assistantMode,
+        conversationHistory
+      });
       setCurrentPlan(response.plan);
       setCurrentOutput(response.output);
       setCurrentRunMetadata(response.runMetadata || null);
       setAgentPreferences(response.preferencesUsed);
       setLastAgentReply(response.reply);
-      addMessage('agent', response.reply);
+      const full = response.reply || '';
+      if (streamReplyDisplay && full.length > 0) {
+        revealReplyProgressively(agentMessageId, full);
+      } else {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === agentMessageId ? { ...m, content: full } : m))
+        );
+      }
     } catch (error: any) {
+      setMessages((prev) => prev.filter((m) => m.id !== agentMessageId));
       const msg = error?.response?.data?.message || 'Agent request failed';
       addMessage('system', `Agent failed: ${msg}`);
       toast.error(msg);
@@ -843,6 +903,53 @@ export const AIAgentPage: React.FC = () => {
               {isBusy ? 'Working…' : 'Ready'}
             </span>
           </div>
+
+          <div className="border-b border-white/[0.06] bg-kib-surface px-3 py-2 sm:px-4">
+            <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-kib-muted">Mode</p>
+            <div
+              className="inline-flex w-full max-w-xl flex-wrap gap-1 rounded-lg border border-white/[0.08] bg-black/25 p-1"
+              role="tablist"
+              aria-label="Assistant mode"
+            >
+              {(
+                [
+                  { id: 'scan_rank' as const, label: 'Scan & rank' },
+                  { id: 'ask_question' as const, label: 'Ask a question' },
+                  { id: 'smart' as const, label: 'Smart' }
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={assistantMode === tab.id}
+                  onClick={() => setAssistantMode(tab.id)}
+                  className={wlTabBtn(assistantMode === tab.id)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-kib-muted">
+              <input
+                type="checkbox"
+                className="rounded border-white/20 bg-kib-bg"
+                checked={streamReplyDisplay}
+                onChange={(e) => setStreamReplyDisplay(e.target.checked)}
+              />
+              Animate reply (progressive reveal after response arrives)
+            </label>
+          </div>
+
+          {currentRunMetadata?.fallbackUsed ? (
+            <div className="border-b border-amber-500/25 bg-amber-950/20 px-4 py-2.5 text-xs text-amber-100/95">
+              <span className="font-medium">Backup mode:</span> the live LangGraph / Grok path did not complete, so
+              this turn used the local template. Check Python service health,{' '}
+              <code className="rounded bg-black/30 px-1 font-mono text-[11px]">ENABLE_LANGGRAPH_AGENT</code>, and{' '}
+              <code className="rounded bg-black/30 px-1 font-mono text-[11px]">AGENT_PYTHON_TIMEOUT_MS</code> if scans
+              time out.
+            </div>
+          ) : null}
 
           <div className="min-h-[min(45vh,320px)] h-[min(45vh,380px)] overflow-y-auto bg-kib-card p-3 sm:min-h-[380px] sm:h-[440px] sm:p-4">
             <div className="space-y-3">

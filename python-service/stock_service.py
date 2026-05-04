@@ -326,6 +326,26 @@ def get_buy_alert(symbol):
         return jsonify({"error": str(e)}), 500
 
 
+def _normalize_agent_conversation_history(raw):
+    """Max 20 turns; roles user|assistant only; trimmed content."""
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for item in raw[:20]:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role") or "").strip().lower()
+        if role == "agent":
+            role = "assistant"
+        if role not in ("user", "assistant"):
+            continue
+        content = str(item.get("content") or "").strip()
+        if not content:
+            continue
+        out.append({"role": role, "content": content[:4000]})
+    return out
+
+
 @app.route('/agent/opportunities', methods=['POST'])
 def get_opportunities():
     """Run LangGraph opportunity-scout workflow."""
@@ -343,6 +363,12 @@ def get_opportunities():
         preferences = body.get("preferences", {})
         user_id = body.get("userId", 0)
         watchlist_context = body.get("watchlistContext")
+        assistant_intent = str(body.get("assistantIntent") or body.get("assistant_intent") or "smart").strip().lower()
+        if assistant_intent not in ("scan_rank", "ask_question", "smart"):
+            assistant_intent = "smart"
+        conversation_history = _normalize_agent_conversation_history(
+            body.get("conversationHistory") or body.get("conversation_history")
+        )
         as_of = datetime.now(timezone.utc).isoformat()
         run_id = str(uuid.uuid4())
         node_started = time.perf_counter()
@@ -356,6 +382,8 @@ def get_opportunities():
                 "as_of": as_of,
                 "run_id": run_id,
                 "watchlist_context": watchlist_context,
+                "assistant_intent": assistant_intent,
+                "conversation_history": conversation_history,
             }
         )
         node_elapsed_ms = int((time.perf_counter() - node_started) * 1000)
@@ -382,7 +410,9 @@ def get_opportunities():
                         "totalMs": total_elapsed_ms
                     },
                     "providerUsed": provider_used,
-                    "fallbackUsed": fallback_used
+                    "fallbackUsed": fallback_used,
+                    "assistantIntentRequested": assistant_intent,
+                    "assistantIntentResolved": result.get("intent") or "opportunity_scan",
                 },
                 "timestamp": as_of,
             }

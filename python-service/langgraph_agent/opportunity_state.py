@@ -10,6 +10,11 @@ class OpportunityState(TypedDict, total=False):
     run_id: str
 
     intent: str
+    # assistant_intent: UI hint scan_rank | ask_question | smart (Node → intent_router).
+    assistant_intent: str
+    conversation_history: List[Dict[str, str]]
+    qa_reply_body: str
+    composed_reply_body: str
     symbols: List[str]
     prompt_symbols: List[str]
     user_alert_context: List[Dict[str, Any]]

@@ -3,12 +3,13 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
+const USERNAME_RE = /^[a-zA-Z0-9_]{3,32}$/;
+
 const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
   const { register, loading } = useAuth();
   const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
+    username: '',
     email: '',
     password: '',
     confirmPassword: '',
@@ -17,14 +18,20 @@ const RegisterPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!formData.firstName || !formData.lastName || !formData.email || !formData.password || !formData.inviteCode) {
-      toast.error('Please fill in all fields, including invitation code');
+
+    if (!formData.username || !formData.email || !formData.password || !formData.inviteCode) {
+      toast.error('Please fill in all fields, including invitation code or passcode');
       return;
     }
 
-    if (formData.inviteCode.trim().length < 12) {
-      toast.error('Invitation code must be at least 12 characters');
+    const u = formData.username.trim().toLowerCase();
+    if (!USERNAME_RE.test(u)) {
+      toast.error('Username: 3–32 characters, letters, numbers, or underscore only');
+      return;
+    }
+
+    if (formData.inviteCode.trim().length < 8) {
+      toast.error('Invitation code or passcode must be at least 8 characters');
       return;
     }
 
@@ -38,13 +45,7 @@ const RegisterPage: React.FC = () => {
       return;
     }
 
-    const result = await register(
-      formData.firstName,
-      formData.lastName,
-      formData.email,
-      formData.password,
-      formData.inviteCode.trim()
-    );
+    const result = await register(u, formData.email, formData.password, formData.inviteCode.trim());
     if (!result.ok) {
       toast.error(result.message);
     } else {
@@ -54,7 +55,7 @@ const RegisterPage: React.FC = () => {
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       [e.target.name]: e.target.value
     }));
@@ -68,47 +69,34 @@ const RegisterPage: React.FC = () => {
             <span className="text-kib-cyber">{'>'}</span> KeepItBased
           </h1>
           <h2 className="text-2xl font-semibold text-slate-300">Create your account</h2>
-          <p className="mt-2 text-kib-muted">Start getting buy alerts today</p>
+          <p className="mt-2 text-kib-muted">Choose a username and use a host invite or a friend&apos;s passcode</p>
         </div>
-        
+
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="firstName" className="block text-sm font-medium text-slate-300">
-                First name
-              </label>
-              <input
-                id="firstName"
-                name="firstName"
-                type="text"
-                required
-                className="input-field mt-1"
-                placeholder="First name"
-                value={formData.firstName}
-                onChange={handleChange}
-              />
-            </div>
-            
-            <div>
-              <label htmlFor="lastName" className="block text-sm font-medium text-slate-300">
-                Last name
-              </label>
-              <input
-                id="lastName"
-                name="lastName"
-                type="text"
-                required
-                className="input-field mt-1"
-                placeholder="Last name"
-                value={formData.lastName}
-                onChange={handleChange}
-              />
-            </div>
+          <div>
+            <label htmlFor="username" className="block text-sm font-medium text-slate-300">
+              Username
+            </label>
+            <input
+              id="username"
+              name="username"
+              type="text"
+              autoComplete="username"
+              required
+              minLength={3}
+              maxLength={32}
+              pattern="[a-zA-Z0-9_]{3,32}"
+              className="input-field mt-1 font-mono"
+              placeholder="e.g. dip_buyer_42"
+              value={formData.username}
+              onChange={handleChange}
+            />
+            <p className="mt-1 text-xs text-kib-muted">3–32 chars: letters, numbers, underscore. Stored lowercase.</p>
           </div>
 
           <div>
             <label htmlFor="inviteCode" className="block text-sm font-medium text-slate-300">
-              Invitation code
+              Invitation code or passcode
             </label>
             <input
               id="inviteCode"
@@ -116,15 +104,16 @@ const RegisterPage: React.FC = () => {
               type="password"
               autoComplete="off"
               required
-              minLength={12}
+              minLength={8}
               maxLength={512}
               className="input-field mt-1 font-mono"
-              placeholder="From your invite (12+ characters)"
+              placeholder="Host invite (12+) or friend passcode (8+)"
               value={formData.inviteCode}
               onChange={handleChange}
             />
             <p className="mt-1 text-xs text-kib-muted">
-              New accounts require a valid invitation code. The code is not published on this site.
+              Use the shared host invite from your operator, or a passcode a current user created in Profile → Invite
+              friends.
             </p>
           </div>
 
@@ -144,7 +133,7 @@ const RegisterPage: React.FC = () => {
               onChange={handleChange}
             />
           </div>
-          
+
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-slate-300">
               Password
@@ -180,11 +169,7 @@ const RegisterPage: React.FC = () => {
           </div>
 
           <div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full btn-primary"
-            >
+            <button type="submit" disabled={loading} className="w-full btn-primary">
               {loading ? 'Creating account...' : 'Create account'}
             </button>
           </div>

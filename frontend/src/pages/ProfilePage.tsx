@@ -26,15 +26,33 @@ const ProfilePage: React.FC = () => {
   });
   const [notifSaving, setNotifSaving] = useState(false);
 
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
+  const [username, setUsername] = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
+
+  const [signupPassActive, setSignupPassActive] = useState(false);
+  const [passcodeInput, setPasscodeInput] = useState('');
+  const [passcodeBusy, setPasscodeBusy] = useState(false);
+  const [passcodeReveal, setPasscodeReveal] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
-    setFirstName(user.firstName ?? '');
-    setLastName(user.lastName ?? '');
-  }, [user?.id, user?.firstName, user?.lastName]);
+    setUsername(user.username ?? '');
+  }, [user?.id, user?.username]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = await authService.getSignupPasscodeStatus();
+        if (!cancelled) setSignupPassActive(s.active);
+      } catch {
+        if (!cancelled) setSignupPassActive(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user?.notificationPreferences) return;
@@ -55,26 +73,23 @@ const ProfilePage: React.FC = () => {
     });
   }, [user]);
 
-  const handleSaveProfileNames = async () => {
-    const fn = firstName.trim();
-    const ln = lastName.trim();
-    if (!fn || !ln) {
-      toast.error('First and last name are each required (1–50 characters).');
-      return;
-    }
-    if (fn.length > 50 || ln.length > 50) {
-      toast.error('Names must be at most 50 characters each.');
+  const handleSaveUsername = async () => {
+    const u = username.trim().toLowerCase();
+    if (!/^[a-zA-Z0-9_]{3,32}$/.test(u)) {
+      toast.error('Username: 3–32 characters, letters, numbers, or underscore only.');
       return;
     }
     setProfileSaving(true);
     try {
-      const updated = await authService.updateProfile({ firstName: fn, lastName: ln });
+      const updated = await authService.updateProfile({ username: u });
       updateUser({
+        username: updated.username,
         firstName: updated.firstName,
         lastName: updated.lastName,
         notificationPreferences: updated.notificationPreferences ?? user?.notificationPreferences
       });
-      toast.success('Profile updated');
+      setUsername(updated.username ?? u);
+      toast.success('Username saved');
     } catch (error: unknown) {
       const msg =
         typeof error === 'object' && error !== null && 'response' in error
@@ -86,12 +101,60 @@ const ProfilePage: React.FC = () => {
     }
   };
 
+  const handleSaveSignupPasscode = async () => {
+    const p = passcodeInput.trim();
+    if (p.length < 8) {
+      toast.error('Passcode must be at least 8 characters.');
+      return;
+    }
+    setPasscodeBusy(true);
+    setPasscodeReveal(null);
+    try {
+      const out = await authService.setSignupPasscode(p);
+      setPasscodeInput('');
+      setSignupPassActive(true);
+      if (out.lastPasscodeShown) {
+        setPasscodeReveal(out.lastPasscodeShown);
+        toast.success('Passcode saved — copy it from the box below (shown once).');
+      } else {
+        toast.success(out.message);
+      }
+    } catch (error: unknown) {
+      const msg =
+        typeof error === 'object' && error !== null && 'response' in error
+          ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
+      toast.error(msg || 'Could not save passcode');
+    } finally {
+      setPasscodeBusy(false);
+    }
+  };
+
+  const handleClearSignupPasscode = async () => {
+    setPasscodeBusy(true);
+    try {
+      await authService.clearSignupPasscode();
+      setSignupPassActive(false);
+      setPasscodeReveal(null);
+      toast.success('Signup passcode removed');
+    } catch (error: unknown) {
+      const msg =
+        typeof error === 'object' && error !== null && 'response' in error
+          ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
+      toast.error(msg || 'Could not remove passcode');
+    } finally {
+      setPasscodeBusy(false);
+    }
+  };
+
   const handleSaveNotifications = async () => {
     setNotifSaving(true);
     try {
       const updated = await authService.updateProfile({ notificationPreferences: notifPrefs });
       updateUser({
         notificationPreferences: updated.notificationPreferences,
+        username: updated.username,
         firstName: updated.firstName,
         lastName: updated.lastName
       });
@@ -148,50 +211,87 @@ const ProfilePage: React.FC = () => {
         <div className="card">
           <h2 className="text-xl font-semibold text-kib-fg mb-4">Account Information</h2>
           <div className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label htmlFor="profile-first-name" className="block text-sm font-medium text-slate-300">
-                  First name
-                </label>
-                <input
-                  id="profile-first-name"
-                  type="text"
-                  autoComplete="given-name"
-                  maxLength={50}
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  className="input-field mt-1"
-                  placeholder="First name"
-                />
-              </div>
-              <div>
-                <label htmlFor="profile-last-name" className="block text-sm font-medium text-slate-300">
-                  Last name
-                </label>
-                <input
-                  id="profile-last-name"
-                  type="text"
-                  autoComplete="family-name"
-                  maxLength={50}
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  className="input-field mt-1"
-                  placeholder="Last name"
-                />
-              </div>
+            <div>
+              <label htmlFor="profile-username" className="block text-sm font-medium text-slate-300">
+                Username
+              </label>
+              <input
+                id="profile-username"
+                type="text"
+                autoComplete="username"
+                minLength={3}
+                maxLength={32}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="input-field mt-1 font-mono"
+                placeholder="your_handle"
+              />
+              <p className="mt-1 text-xs text-kib-muted">
+                3–32 characters: letters, numbers, underscore. Shown in the app and chat; sign-in is still with email +
+                password.
+              </p>
             </div>
             <button
               type="button"
-              onClick={() => void handleSaveProfileNames()}
+              onClick={() => void handleSaveUsername()}
               disabled={profileSaving}
               className="btn-primary disabled:opacity-50"
             >
-              {profileSaving ? 'Saving…' : 'Save name'}
+              {profileSaving ? 'Saving…' : 'Save username'}
             </button>
             <div>
               <label className="block text-sm font-medium text-slate-300">Email</label>
               <div className="mt-1 text-kib-fg">{user?.email}</div>
               <p className="mt-1 text-xs text-kib-muted">Email sign-in address cannot be changed here.</p>
+            </div>
+
+            <div className="rounded-lg border border-white/[0.08] bg-black/20 p-4">
+              <h3 className="text-sm font-semibold text-kib-fg">Invite friends (signup passcode)</h3>
+              <p className="mt-1 text-xs text-kib-muted">
+                Set a passcode and share it with people you trust. They enter it on the register page instead of (or as
+                well as) the host invite. Only one passcode per account; changing it replaces the old one.
+              </p>
+              <p className="mt-2 text-xs text-kib-muted">
+                Status:{' '}
+                <span className={signupPassActive ? 'text-emerald-400' : 'text-kib-muted'}>
+                  {signupPassActive ? 'Active — new signups can use your passcode' : 'Not set'}
+                </span>
+              </p>
+              {passcodeReveal ? (
+                <div className="mt-3 rounded-md border border-emerald-500/30 bg-emerald-950/30 px-3 py-2 font-mono text-sm text-emerald-100 break-all">
+                  Copy now: <strong>{passcodeReveal}</strong>
+                </div>
+              ) : null}
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  className="input-field flex-1 font-mono"
+                  placeholder="New passcode (8+ characters)"
+                  value={passcodeInput}
+                  onChange={(e) => setPasscodeInput(e.target.value)}
+                  minLength={8}
+                  maxLength={128}
+                />
+                <button
+                  type="button"
+                  disabled={passcodeBusy}
+                  onClick={() => void handleSaveSignupPasscode()}
+                  className="btn-primary shrink-0 disabled:opacity-50"
+                >
+                  {passcodeBusy ? 'Saving…' : 'Save passcode'}
+                </button>
+              </div>
+              {signupPassActive ? (
+                <button
+                  type="button"
+                  disabled={passcodeBusy}
+                  onClick={() => void handleClearSignupPasscode()}
+                  className="btn-secondary mt-2 text-sm disabled:opacity-50"
+                >
+                  Remove passcode
+                </button>
+              ) : null}
             </div>
 
             {user?.isSignupInviteAdmin ? (

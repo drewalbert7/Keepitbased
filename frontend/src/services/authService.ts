@@ -73,15 +73,13 @@ class AuthService {
   }
 
   async register(
-    firstName: string,
-    lastName: string,
+    username: string,
     email: string,
     password: string,
     inviteCode: string
   ): Promise<RegisterResponse> {
     const response = await axios.post<RegisterResponse>('/auth/register', {
-      firstName,
-      lastName,
+      username,
       email,
       password,
       inviteCode
@@ -95,12 +93,32 @@ class AuthService {
   }
 
   async updateProfile(userData: {
-    firstName?: string;
-    lastName?: string;
+    username?: string;
     notificationPreferences?: Partial<User['notificationPreferences']>;
   }): Promise<User> {
     const response = await axios.put<User>('/users/profile', userData);
     return response.data;
+  }
+
+  async getSignupPasscodeStatus(): Promise<{ active: boolean }> {
+    const { data } = await axios.get<{ active: boolean }>('/users/profile/signup-passcode');
+    return data;
+  }
+
+  async setSignupPasscode(passcode: string): Promise<{ message: string; lastPasscodeShown: string | null }> {
+    const { data } = await axios.put<{ message: string; lastPasscodeShown: string | null }>(
+      '/users/profile/signup-passcode',
+      { passcode }
+    );
+    return data;
+  }
+
+  async clearSignupPasscode(): Promise<{ message: string }> {
+    const { data } = await axios.put<{ message: string; lastPasscodeShown: null }>(
+      '/users/profile/signup-passcode',
+      { clear: true }
+    );
+    return data;
   }
 
   async getUserStats(): Promise<{

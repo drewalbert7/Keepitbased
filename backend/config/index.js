@@ -133,6 +133,12 @@ const config = {
   /** GET /api/agent/audit */
   AGENT_AUDIT_RATE_WINDOW_MS: parseInt(process.env.AGENT_AUDIT_RATE_WINDOW_MS) || 60000,
   AGENT_AUDIT_RATE_MAX: parseInt(process.env.AGENT_AUDIT_RATE_MAX) || 60,
+  /** Node → Python `POST /agent/opportunities` for `/api/agent/chat` (ms). */
+  AGENT_PYTHON_TIMEOUT_MS: (() => {
+    const n = parseInt(process.env.AGENT_PYTHON_TIMEOUT_MS, 10);
+    if (Number.isFinite(n) && n >= 15000) return Math.min(n, 180000);
+    return 120000;
+  })(),
   /** GET /api/internal/agent/alerts (Python tools) */
   INTERNAL_AGENT_READ_WINDOW_MS: parseInt(process.env.INTERNAL_AGENT_READ_WINDOW_MS) || 60000,
   INTERNAL_AGENT_READ_MAX: parseInt(process.env.INTERNAL_AGENT_READ_MAX) || 120,

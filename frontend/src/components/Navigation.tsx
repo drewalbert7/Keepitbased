@@ -23,6 +23,7 @@ const Navigation: React.FC = () => {
   }
 
   const displayName =
+    (user?.username && String(user.username).trim()) ||
     [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() ||
     (user?.email ? user.email.split('@')[0] : 'Account');
 

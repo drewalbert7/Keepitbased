@@ -2,11 +2,13 @@ from langgraph.graph import END, START, StateGraph
 
 from .opportunity_nodes import (
     alert_creator,
+    compose_scan_reply,
     context_loader,
     intent_router,
     market_data_loader,
     opportunity_scout,
     policy_guardrail,
+    qa_advisor,
     research_context_loader,
     response_formatter,
     user_context_loader,
@@ -20,14 +22,24 @@ def _route_or_fail(state: OpportunityState, success_node: str) -> str:
     return success_node
 
 
+def _after_intent(state: OpportunityState) -> str:
+    if state.get("error"):
+        return "response_formatter"
+    if state.get("intent") == "educational_qa":
+        return "qa_advisor"
+    return "context_loader"
+
+
 def build_opportunity_graph():
     graph = StateGraph(OpportunityState)
     graph.add_node("intent_router", intent_router)
+    graph.add_node("qa_advisor", qa_advisor)
     graph.add_node("context_loader", context_loader)
     graph.add_node("user_context_loader", user_context_loader)
     graph.add_node("market_data_loader", market_data_loader)
     graph.add_node("research_context_loader", research_context_loader)
     graph.add_node("opportunity_scout", opportunity_scout)
+    graph.add_node("compose_scan_reply", compose_scan_reply)
     graph.add_node("policy_guardrail", policy_guardrail)
     graph.add_node("alert_creator", alert_creator)
     graph.add_node("response_formatter", response_formatter)
@@ -35,9 +47,14 @@ def build_opportunity_graph():
     graph.add_edge(START, "intent_router")
     graph.add_conditional_edges(
         "intent_router",
-        lambda state: _route_or_fail(state, "context_loader"),
-        {"context_loader": "context_loader", "response_formatter": "response_formatter"},
+        _after_intent,
+        {
+            "qa_advisor": "qa_advisor",
+            "context_loader": "context_loader",
+            "response_formatter": "response_formatter",
+        },
     )
+    graph.add_edge("qa_advisor", "response_formatter")
     graph.add_conditional_edges(
         "context_loader",
         lambda state: _route_or_fail(state, "user_context_loader"),
@@ -60,6 +77,11 @@ def build_opportunity_graph():
     )
     graph.add_conditional_edges(
         "opportunity_scout",
+        lambda state: _route_or_fail(state, "compose_scan_reply"),
+        {"compose_scan_reply": "compose_scan_reply", "response_formatter": "response_formatter"},
+    )
+    graph.add_conditional_edges(
+        "compose_scan_reply",
         lambda state: _route_or_fail(state, "policy_guardrail"),
         {"policy_guardrail": "policy_guardrail", "response_formatter": "response_formatter"},
     )

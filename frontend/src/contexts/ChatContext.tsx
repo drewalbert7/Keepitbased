@@ -31,10 +31,13 @@ export type ChatContextValue = {
 const ChatContext = createContext<ChatContextValue | null>(null);
 
 function displayNameFromUser(user: {
+  username?: string | null;
   firstName?: string | null;
   lastName?: string | null;
   email?: string;
 }): string {
+  const u = user.username?.trim();
+  if (u) return u;
   const n = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
   if (n) return n;
   const em = user.email?.trim();

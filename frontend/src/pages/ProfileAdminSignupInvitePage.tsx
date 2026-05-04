@@ -93,6 +93,10 @@ const ProfileAdminSignupInvitePage: React.FC = () => {
         is never sent to the browser; only you supply a new one here. Rotate it periodically and share only
         with people who should join.
       </p>
+      <p className="mt-2 text-sm text-kib-muted">
+        Separately, any user can create a <strong>personal signup passcode</strong> under Profile → Invite friends.
+        Registration accepts <em>either</em> this global code <em>or</em> a valid personal passcode (8+ characters).
+      </p>
 
       <div className="card mt-6 space-y-4">
         <div className="text-sm text-kib-fg">

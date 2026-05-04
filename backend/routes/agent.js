@@ -186,8 +186,32 @@ const normalizePreferences = (preferences = {}) => {
   return normalized;
 };
 
-const proxyOpportunityScan = async ({ prompt, mode, preferences, userId, watchlistContext }) => {
+const sanitizeAgentConversationHistory = (raw) => {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const item of raw.slice(0, 20)) {
+    if (!item || typeof item !== 'object') continue;
+    let role = String(item.role || '').trim().toLowerCase();
+    if (role === 'agent') role = 'assistant';
+    if (role !== 'user' && role !== 'assistant') continue;
+    const content = String(item.content || '').trim();
+    if (!content) continue;
+    out.push({ role, content: content.slice(0, 4000) });
+  }
+  return out;
+};
+
+const proxyOpportunityScan = async ({
+  prompt,
+  mode,
+  preferences,
+  userId,
+  watchlistContext,
+  assistantIntent,
+  conversationHistory
+}) => {
   const serviceUrl = config.PYTHON_SERVICE_URL || 'http://127.0.0.1:5001';
+  const timeoutMs = config.AGENT_PYTHON_TIMEOUT_MS || 120000;
   const response = await axios.post(
     `${serviceUrl}/agent/opportunities`,
     {
@@ -195,9 +219,11 @@ const proxyOpportunityScan = async ({ prompt, mode, preferences, userId, watchli
       mode,
       preferences,
       userId,
-      watchlistContext: watchlistContext || null
+      watchlistContext: watchlistContext || null,
+      assistantIntent: assistantIntent || 'smart',
+      conversationHistory: conversationHistory || []
     },
-    { timeout: 12000 }
+    { timeout: timeoutMs }
   );
   return response.data;
 };
@@ -312,7 +338,9 @@ router.get('/watchlist-context', auth, agentRateLimiter, async (req, res) => {
 router.post('/chat', auth, agentRateLimiter, [
   body('prompt').isString().trim().isLength({ min: 3, max: 2000 }),
   body('mode').optional().isIn(['recommend_only', 'auto_apply_low_risk']),
-  body('preferences').optional().isObject()
+  body('preferences').optional().isObject(),
+  body('assistantIntent').optional().isIn(['scan_rank', 'ask_question', 'smart']),
+  body('conversationHistory').optional().isArray({ max: 20 })
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -323,6 +351,8 @@ router.post('/chat', auth, agentRateLimiter, [
     const prompt = req.body.prompt.trim();
     const mode = req.body.mode || 'recommend_only';
     const preferencesUsed = normalizePreferences(req.body.preferences);
+    const assistantIntent = req.body.assistantIntent || 'smart';
+    const conversationHistory = sanitizeAgentConversationHistory(req.body.conversationHistory);
     const useLangGraph = String(process.env.ENABLE_LANGGRAPH_AGENT || '').toLowerCase() === 'true';
     let output;
     let reply;
@@ -348,11 +378,17 @@ router.post('/chat', auth, agentRateLimiter, [
           mode,
           preferences: preferencesUsed,
           userId: req.user.id,
-          watchlistContext
+          watchlistContext,
+          assistantIntent,
+          conversationHistory
         });
         output = langGraphResult.output || { schemaVersion: 'v1', topCandidates: [] };
         reply = langGraphResult.reply || 'Opportunity scan complete.';
-        runMetadata = langGraphResult.runMetadata || null;
+        runMetadata = {
+          assistantIntentRequested: assistantIntent,
+          conversationTurns: conversationHistory.length,
+          ...(langGraphResult.runMetadata || {})
+        };
         langGraphOk = true;
       } catch (proxyError) {
         logger.warn(`LangGraph proxy unavailable, using local fallback: ${proxyError.message}`);
@@ -377,7 +413,10 @@ router.post('/chat', auth, agentRateLimiter, [
           totalMs: 0
         },
         providerUsed: 'local-template',
-        fallbackUsed: true
+        fallbackUsed: true,
+        assistantIntentRequested: assistantIntent,
+        assistantIntentResolved: 'opportunity_scan',
+        conversationTurns: conversationHistory.length
       };
     }
 
