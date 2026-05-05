@@ -21,13 +21,17 @@ export function cryptoTickerToPriceUpdatePayload(
     changePercent: ticker.changePercent,
     dayHigh: ticker.high,
     dayLow: ticker.low,
-    volume: ticker.volume
+    volume: ticker.volume,
+    dayOpen: ticker.open,
+    sessionVwap: ticker.vwap,
+    bidPrice: ticker.bid,
+    askPrice: ticker.ask
   };
 }
 
 export function chartQuoteToPriceUpdatePayload(q: QuoteData): Record<string, unknown> {
   const ts = Date.parse(q.timestamp);
-  return {
+  const base: Record<string, unknown> = {
     type: 'stock',
     symbol: String(q.symbol || '').toUpperCase(),
     price: q.price,
@@ -37,8 +41,13 @@ export function chartQuoteToPriceUpdatePayload(q: QuoteData): Record<string, unk
     timestamp: Number.isFinite(ts) ? ts : Date.now(),
     dayHigh: q.high,
     dayLow: q.low,
-    volume: q.volume
+    volume: q.volume,
+    dayOpen: q.open
   };
+  if (q.sourceUsed != null && String(q.sourceUsed).trim()) {
+    base.sourceUsed = String(q.sourceUsed);
+  }
+  return base;
 }
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
@@ -174,7 +183,9 @@ export function mergeWatchlistPriceUpdates(
           dayChangeAbs = Number(hit.change24h);
         }
       } else {
-        if (hit.change24h != null && Number.isFinite(Number(hit.change24h))) {
+        if (hit.changePercent != null && Number.isFinite(Number(hit.changePercent))) {
+          dayChangePct = Number(hit.changePercent);
+        } else if (hit.change24h != null && Number.isFinite(Number(hit.change24h))) {
           dayChangePct = Number(hit.change24h);
         }
       }
@@ -218,6 +229,25 @@ export function mergeWatchlistPriceUpdates(
           ? Number(hit.prevClose)
           : row.prevClose ?? null;
 
+      const dayOpenField =
+        hit.dayOpen != null && Number.isFinite(Number(hit.dayOpen)) ? Number(hit.dayOpen) : row.dayOpen ?? null;
+      const sessionVwapField =
+        hit.sessionVwap != null && Number.isFinite(Number(hit.sessionVwap))
+          ? Number(hit.sessionVwap)
+          : row.sessionVwap ?? null;
+      const bidField =
+        hit.bidPrice != null && Number.isFinite(Number(hit.bidPrice)) ? Number(hit.bidPrice) : row.bidPrice ?? null;
+      const askField =
+        hit.askPrice != null && Number.isFinite(Number(hit.askPrice)) ? Number(hit.askPrice) : row.askPrice ?? null;
+      const hitSrc =
+        (hit.sourceUsed != null && String(hit.sourceUsed).trim()
+          ? String(hit.sourceUsed)
+          : null) ||
+        (hit.quoteSourceUsed != null && String(hit.quoteSourceUsed).trim()
+          ? String(hit.quoteSourceUsed)
+          : null);
+      const srcField = hitSrc ?? row.quoteSourceUsed;
+
       return {
         ...row,
         currentPrice: price,
@@ -233,7 +263,12 @@ export function mergeWatchlistPriceUpdates(
         ...(dayHigh != null ? { dayHigh } : {}),
         ...(dayLow != null ? { dayLow } : {}),
         ...(volume != null ? { volume } : {}),
-        ...(prevClose != null ? { prevClose } : {})
+        ...(prevClose != null ? { prevClose } : {}),
+        ...(dayOpenField != null ? { dayOpen: dayOpenField } : {}),
+        ...(sessionVwapField != null ? { sessionVwap: sessionVwapField } : {}),
+        ...(bidField != null ? { bidPrice: bidField } : {}),
+        ...(askField != null ? { askPrice: askField } : {}),
+        ...(srcField ? { quoteSourceUsed: srcField } : {})
       };
     })
   };
@@ -304,6 +339,11 @@ export function overlayFresherWatchlistQuotes(
         dayLow: p.dayLow ?? row.dayLow,
         volume: p.volume ?? row.volume,
         prevClose: p.prevClose ?? row.prevClose,
+        dayOpen: p.dayOpen ?? row.dayOpen,
+        sessionVwap: p.sessionVwap ?? row.sessionVwap,
+        bidPrice: p.bidPrice ?? row.bidPrice,
+        askPrice: p.askPrice ?? row.askPrice,
+        quoteSourceUsed: p.quoteSourceUsed ?? row.quoteSourceUsed,
         priceUnavailableReason: usePrevQuote ? null : row.priceUnavailableReason,
         dropPctFromBaseline,
         nextThresholdGap: gap,

@@ -7,7 +7,10 @@ const {
   evaluateWatchlistOpportunity,
   floorTimeBucketUtc
 } = require('./watchlistOpportunityEvaluator');
-const { mergeNotificationPreferences } = require('../utils/notificationPreferences');
+const {
+  mergeNotificationPreferences,
+  passesOpportunityEmailTierFilter
+} = require('../utils/notificationPreferences');
 const {
   allowsSendDuringQuietHours,
   isUsStockRegularTradingHours
@@ -65,13 +68,35 @@ class PriceMonitor {
       const close = Number(ticker.day?.c ?? ticker.lastTrade?.p ?? open);
       const changePercent = open ? ((close - open) / open) * 100 : 0;
 
-      return {
+      const out = {
         symbol: symbol,
         price: close,
         change24h: changePercent,
         timestamp: Date.now(),
-        type: 'crypto'
+        type: 'crypto',
+        sourceUsed: 'polygon_crypto_snapshot'
       };
+      const d = ticker.day;
+      if (d && typeof d === 'object') {
+        const o0 = d.o != null ? Number(d.o) : NaN;
+        if (Number.isFinite(o0) && o0 > 0) out.dayOpen = o0;
+        const vw = d.vw != null ? Number(d.vw) : NaN;
+        if (Number.isFinite(vw) && vw > 0) out.sessionVwap = vw;
+        const dh = d.h != null ? Number(d.h) : NaN;
+        const dl = d.l != null ? Number(d.l) : NaN;
+        const dv = d.v != null ? Number(d.v) : NaN;
+        if (Number.isFinite(dh)) out.dayHigh = dh;
+        if (Number.isFinite(dl)) out.dayLow = dl;
+        if (Number.isFinite(dv)) out.volume = dv;
+      }
+      const lq = ticker.lastQuote;
+      if (lq && typeof lq === 'object') {
+        const bid = lq.p != null ? Number(lq.p) : NaN;
+        const ask = lq.P != null ? Number(lq.P) : NaN;
+        if (Number.isFinite(bid) && bid > 0) out.bidPrice = bid;
+        if (Number.isFinite(ask) && ask > 0) out.askPrice = ask;
+      }
+      return out;
     } catch (error) {
       if (error.response?.status === 403 && !this.polygonCryptoUnavailable) {
         this.polygonCryptoUnavailable = true;
@@ -88,13 +113,28 @@ class PriceMonitor {
         timeout: 10000
       });
 
-      return {
+      const d = response.data;
+      const out = {
         symbol,
-        price: Number(response.data.lastPrice),
-        change24h: Number(response.data.priceChangePercent || 0),
+        price: Number(d.lastPrice),
+        change24h: Number(d.priceChangePercent || 0),
         timestamp: Date.now(),
-        type: 'crypto'
+        type: 'crypto',
+        sourceUsed: 'binance_24h'
       };
+      const op = d.openPrice != null ? Number(d.openPrice) : NaN;
+      if (Number.isFinite(op) && op > 0) out.dayOpen = op;
+      const bp = d.bidPrice != null ? Number(d.bidPrice) : NaN;
+      const ap = d.askPrice != null ? Number(d.askPrice) : NaN;
+      if (Number.isFinite(bp) && bp > 0) out.bidPrice = bp;
+      if (Number.isFinite(ap) && ap > 0) out.askPrice = ap;
+      const hi = d.highPrice != null ? Number(d.highPrice) : NaN;
+      const lo = d.lowPrice != null ? Number(d.lowPrice) : NaN;
+      const vol = d.volume != null ? Number(d.volume) : NaN;
+      if (Number.isFinite(hi)) out.dayHigh = hi;
+      if (Number.isFinite(lo)) out.dayLow = lo;
+      if (Number.isFinite(vol)) out.volume = vol;
+      return out;
     } catch (error) {
       this.logWithCooldown(`binance-crypto-failure-${symbol}`, 'warn', `Binance crypto fallback failed for ${symbol}; trying CoinGecko.`);
       return this.getCryptoPriceFromCoinGecko(symbol);
@@ -145,6 +185,30 @@ class PriceMonitor {
       if (Number.isFinite(l)) out.dayLow = l;
       if (Number.isFinite(v)) out.volume = v;
       if (Number.isFinite(prevC)) out.prevClose = prevC;
+
+      const dayOpenRaw = ticker.day?.o != null ? Number(ticker.day.o) : NaN;
+      if (Number.isFinite(dayOpenRaw) && dayOpenRaw > 0) {
+        out.dayOpen = dayOpenRaw;
+      }
+      const vwRaw = ticker.day?.vw != null ? Number(ticker.day.vw) : NaN;
+      if (Number.isFinite(vwRaw) && vwRaw > 0) {
+        out.sessionVwap = vwRaw;
+      }
+
+      const lq = ticker.lastQuote;
+      if (lq && typeof lq === 'object') {
+        const bidR = lq.p != null ? Number(lq.p) : lq.bid != null ? Number(lq.bid) : NaN;
+        const askR = lq.P != null ? Number(lq.P) : lq.ask != null ? Number(lq.ask) : NaN;
+        if (Number.isFinite(bidR) && bidR > 0) out.bidPrice = bidR;
+        if (Number.isFinite(askR) && askR > 0) out.askPrice = askR;
+      }
+
+      if (ticker.todaysChange != null && Number.isFinite(Number(ticker.todaysChange))) {
+        out.todaysChange = Number(ticker.todaysChange);
+      }
+      if (ticker.todaysChangePerc != null && Number.isFinite(Number(ticker.todaysChangePerc))) {
+        out.todaysChangePerc = Number(ticker.todaysChangePerc);
+      }
 
       return out;
     } catch (error) {
@@ -474,7 +538,7 @@ class PriceMonitor {
         timestamp: new Date().toISOString()
       };
 
-      await recordOpportunitySignal({
+      const signalId = await recordOpportunitySignal({
         userId: row.user_id,
         symbol,
         assetType,
@@ -492,15 +556,20 @@ class PriceMonitor {
           (evalResult.flags.includes('overreaction') ||
             evalResult.flags.includes('capitulation')));
 
+      const passesEmailTier = passesOpportunityEmailTierFilter(
+        evalResult.flags,
+        prefs.opportunityEmailNotifyLevel
+      );
+
       const stockOutsideRth =
         assetType === 'stock' &&
         prefs.opportunityStockMarketHoursOnly !== false &&
         !isUsStockRegularTradingHours(new Date());
 
-      const passesOutbound =
-        passesNotifyFilters && !stockOutsideRth;
+      const passesToastOutbound = passesNotifyFilters && !stockOutsideRth;
+      const passesEmailOutbound = passesEmailTier && !stockOutsideRth;
 
-      if (prefs.opportunityToasts && passesOutbound) {
+      if (prefs.opportunityToasts && passesToastOutbound) {
         this.io.to(`user_${row.user_id}`).emit('opportunitySignal', payload);
       }
 
@@ -509,7 +578,7 @@ class PriceMonitor {
         !allowsSendDuringQuietHours(prefs, new Date()).allowed;
 
       const wantOppEmail =
-        passesOutbound &&
+        passesEmailOutbound &&
         prefs.email !== false &&
         prefs.opportunityEmail !== false &&
         row.email &&
@@ -544,7 +613,9 @@ class PriceMonitor {
               dayChangePct: Number.isFinite(dayChangePct) ? dayChangePct : null,
               assetType,
               symbol,
-              prefs
+              prefs,
+              signalId,
+              tech
             });
           } catch (insightErr) {
             logger.warn(
@@ -556,7 +627,7 @@ class PriceMonitor {
           await emailService.sendOpportunitySignalEmail(row.email, payload);
         }
       } else if (
-        passesOutbound &&
+        passesEmailOutbound &&
         prefs.email !== false &&
         prefs.opportunityEmail !== false &&
         row.email &&
@@ -567,7 +638,7 @@ class PriceMonitor {
           `Opportunity email suppressed (quiet hours) user ${row.user_id} ${assetType}:${symbol}`
         );
       } else if (
-        passesNotifyFilters &&
+        passesEmailTier &&
         prefs.email !== false &&
         prefs.opportunityEmail !== false &&
         row.email &&
@@ -581,8 +652,9 @@ class PriceMonitor {
 
       logger.info(
         `Opportunity signal [${evalResult.flags.join(',')}] → user ${row.user_id} ${assetType}:${symbol}` +
-          (prefs.opportunityToasts && passesOutbound ? '' : ' (toast muted)') +
-          (passesNotifyFilters ? '' : ' (notify tier filtered)') +
+          (prefs.opportunityToasts && passesToastOutbound ? '' : ' (toast muted)') +
+          (passesNotifyFilters ? '' : ' (toast tier filtered)') +
+          (passesEmailTier ? '' : ' (email tier filtered)') +
           (stockOutsideRth ? ' (stock outside RTH)' : '')
       );
     }

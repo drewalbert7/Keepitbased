@@ -426,8 +426,9 @@ async function fetchEquityQuoteMapped(symbolUpper) {
 async function fetchStockPriceMonitorRow(symbol) {
   const m = await fetchEquityQuoteMapped(String(symbol).toUpperCase());
   if (!m || !Number.isFinite(m.price) || m.price <= 0) return null;
-  return {
-    symbol: String(symbol).toUpperCase(),
+  const upper = String(symbol).toUpperCase();
+  const out = {
+    symbol: upper,
     price: m.price,
     change24h: m.change,
     changePercent: m.changePercent,
@@ -435,6 +436,11 @@ async function fetchStockPriceMonitorRow(symbol) {
     type: 'stock',
     sourceUsed: 'openbb'
   };
+  if (Number.isFinite(m.open) && m.open > 0) out.dayOpen = m.open;
+  if (Number.isFinite(m.high) && m.high > 0) out.dayHigh = m.high;
+  if (Number.isFinite(m.low) && m.low > 0) out.dayLow = m.low;
+  if (Number.isFinite(m.volume) && m.volume >= 0) out.volume = m.volume;
+  return out;
 }
 
 /** priceMonitor crypto row (24h-style from daily bars). */
@@ -442,13 +448,23 @@ async function fetchCryptoPriceMonitorRow(baseSymbol) {
   const pair = `X:${String(baseSymbol).toUpperCase()}USD`;
   const t = await fetchCryptoTickerMapped(pair);
   if (!t || !Number.isFinite(t.price)) return null;
-  return {
-    symbol: String(baseSymbol).toUpperCase(),
+  const sym = String(baseSymbol).toUpperCase();
+  const out = {
+    symbol: sym,
     price: t.price,
     change24h: t.changePercent,
     timestamp: Date.now(),
-    type: 'crypto'
+    type: 'crypto',
+    sourceUsed: 'openbb'
   };
+  if (Number.isFinite(t.open) && t.open > 0) out.dayOpen = t.open;
+  if (Number.isFinite(t.vwap) && t.vwap > 0) out.sessionVwap = t.vwap;
+  if (Number.isFinite(t.bid) && t.bid > 0) out.bidPrice = t.bid;
+  if (Number.isFinite(t.ask) && t.ask > 0) out.askPrice = t.ask;
+  if (Number.isFinite(t.high) && t.high > 0) out.dayHigh = t.high;
+  if (Number.isFinite(t.low) && t.low > 0) out.dayLow = t.low;
+  if (Number.isFinite(t.volume) && t.volume >= 0) out.volume = t.volume;
+  return out;
 }
 
 module.exports = {

@@ -23,8 +23,13 @@ export interface User {
     agentMaxPositionSizePct?: number;
     /** Opportunity dip emails; requires email master switch. Default true. */
     opportunityEmail?: boolean;
-    /** `overreaction_only` sends fewer notifications (overreaction or capitulation tier, not on_sale alone). */
+    /** In-app toasts: `overreaction_only` skips on_sale-only (still in Signals). */
     opportunityNotifyLevel?: 'all' | 'overreaction_only';
+    /**
+     * Opportunity **emails** only. Default `overreaction_only` (no email for on_sale-only).
+     * `capitulation_only` = major long-term tier only.
+     */
+    opportunityEmailNotifyLevel?: 'all' | 'overreaction_only' | 'capitulation_only';
 
     /** Daily batched Grok email (server flag + Python Grok). */
     dailyWatchlistDigestEmail?: boolean;

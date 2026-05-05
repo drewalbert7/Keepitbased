@@ -413,9 +413,9 @@ class EmailService {
   }
 
   /**
-   * Scheduled daily digest: Grok narrative + suggested additions (educational only).
+   * Scheduled daily briefing: Grok macro + holdings + headlines + optional X citations + top 2 off-list names.
    * @param {string} toAddress
-   * @param {{ digest: { marketOverview?: string, holdingsAnalysis?: string, suggestedAdditions?: Array<{symbol:string,thesis?:string,riskNote?:string,timeHorizon?:string}>, disclaimer?: string }, runMetadata?: object }} payload
+   * @param {{ digest: Record<string, unknown>, runMetadata?: object }} payload
    */
   async sendDailyWatchlistDigestEmail(toAddress, payload) {
     if (!this.isConfigured()) {
@@ -425,29 +425,83 @@ class EmailService {
     try {
       const digest = payload.digest || {};
       const meta = payload.runMetadata || {};
-      const overview = escapeHtml(String(digest.marketOverview || '').trim() || '—').replace(/\n/g, '<br>');
-      const holdings = escapeHtml(String(digest.holdingsAnalysis || '').trim() || '—').replace(/\n/g, '<br>');
-      const disclaimer = escapeHtml(
+      const prose = (s) => escapeHtml(String(s || '').trim() || '—').replace(/\n/g, '<br>');
+      const macro = prose(digest.macroAnalysis);
+      const overview = prose(digest.marketOverview);
+      const holdings = prose(digest.holdingsAnalysis);
+      const disclaimer = prose(
         String(digest.disclaimer || '').trim() ||
           'Educational commentary only; not personalized investment advice.'
       );
-      const additions = Array.isArray(digest.suggestedAdditions) ? digest.suggestedAdditions : [];
-      const suggestionBlocks = additions
+      const xSocial = prose(digest.xSocialSummary);
+
+      const newsHits = Array.isArray(digest.newsHighlights) ? digest.newsHighlights : [];
+      const newsBlocks = newsHits
         .slice(0, 8)
-        .map((s) => {
-          const sym = escapeHtml(String(s.symbol || '').toUpperCase());
-          const thesis = escapeHtml(String(s.thesis || '').trim());
-          const risk = escapeHtml(String(s.riskNote || '').trim());
-          const horiz = escapeHtml(String(s.timeHorizon || '').trim());
+        .map((n) => {
+          const title = escapeHtml(String(n.title || '').trim());
+          const sym = escapeHtml(String(n.symbol || '').trim());
+          const take = prose(n.takeaway || n.summary || '');
+          if (!title && !take) return '';
           return `
-            <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 12px; background: #f8fafc;">
-              <p style="margin: 0 0 8px; font-size: 16px; font-weight: 700; color: #0f172a;">${sym}</p>
-              ${horiz ? `<p style="margin: 0 0 6px; font-size: 12px; color: #64748b;">Horizon: ${horiz}</p>` : ''}
-              <p style="margin: 0 0 8px; font-size: 14px; color: #334155; line-height: 1.5;">${thesis || '—'}</p>
-              ${risk ? `<p style="margin: 0; font-size: 13px; color: #b45309;"><strong>Risk:</strong> ${risk}</p>` : ''}
+            <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e2e8f0;">
+              <p style="margin: 0 0 4px; font-size: 14px; font-weight: 600; color: #0f172a;">
+                ${title || 'Highlight'}
+                ${sym ? ` <span style="font-weight:500;color:#475569;font-size:13px;">(${sym})</span>` : ''}
+              </p>
+              <div style="font-size: 14px; color: #475569; line-height: 1.5;">${take}</div>
             </div>`;
         })
         .join('');
+
+      const xPosts = Array.isArray(digest.xPostLinks) ? digest.xPostLinks : [];
+      const xPostBlocks = xPosts
+          .slice(0, 8)
+          .map((item) => {
+            const rawUrl = item && typeof item === 'object' ? sanitizeXPostUrl(item.url) : null;
+            const url = escapeHtml(rawUrl || '');
+            const note = prose(item.note || '');
+            if (!rawUrl) return '';
+            return `
+            <div style="margin-bottom: 8px;">
+              <a href="${url}" style="color: #0f766e; font-size: 13px;">${url}</a>
+              ${note && note !== '—' ? `<div style="font-size: 12px; color: #64748b; margin-top: 4px;">${note}</div>` : ''}
+            </div>`;
+          })
+          .join('');
+
+      let topPicks = Array.isArray(digest.topStockPicks) ? digest.topStockPicks : [];
+      if (!topPicks.length && Array.isArray(digest.suggestedAdditions)) {
+        topPicks = digest.suggestedAdditions.slice(0, 2).map((s) => ({
+          symbol: s.symbol,
+          rationale1to3Years: s.thesis || '',
+          rationaleLongTerm: '',
+          riskNote: s.riskNote || '',
+          keyCatalystOrTheme: s.timeHorizon || ''
+        }));
+      }
+
+      const topPickBlocks = topPicks
+        .slice(0, 2)
+        .map((p) => {
+          const sym = escapeHtml(String(p.symbol || '').toUpperCase());
+          const r1 = prose(p.rationale1to3Years || p.rationale_1_to_3_years);
+          const rL = prose(p.rationaleLongTerm || p.rationale_long_term);
+          const risk = prose(p.riskNote || '');
+          const catalyst = prose(p.keyCatalystOrTheme || '');
+          return `
+            <div style="border: 1px solid #0f766e33; border-radius: 10px; padding: 16px; margin-bottom: 14px; background: linear-gradient(180deg,#f8fffe 0%,#f8fafc 100%);">
+              <p style="margin: 0 0 10px; font-size: 17px; font-weight: 800; color: #134e4a;">${sym}</p>
+              <p style="margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #475569;">1–3 year view</p>
+              <div style="font-size: 14px; color: #334155; line-height: 1.52; margin-bottom: 14px;">${r1}</div>
+              <p style="margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #475569;">Long-term / compounding</p>
+              <div style="font-size: 14px; color: #334155; line-height: 1.52; margin-bottom: 12px;">${rL || r1}</div>
+              ${catalyst && catalyst !== '—' ? `<p style="margin:0 0 8px;font-size:13px;color:#0f766e;"><strong>Catalyst / theme:</strong> ${catalyst}</p>` : ''}
+              ${risk && risk !== '—' ? `<p style="margin: 0; font-size: 13px; color: #b45309;"><strong>Risk:</strong> ${risk}</p>` : ''}
+            </div>`;
+        })
+        .join('');
+
       const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
       const dateLabel = new Date().toLocaleDateString('en-US', {
         weekday: 'long',
@@ -457,29 +511,42 @@ class EmailService {
       });
       const metaLine =
         meta.providerUsed != null
-          ? `<p style="font-size: 11px; color: #94a3b8; margin-top: 16px;">Model: ${escapeHtml(String(meta.providerUsed))}</p>`
+          ? `<p style="font-size: 11px; color: #94a3b8; margin-top: 16px;">Model: ${escapeHtml(String(meta.providerUsed))}${meta.fallbackUsed ? ' • template/fallback portions possible' : ''}</p>`
           : '';
 
       const html = `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 640px; margin: 0 auto;">
           <div style="background: linear-gradient(135deg, #1e3a5f 0%, #0f766e 100%); padding: 26px; text-align: center; border-radius: 10px 10px 0 0;">
-            <h1 style="color: white; margin: 0; font-size: 22px;">Daily watchlist digest</h1>
-            <p style="color: rgba(255,255,255,0.88); margin: 10px 0 0; font-size: 14px;">${escapeHtml(dateLabel)}</p>
+            <h1 style="color: white; margin: 0; font-size: 22px;">Daily market briefing</h1>
+            <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0; font-size: 14px;">Watchlist positioning &mdash; macro &mdash; news &mdash; ideas</p>
+            <p style="color: rgba(255,255,255,0.88); margin: 8px 0 0; font-size: 13px;">${escapeHtml(dateLabel)}</p>
           </div>
           <div style="background: white; padding: 28px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.08);">
-            <h2 style="font-size: 15px; color: #0f172a; margin: 0 0 10px;">Market overview</h2>
+
+            <h2 style="font-size: 15px; color: #0f172a; margin: 0 0 10px;">Macro backdrop</h2>
+            <p style="font-size: 15px; color: #334155; line-height: 1.55; margin: 0 0 18px;">${macro}</p>
+
+            <h2 style="font-size: 15px; color: #0f172a; margin: 0 0 10px;">Tape &mdash; equities tone</h2>
             <p style="font-size: 15px; color: #334155; line-height: 1.55; margin: 0 0 22px;">${overview}</p>
 
-            <h2 style="font-size: 15px; color: #0f172a; margin: 0 0 10px;">Your watchlist</h2>
+            <h2 style="font-size: 15px; color: #0f172a; margin: 0 0 10px;">Your watchlist positions</h2>
             <p style="font-size: 15px; color: #334155; line-height: 1.55; margin: 0 0 22px;">${holdings}</p>
 
-            <h2 style="font-size: 15px; color: #0f172a; margin: 0 0 12px;">Ideas to research (not on your list)</h2>
-            <p style="font-size: 12px; color: #64748b; margin: 0 0 14px;">
-              The model suggests liquid US names you are not currently tracking. Verify quotes, filings, and fit with your plan before acting.
-            </p>
-            ${suggestionBlocks || '<p style="color: #64748b; font-size: 14px;">No suggestions in this run.</p>'}
+            <h2 style="font-size: 15px; color: #0f172a; margin: 0 0 10px;">Pertinent headlines (ingested feeds)</h2>
+            <p style="font-size: 12px; color: #64748b; margin: 0 0 12px;">Wire/vendor headlines stored for your symbols — verify originals before trading.</p>
+            ${newsBlocks || '<p style="color: #64748b; font-size: 14px;">No recent headlines matched this snapshot.</p>'}
 
-            <p style="font-size: 12px; color: #64748b; margin-top: 20px; line-height: 1.5;">${disclaimer}</p>
+            <h2 style="font-size: 15px; color: #0f172a; margin: 22px 0 10px;">X / social pulse</h2>
+            <p style="font-size: 15px; color: #334155; line-height: 1.55; margin: 0 0 14px;">${xSocial}</p>
+            ${xPostBlocks ? `<div style="margin-bottom: 8px;"><p style="font-size:12px;color:#64748b;margin-bottom:8px;">Linked posts</p>${xPostBlocks}</div>` : ''}
+
+            <h2 style="font-size: 15px; color: #0f172a; margin: 22px 0 10px;">Two ideas off your list (education only)</h2>
+            <p style="font-size: 12px; color: #64748b; margin: 0 0 14px;">
+              Illustrative liquid US equities <strong>not</strong> on your watchlist: 1&ndash;3 year trajectory plus a long-run lens — not guarantees of return.
+            </p>
+            ${topPickBlocks || '<p style="color: #64748b; font-size: 14px;">No off-list picks in this run.</p>'}
+
+            <p style="font-size: 12px; color: #64748b; margin-top: 22px; line-height: 1.55;">${disclaimer}</p>
             ${metaLine}
 
             <div style="text-align: center; margin-top: 24px;">
@@ -491,7 +558,7 @@ class EmailService {
               </a>
             </div>
             <p style="margin-top: 20px; font-size: 12px; color: #94a3b8; text-align: center;">
-              <a href="${baseUrl}/profile" style="color: #0f766e;">Turn off daily digest</a> in Profile notifications.
+              <a href="${baseUrl}/profile" style="color: #0f766e;">Turn off daily briefing</a> in Profile notifications.
             </p>
           </div>
         </div>
@@ -500,7 +567,7 @@ class EmailService {
       await this.transporter.sendMail({
         from: smtpFromHeader(),
         to: toAddress,
-        subject: `KeepItBased — Daily watchlist digest (${new Date().toLocaleDateString('en-US')})`,
+        subject: `KeepItBased — Daily market briefing (${new Date().toLocaleDateString('en-US')})`,
         html
       });
       logger.info(`Daily watchlist digest sent to ${toAddress}`);
@@ -529,9 +596,20 @@ class EmailService {
       } = params;
       const sym = String(symbol || '').toUpperCase();
       const cap = Math.min(50, Math.max(1, Number(maxAllocationPct) || 10));
-      let pct = Number(insight.suggestedTranchePct);
+      let pct = Number(
+        insight.suggestedTranchePct != null
+          ? insight.suggestedTranchePct
+          : insight.recommendedPositionPct
+      );
       if (!Number.isFinite(pct)) pct = Math.min(2, cap);
       pct = Math.min(Math.max(0, pct), cap);
+
+      const verdict = escapeHtml(String(insight.verdict || '—'));
+      const confN = Number(insight.confidence);
+      const confLabel = Number.isFinite(confN) ? `${Math.round(confN)}%` : '—';
+      const reasoningBlock = escapeHtml(
+        String(insight.reasoning || '').trim() || String(insight.situationSummary || '').trim()
+      );
 
       const summ = escapeHtml(insight.situationSummary || '');
       const sentLab = escapeHtml(
@@ -590,10 +668,28 @@ class EmailService {
       const html = `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 640px; margin: 0 auto;">
           <div style="background: linear-gradient(135deg, #0f766e 0%, #115e59 100%); padding: 24px; text-align: center; border-radius: 10px 10px 0 0;">
-            <h1 style="color: white; margin: 0; font-size: 22px;">KeepItBased — Dip briefing</h1>
+            <h1 style="color: white; margin: 0; font-size: 22px;">UltimateDipBuyer AI — Assessment</h1>
             <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0; font-size: 14px;">${String(assetType || '').toUpperCase()} ${sym}</p>
           </div>
           <div style="background: white; padding: 28px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.08);">
+            <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 18px;">
+              <div style="flex: 1; min-width: 140px; background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 8px; padding: 12px 14px;">
+                <p style="margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #0f766e;">Verdict</p>
+                <p style="margin: 6px 0 0; font-size: 20px; font-weight: 700; color: #0f172a;">${verdict}</p>
+              </div>
+              <div style="flex: 1; min-width: 140px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
+                <p style="margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b;">Confidence</p>
+                <p style="margin: 6px 0 0; font-size: 20px; font-weight: 700; color: #0f172a;">${escapeHtml(confLabel)}</p>
+              </div>
+            </div>
+            ${
+              reasoningBlock
+                ? `<div style="background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px;">
+              <p style="margin: 0 0 6px; font-size: 12px; font-weight: 600; color: #92400e;">When to buy / invalidation (educational)</p>
+              <p style="margin: 0; font-size: 14px; line-height: 1.55; color: #1e293b; white-space: pre-wrap;">${reasoningBlock}</p>
+            </div>`
+                : ''
+            }
             <p style="font-size: 15px; line-height: 1.55; color: #1e293b; margin: 0 0 16px;">${summ}</p>
             <div style="background: #f8fafc; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px;">
               <p style="margin: 4px 0; font-size: 14px;"><strong>Live snapshot (tool-backed):</strong> last ~$${px} · vs your baseline ${vs}</p>
@@ -636,10 +732,11 @@ class EmailService {
         </div>
       `;
 
+      const subVerdict = String(insight.verdict || '').trim() || 'Assessment';
       await this.transporter.sendMail({
         from: smtpFromHeader(),
         to: toAddress,
-        subject: `Dip briefing: ${sym} — suggested ${pct.toFixed(1)}% tranche (educational)`,
+        subject: `UltimateDipBuyer: ${sym} — ${subVerdict} · ${confLabel} conf · ~${pct.toFixed(1)}% tranche`,
         html
       });
       logger.info(`Dip insight email sent to ${toAddress} for ${sym}`);

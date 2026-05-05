@@ -177,6 +177,11 @@ async function buildAgentWatchlistContext({ alertService, userId, maxPositionPct
     let dayLow = null;
     let volume = null;
     let prevClose = null;
+    let dayOpen = null;
+    let sessionVwap = null;
+    let bidPrice = null;
+    let askPrice = null;
+    let quoteSourceUsed = null;
 
     try {
       const priceData = await getPricePayloadForRow(redis, assetType, symbol);
@@ -186,13 +191,14 @@ async function buildAgentWatchlistContext({ alertService, userId, maxPositionPct
         if (ts) {
           quoteAgeSec = Math.max(0, Math.round((Date.now() - Number(ts)) / 1000));
         }
+        const at = String(assetType).toLowerCase();
         if (priceData.changePercent != null && Number.isFinite(Number(priceData.changePercent))) {
           dayChangePct = Number(priceData.changePercent);
         }
-        if (priceData.change24h != null && Number.isFinite(Number(priceData.change24h))) {
+        // Stocks: `change24h` from PriceMonitor is dollar change vs open; crypto providers use % in this field.
+        if (at === 'stock' && priceData.change24h != null && Number.isFinite(Number(priceData.change24h))) {
           dayChangeAbs = Number(priceData.change24h);
         }
-        const at = String(assetType).toLowerCase();
         if (at === 'crypto' && dayChangePct == null && priceData.change24h != null) {
           dayChangePct = Number(priceData.change24h);
         }
@@ -207,6 +213,21 @@ async function buildAgentWatchlistContext({ alertService, userId, maxPositionPct
         }
         if (priceData.prevClose != null && Number.isFinite(Number(priceData.prevClose))) {
           prevClose = Number(priceData.prevClose);
+        }
+        if (priceData.dayOpen != null && Number.isFinite(Number(priceData.dayOpen))) {
+          dayOpen = Number(priceData.dayOpen);
+        }
+        if (priceData.sessionVwap != null && Number.isFinite(Number(priceData.sessionVwap))) {
+          sessionVwap = Number(priceData.sessionVwap);
+        }
+        if (priceData.bidPrice != null && Number.isFinite(Number(priceData.bidPrice))) {
+          bidPrice = Number(priceData.bidPrice);
+        }
+        if (priceData.askPrice != null && Number.isFinite(Number(priceData.askPrice))) {
+          askPrice = Number(priceData.askPrice);
+        }
+        if (priceData.sourceUsed != null && String(priceData.sourceUsed).trim()) {
+          quoteSourceUsed = String(priceData.sourceUsed);
         }
       } else {
         priceUnavailableReason = 'quote_unavailable';
@@ -264,6 +285,11 @@ async function buildAgentWatchlistContext({ alertService, userId, maxPositionPct
     if (dayLow != null) itemPayload.dayLow = dayLow;
     if (volume != null) itemPayload.volume = volume;
     if (prevClose != null) itemPayload.prevClose = prevClose;
+    if (dayOpen != null) itemPayload.dayOpen = dayOpen;
+    if (sessionVwap != null) itemPayload.sessionVwap = sessionVwap;
+    if (bidPrice != null) itemPayload.bidPrice = bidPrice;
+    if (askPrice != null) itemPayload.askPrice = askPrice;
+    if (quoteSourceUsed) itemPayload.quoteSourceUsed = quoteSourceUsed;
     items.push(itemPayload);
   }
 

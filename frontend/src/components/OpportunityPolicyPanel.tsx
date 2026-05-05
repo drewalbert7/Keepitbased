@@ -70,22 +70,54 @@ export const OpportunityPolicyPanel: React.FC<{
             Opportunity alerts
           </h3>
           <p className="mt-1 text-[11px] leading-relaxed text-kib-muted sm:text-xs">
-            Dip signals (toasts, optional email,{' '}
+            Stage 1 uses the host rules below for everyone. Stage 2 (UltimateDipBuyer AI via Grok) runs only after a
+            Stage 1 hit and saves verdict, confidence, and reasoning on the same row in{' '}
             <Link to="/opportunity-signals" className="text-kib-cyber underline-offset-2 hover:underline">
-              inbox
+              Signals
             </Link>
-            ) share the same rules for every symbol.
+            — even when a rich email is suppressed by server rules or low-confidence gates.
           </p>
         </>
       )}
       {embedInPanel && (
-        <p className="mb-3 text-[11px] leading-relaxed text-kib-muted">
-          Same dip rules for every symbol.{' '}
-          <Link to="/opportunity-signals" className="text-kib-cyber underline-offset-2 hover:underline">
-            View signal inbox
-          </Link>
-          .
-        </p>
+        <div className="mb-3 space-y-2 text-[11px] leading-relaxed text-kib-muted">
+          <p>
+            <span className="font-medium text-kib-fg/90">Stage 1 — Engine:</span> opportunity flags (
+            <span className="font-mono text-kib-fg/80">on_sale</span>,{' '}
+            <span className="font-mono text-kib-fg/80">overreaction</span>,{' '}
+            <span className="font-mono text-kib-fg/80">capitulation</span>) use the same host rules for every symbol
+            (values below). Each qualifying hit creates a row on{' '}
+            <Link to="/opportunity-signals" className="text-kib-cyber underline-offset-2 hover:underline">
+              Signals
+            </Link>{' '}
+            (optional toasts + emails per Profile; opportunity <strong className="text-kib-fg/90">emails</strong> default to
+            stronger tiers so small <span className="font-mono text-kib-fg/80">on_sale</span>-only hits stay in-app).
+          </p>
+          <p>
+            <span className="font-medium text-kib-fg/90">Stage 2 — UltimateDipBuyer AI (Grok):</span> after Stage 1,
+            the Python service can call Grok (x_search + your snapshot: price vs baseline, ATR/52w). That produces an
+            educational verdict, confidence, timing/invalidation notes, and a tranche % capped by your Profile max.
+            It is stored on the <strong className="text-kib-fg/90">same signal row</strong> as Stage 1. Requires: host{' '}
+            <code className="rounded bg-black/25 px-1 font-mono text-[10px]">ENABLE_DIP_INSIGHT_EMAIL</code>, Profile{' '}
+            <strong className="text-kib-fg/90">Email alerts</strong> +{' '}
+            <strong className="text-kib-fg/90">Dip briefing emails (Grok)</strong>, and below{' '}
+            <strong className="text-kib-fg/90">Email me opportunity dip alerts</strong>. If Grok is off or fails, you
+            may still get the short opportunity-only email when opportunity email is allowed.
+          </p>
+          <p>
+            <span className="font-medium text-kib-fg/90">Research fusion (optional):</span> if Profile{' '}
+            <strong className="text-kib-fg/90">Require stored news for Grok email</strong> is on, the rich Grok path may
+            be skipped when no headline exists for that symbol—you can receive the short opportunity email instead (same
+            signal row; AI fields stay empty until a successful Grok run).
+          </p>
+          <p>
+            <span className="font-medium text-kib-fg/90">Rich email vs Signals:</span> the inbox always shows the AI
+            block when Grok completes. The HTML email can additionally be limited by the host (for example{' '}
+            <strong className="text-kib-fg/90">Buy / Strong Buy</strong> only and/or a minimum confidence score);{' '}
+            <strong className="text-kib-fg/90">Hold</strong> or <strong className="text-kib-fg/90">Pass</strong> may
+            appear in Signals without a matching email.
+          </p>
+        </div>
       )}
 
       {loading && <p className={`text-xs text-kib-muted ${embedInPanel ? 'mt-0' : 'mt-3'}`}>Loading policy…</p>}
@@ -96,8 +128,10 @@ export const OpportunityPolicyPanel: React.FC<{
 
       <div className={`${embedInPanel ? 'mt-0' : 'mt-3'} space-y-2 text-xs leading-relaxed text-kib-fg/90`}>
         <p>
-          <span className="text-kib-muted">When it runs:</span> you have an <strong>active</strong> watchlist row with a{' '}
-          <strong>baseline</strong>; each quote is compared to that baseline.
+          <span className="text-kib-muted">When stage 1 runs:</span> you have an <strong>active</strong> alert row on the
+          watchlist with a <strong>baseline</strong>; each poll compares the live quote to that baseline. Stage 2 reuses
+          that context plus the same-poll <strong>ATR / ~52w / SMA</strong> snapshot sent to Grok (numbers are
+          tool-backed; prose is educational).
         </p>
 
         {mode === 'atr' ? (

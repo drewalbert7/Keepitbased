@@ -353,10 +353,11 @@ const ProfilePage: React.FC = () => {
             <div className="pt-4 mt-4 border-t border-kib-line">
               <h3 className="text-sm font-semibold text-kib-fg mb-1">Dip briefing emails (Grok)</h3>
               <p className="text-xs text-kib-muted mb-3">
-                When your symbol hits a deterministic dip vs baseline, we can send a richer email with a short
-                Grok briefing (including X context via x_search), suggested tranche % (capped below), and links.
-                Requires <code className="text-kib-fg/90">ENABLE_DIP_INSIGHT_EMAIL</code> on the server. If that
-                flag is off, the toggle has no effect.
+                When your symbol hits a deterministic dip vs baseline, we can send the UltimateDipBuyer email: Grok
+                verdict and confidence, timing notes, X context via x_search, tranche % (capped below), and links. The
+                same assessment is stored on <strong className="text-kib-fg/90">Opportunity signals</strong> in the app.
+                Requires <code className="text-kib-fg/90">ENABLE_DIP_INSIGHT_EMAIL</code> on the server and opportunity
+                emails enabled (dashboard + master email). If the server flag is off, this toggle has no effect.
               </p>
               <label className="flex items-center gap-3 cursor-pointer mb-4">
                 <input
@@ -400,9 +401,12 @@ const ProfilePage: React.FC = () => {
                   disabled={!notifPrefs.email}
                 />
                 <span className={`text-kib-fg text-sm ${!notifPrefs.email ? 'opacity-50' : ''}`}>
-                  Daily watchlist digest email (Grok overview of your tracked symbols + a few research ideas not on
-                  your list). Requires <code className="text-kib-fg/90">ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL</code> and a
-                  configured Python service with Grok.
+                  Daily <strong className="text-kib-fg/90">market briefing</strong> email — macro backdrop, tape tone,
+                  your watchlist commentary, Polygon-ingested headlines, optional X/discourse synthesis, and{' '}
+                  <strong className="text-kib-fg/90">two</strong> liquid US equities to research (off your list) with separate
+                  1&ndash;3 year vs long-run framing. Requires{' '}
+                  <code className="text-kib-fg/90">ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL</code>, SMTP, Polygon news ingestion for
+                  best headline coverage, and Python + Grok.
                 </span>
               </label>
               <div className="max-w-xs">

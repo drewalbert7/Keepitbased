@@ -229,6 +229,7 @@ class LlmClient:
         dip_facts: Dict[str, Any],
         x_snippets: list,
         max_allocation_pct: float,
+        quant_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Grok-backed dip briefing. Uses xAI **x_search** on the Responses API (no X/Twitter API key).
@@ -245,7 +246,7 @@ class LlmClient:
 
         if self.provider == "grok" and self.grok_api_key and use_x_search:
             try:
-                raw = self._grok_dip_insight_x_search(dip_facts, cap)
+                raw = self._grok_dip_insight_x_search(dip_facts, cap, quant_context)
                 self.last_used_provider = "grok"
                 self.last_fallback_used = False
                 return self._normalize_dip_insight(raw, cap)
@@ -255,6 +256,7 @@ class LlmClient:
         # Legacy: Node-supplied snippets when x_search is off (or Grok missing)
         if self.provider == "grok" and self.grok_api_key and x_snippets:
             try:
+                qc = json.dumps(quant_context or {}, ensure_ascii=False, default=str)
                 facts_json = json.dumps(dip_facts, ensure_ascii=False)
                 snip_lines = []
                 for i, s in enumerate(x_snippets[:12]):
@@ -266,11 +268,18 @@ class LlmClient:
                         snip_lines.append(f"{i+1}. {str(s)[:400]}")
                 x_block = "\n".join(snip_lines) if snip_lines else "(No snippets.)"
                 system = (
-                    "You are a financial education assistant. Use ONLY the JSON facts and snippets provided. "
-                    "Return a single JSON object with keys: situationSummary, xSentiment {label, drivers}, "
-                    f"suggestedTranchePct (0..{cap}), riskNotes, fireSaleHypothesis."
+                    "You are a senior quant-education assistant (UltimateDipBuyer). Use ONLY the JSON facts and snippets. "
+                    "Never contradict FACTS_JSON prices or % vs baseline. "
+                    "Return ONE JSON object with keys: "
+                    "verdict (Strong Buy | Buy | Hold | Pass), confidence (0-100 integer), reasoning (concise — timing, "
+                    "invalidation, educational only), situationSummary (2-4 sentences), "
+                    "xSentiment {label: bearish|neutral|bullish|unknown, drivers}, "
+                    f"recommendedPositionPct (0..{cap}, same meaning as suggested tranche), suggestedTranchePct (same), "
+                    "riskNotes (array of strings), fireSaleHypothesis (string or null)."
                 )
-                user = f"FACTS_JSON:\n{facts_json}\n\nSNIPPETS:\n{x_block}\n\nRespond with JSON only."
+                user = (
+                    f"QUANT_CONTEXT_JSON:\n{qc}\n\nFACTS_JSON:\n{facts_json}\n\nSNIPPETS:\n{x_block}\n\nRespond with JSON only."
+                )
                 raw = self._grok_json_prompt(system, user, timeout=25)
                 self.last_used_provider = "grok"
                 self.last_fallback_used = False
@@ -282,29 +291,39 @@ class LlmClient:
         self.last_fallback_used = True
         return self._dip_insight_template(dip_facts, cap)
 
-    def _grok_dip_insight_x_search(self, dip_facts: Dict[str, Any], cap: float) -> Dict[str, Any]:
+    def _grok_dip_insight_x_search(
+        self,
+        dip_facts: Dict[str, Any],
+        cap: float,
+        quant_context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """Responses API + native x_search tool (see xAI docs — no separate X API subscription)."""
         sym = str(dip_facts.get("symbol", "")).strip().upper()
         facts_json = json.dumps(dip_facts, ensure_ascii=False)
+        qc_json = json.dumps(quant_context or {}, ensure_ascii=False, default=str)
         now = datetime.now(timezone.utc)
         from_date = (now - timedelta(days=4)).strftime("%Y-%m-%d")
         to_date = now.strftime("%Y-%m-%d")
 
         system = (
-            "You are a financial education assistant with access to x_search for live X posts. "
-            "FACTS_JSON contains authoritative prices and % vs baseline — never contradict those numbers. "
-            "Use x_search to find recent X discussion relevant to this dip (sentiment, headlines, fear, \"fire sale\" narratives). "
-            "After searching, reply with ONLY valid JSON (no markdown code fence) having keys: "
-            "situationSummary (string, 2-5 sentences), "
-            "xSentiment (object: label bearish|neutral|bullish|unknown, drivers string citing themes from posts), "
-            f"suggestedTranchePct (number between 0 and {cap}), "
-            "riskNotes (array of strings), "
-            "fireSaleHypothesis (string or null), "
-            "xPostLinks (array of objects {{\"url\": string, \"note\": string}} — prefer URLs that appear in x_search citations for this symbol)."
+            "You are an elite hedge-fund-style dip-buying analyst for EDUCATIONAL OUTPUT ONLY (not personalized advice). "
+            "You have x_search for live X posts. "
+            "FACTS_JSON and technicalSnapshot are authoritative — never contradict prices, vsBaselinePct, or ATR fields. "
+            "ruleConfluenceScore (if present) is a deterministic app hint (0-100); acknowledge it but do not invent data.\n"
+            "After x_search, reply with ONLY valid JSON (no markdown fence) having keys:\n"
+            f"- verdict: one of Strong Buy | Buy | Hold | Pass (Pass = do not scale in now)\n"
+            f"- confidence: integer 0-100 (your confidence in the educational verdict)\n"
+            f"- reasoning: concise string — setup quality, timing vs baseline/ATR, macro/news risks, invalidation ideas (no guarantees)\n"
+            f"- situationSummary: string, 2-5 sentences\n"
+            f"- xSentiment: object label bearish|neutral|bullish|unknown, drivers citing themes from posts\n"
+            f"- suggestedTranchePct AND recommendedPositionPct: same number, between 0 and {cap} (portfolio % hint)\n"
+            f"- riskNotes: array of strings\n"
+            f"- fireSaleHypothesis: string or null\n"
+            f"- xPostLinks: array of {{\"url\": string, \"note\": string}} from citations when possible."
         )
         user = (
-            f"FACTS_JSON:\n{facts_json}\n\n"
-            f"Task: Search X for ${sym} and related dip/sentiment discussion in the last few days. "
+            f"QUANT_CONTEXT_JSON:\n{qc_json}\n\nFACTS_JSON:\n{facts_json}\n\n"
+            f"Task: Search X for ${sym} and related dip/sentiment discussion ({from_date} to {to_date}). "
             f"Then output the JSON described above. Max tranche hint: {cap}% of portfolio."
         )
 
@@ -464,12 +483,37 @@ class LlmClient:
 
     def _normalize_dip_insight(self, raw: Dict[str, Any], cap: float) -> Dict[str, Any]:
         out = dict(raw)
+        raw_pct = out.get("recommendedPositionPct", out.get("suggestedTranchePct", 2))
         try:
-            pct = float(out.get("suggestedTranchePct", 2))
+            pct = float(raw_pct)
         except (TypeError, ValueError):
             pct = 2.0
         pct = max(0.0, min(pct, cap, 50.0))
         out["suggestedTranchePct"] = round(pct, 2)
+        out["recommendedPositionPct"] = round(pct, 2)
+
+        verdict_raw = str(out.get("verdict", "") or "").strip()
+        vl = verdict_raw.lower().replace("_", " ")
+        if vl.replace(" ", "") == "strongbuy":
+            vl = "strong buy"
+        if vl == "strong buy":
+            out["verdict"] = "Strong Buy"
+        elif vl == "buy":
+            out["verdict"] = "Buy"
+        elif vl == "hold":
+            out["verdict"] = "Hold"
+        elif vl == "pass":
+            out["verdict"] = "Pass"
+        else:
+            out["verdict"] = "Buy"
+
+        try:
+            conf = int(round(float(out.get("confidence", 65))))
+        except (TypeError, ValueError):
+            conf = 65
+        out["confidence"] = max(0, min(conf, 100))
+
+        out["reasoning"] = str(out.get("reasoning", "") or "")[:4500]
         if not isinstance(out.get("xSentiment"), dict):
             out["xSentiment"] = {"label": "unknown", "drivers": ""}
         if not isinstance(out.get("riskNotes"), list):
@@ -494,11 +538,18 @@ class LlmClient:
         sym = dip_facts.get("symbol", "—")
         vs = dip_facts.get("vsBaselinePct")
         return {
+            "verdict": "Hold",
+            "confidence": 40,
+            "reasoning": (
+                "Automated template — configure GROK_API_KEY and LLM_PROVIDER=grok on the Python service "
+                "for UltimateDipBuyer AI narrative and verdict."
+            ),
             "situationSummary": (
                 f"{sym} moved vs your baseline (approx. {vs}%); review liquidity and upcoming catalysts before sizing."
             ),
             "xSentiment": {"label": "unknown", "drivers": "LLM unavailable; X sentiment not scored."},
             "suggestedTranchePct": min(2.0, cap),
+            "recommendedPositionPct": min(2.0, cap),
             "riskNotes": [
                 "Verify the quote and baseline in the app before acting.",
                 "Model output is educational only.",
@@ -506,35 +557,147 @@ class LlmClient:
             "fireSaleHypothesis": None,
         }
 
-    def generate_daily_watchlist_digest(self, watchlist_context: Dict[str, Any]) -> Dict[str, Any]:
-        """Grok JSON digest: market overview, holdings commentary, suggested tickers not on list."""
+    def generate_daily_watchlist_digest(self, digest_bundle: Dict[str, Any]) -> Dict[str, Any]:
+        """Grok JSON digest: macro, holdings, ingested headlines, optional x_search narrative, top 2 off-list picks."""
+        self.last_x_search_citations = []
         self.last_fallback_used = True
-        wl_json = json.dumps(watchlist_context, default=str)[:24000]
+        wl_ctx = digest_bundle.get("watchlistContext")
+        if not isinstance(wl_ctx, dict):
+            wl_ctx = digest_bundle if isinstance(digest_bundle, dict) else {}
+        arts = digest_bundle.get("researchArtifacts") if isinstance(digest_bundle.get("researchArtifacts"), list) else []
+        rd_meta = digest_bundle.get("researchDigestMeta") if isinstance(digest_bundle.get("researchDigestMeta"), dict) else {}
+
+        wl_json = json.dumps(wl_ctx, default=str)[:20000]
+        arts_trim = arts[:42] if isinstance(arts, list) else []
+        arts_json = json.dumps(arts_trim, default=str)[:14000]
+        meta_json = json.dumps(rd_meta, default=str)[:2000]
+
         system = (
-            "You are a disciplined equity research analyst. Given JSON snapshot of a user's tracked alerts "
-            "(symbols, live prices vs baselines, dip sizing tiers), produce a morning-style briefing.\n"
-            "Rules:\n"
-            "- Output VALID JSON ONLY with keys: marketOverview (string, 2-5 sentences on macro/market tone "
-            "relevant to these holdings), holdingsAnalysis (string, one paragraph on their positions vs baselines), "
-            "suggestedAdditions (array), disclaimer (string).\n"
-            "- suggestedAdditions: 3 to 5 objects. Each: symbol (uppercase US ticker 1-5 letters), thesis "
-            "(<=420 chars), riskNote (<=260 chars), timeHorizon (swing | long_term | short_term).\n"
-            "- Each suggested symbol must be a plausible liquid US equity NOT listed in the snapshot items[].symbol.\n"
-            "- Professional tone; no emoji; cite generic sector/trend drivers not fabricated earnings numbers.\n"
-            "- Educational only; not personalized investment advice.\n"
+            "You are a senior sell-side strategist writing a sober daily briefing for a retail client's watchlist. "
+            "EDUCATIONAL ONLY — no personalized investment advice; no fabricated earnings or price targets.\n"
+            "You may combine: (a) authoritative numbers from WATCHLIST_JSON, "
+            "(b) RESEARCH_ARTIFACTS_JSON headline rows from our ingestion (titles/summaries/urls), "
+            "(c) your general macro knowledge.\n\n"
+            "Output VALID JSON ONLY (no markdown) with keys:\n"
+            "- macroAnalysis: string (3-6 sentences) — Fed/liquidity, inflation/growth tilt, geopolitical headline risk, "
+            "cross-asset cues relevant to equities.\n"
+            "- marketOverview: string (2-4 sentences) — session-style tone for broad US equities and how it relates to "
+            "these holdings.\n"
+            "- holdingsAnalysis: string — professional paragraph tying each tracked symbol's price vs baseline, dip tiers, "
+            "and sizing hints from JSON; flag concentration or gaps.\n"
+            "- newsHighlights: array up to 6 objects {title (string), symbol (optional string), takeaway (<=220 chars)} — "
+            "prioritize headlines from RESEARCH_ARTIFACTS that matter for symbols on their list; cite themes not fake quotes.\n"
+            "- xSocialSummary: string (2-5 sentences) — current X/discourse themes around their tickers vs macro noise.\n"
+            "- xPostLinks: array up to 6 of {url, note} optional if you cite specific posts/channels (use plausible x.com/twitter.com URLs).\n"
+            "- topStockPicks: EXACTLY 2 objects NOT on watchlist symbols. Each:\n"
+            "  { symbol (uppercase US 1-6 letters plausible liquid), rationale1to3Years (<=480 chars forward view), "
+            " rationaleLongTerm (<=480 chars secular/compounding angle), riskNote (<=260 chars), "
+            " keyCatalystOrTheme (<=180 chars optional) }. "
+            "These are illustrative research ideas — not endorsed positions.\n"
+            "- disclaimer: string (≤900 chars).\n\n"
+            "Do not duplicate tickers from items[].symbol. No emoji.\n"
         )
-        user = f"Watchlist snapshot JSON:\n{wl_json}"
-        if self.provider == "grok" and self.grok_api_key:
+        user = (
+            "WATCHLIST_JSON:\n"
+            + wl_json
+            + "\n\nRESEARCH_ARTIFACTS_JSON (Polygon/news ingestion — vet externally):\n"
+            + arts_json
+            + "\n\nMETA_JSON:\n"
+            + meta_json
+        )
+
+        use_x_search = (
+            os.getenv("DAILY_DIGEST_USE_X_SEARCH", "true").strip().lower() in ("1", "true", "yes")
+        )
+        if self.provider == "grok" and self.grok_api_key and use_x_search:
             try:
-                raw = self._grok_json_prompt(system, user, timeout=95)
+                raw = self._grok_daily_digest_x_search(system, user, wl_ctx)
                 self.last_fallback_used = False
                 self.last_used_provider = "grok"
-                return self._normalize_daily_digest(raw, watchlist_context)
+                return self._normalize_daily_digest(raw, wl_ctx)
+            except Exception as exc:
+                logger.warning("Grok daily digest x_search fallback: %s", exc)
+        if self.provider == "grok" and self.grok_api_key:
+            try:
+                raw = self._grok_json_prompt(system, user, timeout=120)
+                self.last_fallback_used = False
+                self.last_used_provider = "grok"
+                return self._normalize_daily_digest(raw, wl_ctx)
             except Exception as exc:
                 logger.warning("Grok daily digest fallback: %s", exc)
         self.last_used_provider = "template"
         self.last_fallback_used = True
-        return self._daily_digest_template(watchlist_context)
+        return self._daily_digest_template(wl_ctx, arts_trim)
+
+    def _grok_daily_digest_x_search(
+        self, system: str, user: str, wl_ctx: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        syms = []
+        for it in (wl_ctx.get("items") or [])[:12]:
+            s = str(it.get("symbol") or "").strip().upper()
+            if s and re.match(r"^[A-Z]{1,10}$", s):
+                syms.append(s)
+        sym_query = ", ".join(sorted(set(syms))) if syms else "US equities breadth"
+        now = datetime.now(timezone.utc)
+        from_date = (now - timedelta(days=3)).strftime("%Y-%m-%d")
+        to_date = now.strftime("%Y-%m-%d")
+        user_x = (
+            user
+            + "\n\nTask: Call x_search for recent discussion on "
+            + sym_query
+            + f" versus broad macro ({from_date} to {to_date}). Then output ONLY the JSON object required in SYSTEM."
+        )
+        payload = {
+            "model": self.model,
+            "tools": [
+                {
+                    "type": "x_search",
+                    "from_date": from_date,
+                    "to_date": to_date,
+                }
+            ],
+            "input": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user_x[:35000]},
+            ],
+        }
+        headers = {
+            "Authorization": f"Bearer {self.grok_api_key}",
+            "Content-Type": "application/json",
+        }
+        response = requests.post(
+            f"{self.grok_base_url}/responses",
+            headers=headers,
+            json=payload,
+            timeout=150,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        citations = data.get("citations")
+        if isinstance(citations, list):
+            self.last_x_search_citations = [str(u) for u in citations if u]
+        else:
+            self.last_x_search_citations = []
+
+        text = self._extract_responses_message_text(data) or self._extract_responses_text(data)
+        if not text:
+            raise ValueError("Empty Grok daily digest x_search response text")
+        parsed = self._parse_json_object_from_text(text)
+        if not isinstance(parsed, dict):
+            raise ValueError("Grok did not return a JSON object")
+
+        x_links = parsed.get("xPostLinks")
+        if not isinstance(x_links, list) or len(x_links) == 0:
+            x_urls = [
+                u
+                for u in self.last_x_search_citations
+                if "status/" in u or "/i/status/" in u or "x.com" in u.lower()
+            ]
+            parsed["xPostLinks"] = [
+                {"url": u[:800], "note": "x_search citation"} for u in x_urls[:8]
+            ]
+        return parsed
 
     def _normalize_daily_digest(
         self, raw: Dict[str, Any], ctx: Dict[str, Any]
@@ -544,59 +707,176 @@ class LlmClient:
             sym = str(it.get("symbol") or "").upper().strip()
             if sym:
                 existing.add(sym)
+
+        news_hi: List[Dict[str, str]] = []
+        nh_raw = raw.get("newsHighlights") or raw.get("news_highlights") or []
+        if isinstance(nh_raw, list):
+            for nh in nh_raw[:8]:
+                if not isinstance(nh, dict):
+                    continue
+                title = str(nh.get("title") or "").strip()
+                takeaway = str(nh.get("takeaway") or nh.get("summary") or "").strip()
+                smb = str(nh.get("symbol") or "").upper().strip() or ""
+                if not title and not takeaway:
+                    continue
+                news_hi.append(
+                    {
+                        "title": title[:300],
+                        "symbol": smb[:16],
+                        "takeaway": takeaway[:240],
+                    }
+                )
+
+        x_links_clean: List[Dict[str, str]] = []
+        xl = raw.get("xPostLinks") or []
+        if isinstance(xl, list):
+            for z in xl[:10]:
+                if isinstance(z, dict) and z.get("url"):
+                    x_links_clean.append(
+                        {"url": str(z.get("url", ""))[:800], "note": str(z.get("note", ""))[:400]}
+                    )
+
+        picks: List[Dict[str, Any]] = []
+        tp_raw = raw.get("topStockPicks") or raw.get("top_stock_picks") or []
+        if isinstance(tp_raw, list):
+            for p in tp_raw:
+                if not isinstance(p, dict):
+                    continue
+                smb = str(p.get("symbol") or "").strip().upper()
+                if not smb or smb in existing or not re.match(r"^[A-Z]{1,6}$", smb):
+                    continue
+                picks.append(
+                    {
+                        "symbol": smb,
+                        "rationale1to3Years": str(
+                            p.get("rationale1to3Years")
+                            or p.get("rationale_1_to_3_years")
+                            or ""
+                        )[:500],
+                        "rationaleLongTerm": str(
+                            p.get("rationaleLongTerm") or p.get("rationale_long_term") or ""
+                        )[:500],
+                        "riskNote": str(p.get("riskNote") or p.get("risk_note") or "")[:280],
+                        "keyCatalystOrTheme": str(
+                            p.get("keyCatalystOrTheme") or p.get("key_catalyst_or_theme") or ""
+                        )[:190],
+                    }
+                )
+                existing.add(smb)
+                if len(picks) >= 2:
+                    break
+
         suggestions: List[Dict[str, Any]] = []
-        raw_list = raw.get("suggestedAdditions") or raw.get("suggested_additions") or []
-        if not isinstance(raw_list, list):
-            raw_list = []
-        for item in raw_list:
-            if not isinstance(item, dict):
-                continue
-            sym = str(item.get("symbol") or "").upper().strip()
-            if not sym or sym in existing:
-                continue
-            if not re.match(r"^[A-Z]{1,6}$", sym):
-                continue
-            horizon = str(item.get("timeHorizon") or item.get("time_horizon") or "long_term").strip()
-            if horizon not in ("swing", "long_term", "short_term"):
-                horizon = "long_term"
+        for pk in picks:
+            thesis_parts = []
+            if pk.get("rationale1to3Years"):
+                thesis_parts.append(str(pk["rationale1to3Years"]))
+            if pk.get("rationaleLongTerm"):
+                thesis_parts.append(str(pk["rationaleLongTerm"]))
+            combo = (" — ".join(thesis_parts))[:460]
             suggestions.append(
                 {
-                    "symbol": sym,
-                    "thesis": str(item.get("thesis") or "")[:450],
-                    "riskNote": str(item.get("riskNote") or item.get("risk_note") or "")[:280],
-                    "timeHorizon": horizon[:32],
+                    "symbol": pk["symbol"],
+                    "thesis": combo or "Educational illustration only.",
+                    "riskNote": str(pk.get("riskNote") or "")[:280],
+                    "timeHorizon": "long_term",
                 }
             )
-            existing.add(sym)
-            if len(suggestions) >= 5:
-                break
-        return {
-            "marketOverview": str(raw.get("marketOverview") or raw.get("market_overview") or "")[:2800],
-            "holdingsAnalysis": str(
-                raw.get("holdingsAnalysis") or raw.get("holdings_analysis") or ""
-            )[:4000],
-            "suggestedAdditions": suggestions,
-            "disclaimer": str(
+
+        raw_list = raw.get("suggestedAdditions") or raw.get("suggested_additions") or []
+        if isinstance(raw_list, list):
+            for item in raw_list:
+                if len(suggestions) >= 5:
+                    break
+                if not isinstance(item, dict):
+                    continue
+                sym = str(item.get("symbol") or "").upper().strip()
+                if not sym or sym in existing:
+                    continue
+                if not re.match(r"^[A-Z]{1,6}$", sym):
+                    continue
+                horizon = str(item.get("timeHorizon") or item.get("time_horizon") or "long_term").strip()
+                if horizon not in ("swing", "long_term", "short_term"):
+                    horizon = "long_term"
+                suggestions.append(
+                    {
+                        "symbol": sym,
+                        "thesis": str(item.get("thesis") or "")[:450],
+                        "riskNote": str(item.get("riskNote") or item.get("risk_note") or "")[:280],
+                        "timeHorizon": horizon[:32],
+                    }
+                )
+                existing.add(sym)
+
+        disclaimer = (
+            str(
                 raw.get("disclaimer")
-                or "Educational commentary only; verify facts and suitability independently."
-            )[:900],
+                or "Educational commentary only; verify facts, liquidity, and fit with your objectives independently."
+            )[:920]
+        )
+        macro = str(raw.get("macroAnalysis") or raw.get("macro_analysis") or "")[:3600]
+
+        out = {
+            "macroAnalysis": macro,
+            "marketOverview": str(raw.get("marketOverview") or raw.get("market_overview") or "")[:2600],
+            "holdingsAnalysis": str(raw.get("holdingsAnalysis") or raw.get("holdings_analysis") or "")[:4400],
+            "newsHighlights": news_hi,
+            "xSocialSummary": str(raw.get("xSocialSummary") or raw.get("x_social_summary") or "")[:2200],
+            "xPostLinks": x_links_clean,
+            "topStockPicks": picks,
+            "suggestedAdditions": suggestions[:5],
+            "disclaimer": disclaimer,
         }
 
-    def _daily_digest_template(self, ctx: Dict[str, Any]) -> Dict[str, Any]:
+        if not str(out["marketOverview"] or "").strip() and macro:
+            out["marketOverview"] = macro[:1200]
+
+        return out
+
+    def _daily_digest_template(self, ctx: Dict[str, Any], arts_trim: Optional[List[Any]] = None) -> Dict[str, Any]:
         items = ctx.get("items") or []
         syms = ", ".join(str(i.get("symbol")) for i in items[:12])
+        arts_trim = arts_trim if isinstance(arts_trim, list) else []
+        news_hi: List[Dict[str, str]] = []
+        for j, a in enumerate(arts_trim[:6]):
+            if not isinstance(a, dict):
+                continue
+            t = str(a.get("title") or a.get("Title") or "").strip()
+            if not t:
+                continue
+            news_hi.append(
+                {
+                    "title": t[:280],
+                    "symbol": str(a.get("symbol") or "").upper()[:10],
+                    "takeaway": str(a.get("contentSummary") or a.get("content_summary") or "")[:220],
+                }
+            )
+
+        macro = (
+            "High-level liquidity and rate narratives drive sector rotation — monitor central-bank rhetoric, "
+            "real yields, and credit conditions alongside broad index breadth."
+        )
+        holdings = (
+            f"Tracked alerts: {len(items)} symbol(s) ({syms or 'n/a'}). Quotes and baselines in the briefing JSON "
+            "are snapshots only — reconcile in-app before reallocating risk."
+        )
         return {
+            "macroAnalysis": macro,
             "marketOverview": (
-                "Market tone varies with rates, liquidity, and sector rotation; use indexes and breadth "
-                "as context alongside your names."
+                "US equities broadly trade relative to liquidity and mega-cap sentiment; reconcile any single-stock "
+                "drawdown with index trend and headline risk."
             ),
-            "holdingsAnalysis": (
-                f"This snapshot includes {len(items)} tracked symbol(s): {syms or 'n/a'}. "
-                "Confirm live quotes and baselines in the app before sizing."
+            "holdingsAnalysis": holdings,
+            "newsHighlights": news_hi,
+            "xSocialSummary": (
+                "X-driven narratives often front-run fundamentals; corroborate with filings, liquidity, and your own diligence."
             ),
+            "xPostLinks": [],
+            "topStockPicks": [],
             "suggestedAdditions": [],
             "disclaimer": (
-                "LLM unavailable — placeholder digest only. Configure GROK_API_KEY on the Python service for full analysis."
+                "LLM unavailable — template digest only. Set GROK_API_KEY, LLM_PROVIDER=grok on the Python service "
+                "(and optionally DAILY_DIGEST_USE_X_SEARCH=true) for a full briefing."
             ),
         }
 

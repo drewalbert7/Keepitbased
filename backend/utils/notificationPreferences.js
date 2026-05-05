@@ -43,13 +43,22 @@ function mergeNotificationPreferences(raw) {
     opportunityEmail: p.opportunityEmail !== false,
 
     /**
-     * When `overreaction_only`, users only get toast/email for signals that include the overreaction
-     * or long-term capitulation tier. Smaller `on_sale`-only bursts are still recorded server-side when
-     * dedupe allows but outbound alerts are skipped.
+     * In-app toasts (Socket `opportunitySignal`). When `overreaction_only`, skips `on_sale`-only bursts
+     * (still recorded in DB/Signals). Independent from `opportunityEmailNotifyLevel`.
      */
     opportunityNotifyLevel: ['all', 'overreaction_only'].includes(p.opportunityNotifyLevel)
       ? p.opportunityNotifyLevel
       : 'all',
+
+    /**
+     * Opportunity **email** tier (plain + dip-insight). Default `overreaction_only` = no inbox mail for
+     * small `on_sale`-only signals. `capitulation_only` = major long-term tier only.
+     */
+    opportunityEmailNotifyLevel: ['all', 'overreaction_only', 'capitulation_only'].includes(
+      p.opportunityEmailNotifyLevel
+    )
+      ? p.opportunityEmailNotifyLevel
+      : 'overreaction_only',
 
     /** When true (default), skip opportunity emails during researchQuietHoursLocal in prefs.timezone. */
     opportunityRespectQuietHours: p.opportunityRespectQuietHours !== false,
@@ -79,6 +88,21 @@ function clampInt(v, lo, hi, fallback) {
   return Math.min(hi, Math.max(lo, Math.round(n)));
 }
 
+/**
+ * @param {string[]} flags
+ * @param {'all' | 'overreaction_only' | 'capitulation_only'} level
+ */
+function passesOpportunityEmailTierFilter(flags, level) {
+  if (level === 'all') return true;
+  if (!Array.isArray(flags) || !flags.length) return false;
+  if (level === 'capitulation_only') return flags.includes('capitulation');
+  if (level === 'overreaction_only') {
+    return flags.includes('overreaction') || flags.includes('capitulation');
+  }
+  return true;
+}
+
 module.exports = {
-  mergeNotificationPreferences
+  mergeNotificationPreferences,
+  passesOpportunityEmailTierFilter
 };

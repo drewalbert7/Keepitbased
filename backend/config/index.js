@@ -155,6 +155,20 @@ const config = {
   DISABLE_DIP_INSIGHT_EMAIL: process.env.DISABLE_DIP_INSIGHT_EMAIL === 'true',
 
   /**
+   * UltimateDipBuyer AI: only send the rich Grok email when verdict is Strong Buy or Buy (not Hold/Pass).
+   * Assessment is still stored on `opportunity_signals.ai_assessment` when insight succeeds.
+   */
+  DIP_INSIGHT_EMAIL_REQUIRE_BUY_VERDICT: process.env.DIP_INSIGHT_EMAIL_REQUIRE_BUY_VERDICT === 'true',
+  /**
+   * When > 0, require Grok `confidence` >= this (0–100) to send the dip insight email.
+   * Works together with DIP_INSIGHT_EMAIL_REQUIRE_BUY_VERDICT when both set.
+   */
+  DIP_INSIGHT_MIN_CONFIDENCE_FOR_EMAIL: (() => {
+    const n = parseInt(process.env.DIP_INSIGHT_MIN_CONFIDENCE_FOR_EMAIL, 10);
+    return Number.isFinite(n) && n >= 0 ? Math.min(n, 100) : 0;
+  })(),
+
+  /**
    * Scheduled daily email: Grok analysis of Main watchlist + suggested tickers (Python service + GROK_*).
    * Users opt in via Profile `dailyWatchlistDigestEmail`; operator sets ENABLE_* on host.
    */
@@ -166,6 +180,11 @@ const config = {
   DAILY_WATCHLIST_DIGEST_STAGGER_MS: (() => {
     const n = parseInt(process.env.DAILY_WATCHLIST_DIGEST_STAGGER_MS, 10);
     return Number.isFinite(n) && n >= 0 ? Math.min(n, 120_000) : 2500;
+  })(),
+  /** Hours of Polygon-ingested headlines attached to daily digest payloads (symbols on user watchlist). */
+  DAILY_DIGEST_RESEARCH_LOOKBACK_HOURS: (() => {
+    const n = parseInt(process.env.DAILY_DIGEST_RESEARCH_LOOKBACK_HOURS, 10);
+    return Number.isFinite(n) && n > 0 ? Math.min(n, 168) : 72;
   })(),
 
   /**

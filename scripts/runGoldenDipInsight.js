@@ -15,7 +15,15 @@ const dipContext = {
   price: 180.25,
   baselinePrice: 192.5,
   dayChangePct: -2.1,
-  timestamp: new Date().toISOString()
+  timestamp: new Date().toISOString(),
+  ruleConfluenceScore: 72,
+  technicalSnapshot: { atr14: 4.2, atr50: 5.1, week52High: 220, week52Low: 165, athHigh: 230, smaTrend: 195 }
+};
+
+const quantContext = {
+  project: 'KeepItBased-UltimateDipBuyer',
+  ruleConfluenceScore: 72,
+  schemaVersion: 'ultimate_dip_buyer_v1'
 };
 
 function validateInsight(insight) {
@@ -31,6 +39,9 @@ function validateInsight(insight) {
   const pct = Number(insight.suggestedTranchePct);
   if (!Number.isFinite(pct) || pct < 0 || pct > 50) return 'suggestedTranchePct out of range';
   if (!Array.isArray(insight.riskNotes)) return 'riskNotes must be array';
+  if (typeof insight.verdict !== 'string' || !insight.verdict.trim()) return 'missing verdict';
+  const conf = Number(insight.confidence);
+  if (!Number.isFinite(conf) || conf < 0 || conf > 100) return 'confidence out of range';
   return null;
 }
 
@@ -44,6 +55,7 @@ async function main() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         dipContext,
+        quantContext,
         xSnippets: [],
         maxAllocationPct: 10
       }),

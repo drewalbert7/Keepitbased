@@ -222,6 +222,10 @@ async function runInitializeDatabase() {
       ON opportunity_signals(user_id, created_at DESC);
     `);
 
+    await client.query(`
+      ALTER TABLE opportunity_signals ADD COLUMN IF NOT EXISTS ai_assessment JSONB;
+    `);
+
     // §11 Phase B — normalized research artifacts (news, later X/filings)
     await client.query(`
       CREATE TABLE IF NOT EXISTS research_artifacts (

@@ -7,6 +7,7 @@ const emailService = require('./emailService');
 const { mergeNotificationPreferences } = require('../utils/notificationPreferences');
 const { buildAgentWatchlistContext } = require('./agentWatchlistContext');
 const { allowsSendDuringQuietHours } = require('../utils/researchAlertGates');
+const { getResearchArtifactsForUser } = require('./researchArtifactsReader');
 
 let running = false;
 
@@ -78,13 +79,39 @@ async function runDailyWatchlistDigestTick(alertService) {
         continue;
       }
 
+      let researchPack = {
+        artifacts: [],
+        lookbackHours: config.DAILY_DIGEST_RESEARCH_LOOKBACK_HOURS,
+        symbolsAllowed: []
+      };
+      try {
+        const symList = watchlistContext.items.map((it) =>
+          String(it.symbol || '').toUpperCase().trim()
+        );
+        researchPack = await getResearchArtifactsForUser(row.id, {
+          symbols: symList,
+          hours: config.DAILY_DIGEST_RESEARCH_LOOKBACK_HOURS,
+          limit: 45
+        });
+      } catch (re) {
+        logger.warn(`Daily digest: research artifacts skipped user ${row.id}: ${re.message}`);
+      }
+
       let digest;
       let pyMeta = {};
       try {
         const { data } = await axios.post(
           pythonUrl,
-          { watchlistContext },
-          { timeout: 120000 }
+          {
+            watchlistContext,
+            researchArtifacts: researchPack.artifacts,
+            researchDigestMeta: {
+              lookbackHours: researchPack.lookbackHours,
+              artifactCount: (researchPack.artifacts || []).length,
+              symbolsCovered: researchPack.symbolsAllowed || []
+            }
+          },
+          { timeout: 180000 }
         );
         if (!data || data.error) {
           throw new Error(data?.error || 'daily-watchlist-digest failed');

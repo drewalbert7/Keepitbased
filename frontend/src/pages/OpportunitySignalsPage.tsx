@@ -45,9 +45,9 @@ const OpportunitySignalsPage: React.FC = () => {
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight text-kib-fg sm:text-3xl">Opportunity signals</h1>
           <p className="mt-2 text-sm text-kib-muted sm:text-base">
-            Deterministic watchlist hits vs your alert baselines: short tiers deduped on an hourly window;
-            long-term capitulation tier uses a separate relaxed window (often 24h). Also emailed when email
-            alerts are on and SMTP is configured.
+            Stage 1: deterministic opportunity flags vs your baselines (same dedupe windows as the dashboard).
+            Stage 2 (UltimateDipBuyer AI): when dip-insight email is enabled, Grok adds a structured verdict,
+            confidence, and timing notes — stored here even if the rich email is gated (e.g. Hold/Pass).
           </p>
         </div>
         <button type="button" className="btn-secondary whitespace-nowrap" onClick={() => load()}>
@@ -76,6 +76,7 @@ const OpportunitySignalsPage: React.FC = () => {
                 <th className="py-3 pr-4 font-medium">Price</th>
                 <th className="py-3 pr-4 font-medium">Vs baseline</th>
                 <th className="py-3 pr-4 font-medium">Flags</th>
+                <th className="py-3 pr-4 font-medium min-w-[140px]">UltimateDipBuyer AI</th>
                 <th className="py-3 font-medium">Reasons</th>
               </tr>
             </thead>
@@ -83,6 +84,7 @@ const OpportunitySignalsPage: React.FC = () => {
               {signals.map((row) => {
                 const flags = Array.isArray(row.flags) ? row.flags : [];
                 const reasons = Array.isArray(row.reasons) ? row.reasons : [];
+                const ai = row.ai_assessment;
                 return (
                 <tr key={row.id} className="border-b border-slate-800">
                   <td className="py-3 pr-4 text-slate-300 whitespace-nowrap">
@@ -111,6 +113,32 @@ const OpportunitySignalsPage: React.FC = () => {
                         </span>
                       ))}
                     </span>
+                  </td>
+                  <td className="py-3 pr-4 align-top text-xs text-slate-300 max-w-[220px]">
+                    {ai?.verdict ? (
+                      <div className="space-y-1">
+                        <div className="font-semibold text-kib-cyber/90">{ai.verdict}</div>
+                        {ai.confidence != null && (
+                          <div className="tabular-nums text-kib-muted">
+                            Confidence {Math.round(Number(ai.confidence))}%
+                          </div>
+                        )}
+                        {ai.emailSent === false && ai.emailSuppressReason ? (
+                          <div className="text-[10px] text-amber-200/90">
+                            Email gated ({ai.emailSuppressReason.replace(/_/g, ' ')})
+                          </div>
+                        ) : ai.emailSent ? (
+                          <div className="text-[10px] text-emerald-200/80">Email sent</div>
+                        ) : null}
+                        {ai.reasoning ? (
+                          <p className="mt-1 text-[11px] leading-snug text-slate-400 line-clamp-4" title={ai.reasoning}>
+                            {ai.reasoning}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <span className="text-slate-500">—</span>
+                    )}
                   </td>
                   <td className="py-3 text-slate-300 max-w-md">
                     <ul className="list-disc list-inside space-y-0.5">

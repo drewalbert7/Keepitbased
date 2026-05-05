@@ -1,6 +1,8 @@
 # KeepItBased Professional Implementation Plan
 
-Last updated: **2026-05-04** — **Dashboard agent UX:** modes **Scan & rank** / **Ask a question** / **Smart**; LangGraph **`educational_qa`** + **`compose_scan_reply`**; Node→Python **`AGENT_PYTHON_TIMEOUT_MS`** (default 120s, `backend/.env.example`); request **`assistantIntent`** + **`conversationHistory`**; **`runMetadata`** includes `assistantIntentResolved` / `conversationTurns`; UI **backup-mode** banner + **progressive reply** reveal (post-response, not live SSE). **Auth / signup:** **`username`** (3–32, unique) replaces first/last on **register** + **Profile**; **per-user signup passcode** (`GET`/`PUT /api/users/profile/signup-passcode`, `backend/services/userSignupPasscodeService.js`); signup allowed if **global invite** and/or **any** personal passcode exists; **`invited_by_user_id`** on new rows when a passcode matched. Display: **`Navigation`**, **`ChatContext`**, **`ProfileAdminSignupInvite`** copy. **Ops:** `frontend/src/components/layout/Navbar.tsx` may still be **root-owned** on disk — `sudo chown "$USER:$USER"` then align welcome line with username (app shell uses **`Navigation`**).
+Last updated: **2026-05-05** — **Watchlist UX + mail + daily briefing:** Polygon/Massive-backed **Open / VWAP / Bid–Ask / `quoteSourceUsed`** end-to-end (PriceMonitor → Redis → **`buildAgentWatchlistContext`** → **`watchlistDerived`** merge + **`overlayFresherWatchlistQuotes`**); crypto **`dayChangeAbs`** stock-only in **`agentWatchlistContext.js`**. **`Opportunity email tier`** split from toasts: **`opportunityEmailNotifyLevel`** (`all` | **`overreaction_only` (default)** | `capitulation_only`) via **`passesOpportunityEmailTierFilter`** in **`priceMonitor.js`**; **`AlertDeliveryPreferences`** + **`notificationPreferences.js`**. **Fix:** missing `}` after RTH suppression branch in **`priceMonitor.js`** (deploy blocker). **Dashboard:** **`AIAgentPage`** — removed **Latest plan**, **Top opportunities**, **Run metadata** card; kept backup-mode strip. **Daily market briefing:** Node bundles **`researchArtifacts`** (`DAILY_DIGEST_RESEARCH_LOOKBACK_HOURS`, default 72h) into **`dailyWatchlistDigestWorker`** POST body; Python **`generate_daily_watchlist_digest`** — macro / tape / holdings / headlines / **x_search** (`DAILY_DIGEST_USE_X_SEARCH`) / **top 2** off-list picks (1–3y + long-term); **`sendDailyWatchlistDigestEmail`** HTML + subject **Daily market briefing**. **§11 / dip:** `opportunity_signals.ai_assessment`, UltimateDipBuyer / confluence / email copy (see commit). **`npm run deploy`** + **`pm2 restart stock-service`** when Python changes.
+
+**Prior (2026-05-04):** **Dashboard agent UX:** modes **Scan & rank** / **Ask a question** / **Smart**; LangGraph **`educational_qa`** + **`compose_scan_reply`**; Node→Python **`AGENT_PYTHON_TIMEOUT_MS`**; **`assistantIntent`** + **`conversationHistory`**; UI **backup-mode** banner + **progressive reply**. **Auth / signup:** **`username`**, personal **signup passcode**, **`invited_by_user_id`**. **Ops:** Navbar file ownership note if needed.
 
 **Prior (2026-05-03):** **OpenBB ODP** app-wide (equity/crypto via **`openbb-yfinance`** / Polygon, **`OPENBB_ENABLED`**, PM2 **`openbb-platform`**); **AI agent backlog** + **[TradingAgents](https://github.com/tauricresearch/tradingagents)** notes in **§3.1**; Polygon retry/stale-quote; crypto dashboard parity; **Supabase** global chat + **`FloatingChatDock`**; watchlist/52-week hardening. **AGPL / Massive / deploy:** unchanged — `npm run deploy`, OpenBB AGPL review. **Git:** [PR workflow](docs/PROJECT_REVIEW_TODO.md) when `main` is protected.
 
@@ -44,6 +46,22 @@ Last updated: **2026-05-04** — **Dashboard agent UX:** modes **Scan & rank** /
 
 ## Resume Here Next Session
 
+### Recent session — Watchlist, opportunity mail, dashboard trim, daily briefing (2026-05-05, done)
+
+- **`frontend/src/utils/watchlistDerived.ts`:** Crypto **`dayChangePct`** prefers **`changePercent`** then **`change24h`**; merge accepts **`sourceUsed`** / **`quoteSourceUsed`**; **`chartQuoteToPriceUpdatePayload`** forwards **`sourceUsed`**.
+- **`frontend/src/pages/AIAgentPage.tsx`:** Bid/ask **one-sided** display + **day range** partial high/low; removed **Latest plan**, **Run metadata** panel, **Top opportunities** (+ related state / **`applyCandidateAsAlert`**).
+- **`backend/services/agentWatchlistContext.js`:** **`dayChangeAbs`** only for **stocks** (crypto **`change24h`** is %).
+- **`backend/utils/notificationPreferences.js` + `priceMonitor.js`:** **`opportunityEmailNotifyLevel`** default **`overreaction_only`**; **`passesToastOutbound`** vs **`passesEmailOutbound`**.
+- **`frontend/src/components/AlertDeliveryPreferences.tsx`** / **`OpportunityPolicyPanel.tsx`** / **`types/index.ts`:** Copy + second dropdown for email tier.
+- **`backend/services/priceMonitor.js`:** Syntax fix: close **`else if (stockOutsideRth)`** before per-signal **`logger.info`**.
+- **`backend/services/dailyWatchlistDigestWorker.js` + `researchArtifactsReader`:** Pass **`researchArtifacts`** + meta to Python; axios **180s**; **`config.DAILY_DIGEST_RESEARCH_LOOKBACK_HOURS`**.
+- **`python-service/langgraph_agent/llm_client.py` + `stock_service.py`:** Expanded digest JSON + **`_grok_daily_digest_x_search`**; template accepts ingested artifacts.
+- **`backend/services/emailService.js`:** **Daily market briefing** HTML sections (macro, tape, watchlist, headlines, X, two ideas).
+- **`frontend/src/pages/ProfilePage.tsx`:** Daily briefing checkbox description updated.
+- **§11 / signals / dip path:** DB + services + UI files as in working tree (`opportunity_signals`, dip insight email, golden script, etc.).
+
+**Ops reminder:** `npm run deploy` does not restart **`stock-service`** — run **`pm2 restart stock-service`** after Python changes for daily briefing / dip-insight.
+
 ### Recent session — Crypto dashboard parity with stocks (done)
 
 - **`frontend/src/pages/CryptoPage.tsx`:** Same **`app-shell`** / header band / control strip as **`ChartPage`** (connection, Volume/Indicators, data source label, quote status, cadence **updates every 10s**, stale timer, Refresh). Main column **`lg:[grid-template-columns:minmax(0,3fr)_minmax(320px,1fr)]`**, feed-status bar above chart, period **presets** (1D–All mapped to Kraken interval + time range; YTD uses **6M** window — API has no true YTD). Sidebar: quote card (stock-like styling), crosshair panel (crosshair time handles **ms vs s**), **Pair info**, **Indicators** block when toggled on.
@@ -62,6 +80,7 @@ Last updated: **2026-05-04** — **Dashboard agent UX:** modes **Scan & rank** /
 
 ### Last deploy (pick up here)
 
+- **2026-05-05:** If **`/api/health`** fails after reload, check **`pm2 logs keepitbased-api`** — a prior **`priceMonitor.js`** brace bug caused **SyntaxError** until fixed.
 - **Git workflow:** When `main` is protected, use **`git checkout -b feature/…` → push branch → open PR on GitHub → merge** instead of relying on push bypass. Full checklist: [docs/PROJECT_REVIEW_TODO.md](docs/PROJECT_REVIEW_TODO.md) (section *Pull requests — doing it correctly*).
 - **Frontend + Node:** `npm run deploy` or `bash scripts/deploy-production.sh` — builds **`frontend/build`**, **`pm2 reload keepitbased-api`**, checks **`http://127.0.0.1:3001/api/health`**. Production chat needs **`REACT_APP_SUPABASE_URL`** + **`REACT_APP_SUPABASE_ANON_KEY`** in **`frontend/.env.production`** before build (script prints a reminder).
 - **OpenBB sidecar:** `pm2 start ecosystem.openbb.config.js` (loads **`backend/.env`** into **`openbb-platform`** for **`POLYGON_API_KEY`** / **`MASSIVE_*`** merge into **`~/.openbb_platform/.env`**). Probe **`http://127.0.0.1:6900/docs`**. **`OPENBB_*`** toggle in **`backend/.env`**; **`GET /api/health/config`** → **`config.OPENBB_ENABLED`**, **`OPENBB_STOCK_HISTORY_EXCLUSIVE`**, etc.

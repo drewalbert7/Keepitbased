@@ -3,15 +3,10 @@ import axios from 'axios';
 import { Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import {
-  AgentCandidate,
   AgentMessage,
-  AgentPlan,
-  AgentOutputV1,
   AgentPreferences,
-  applyAgentPlan,
   chatWithAgent,
   fetchAgentWatchlistContext,
-  inferAlertAssetType,
   type AssistantIntentMode,
   type WatchlistContextItem,
   type WatchlistContextResponse
@@ -47,8 +42,6 @@ export const AIAgentPage: React.FC = () => {
   const [messages, setMessages] = useState<AgentMessage[]>(seedMessages);
   const [input, setInput] = useState('');
   const [isBusy, setIsBusy] = useState(false);
-  const [currentPlan, setCurrentPlan] = useState<AgentPlan | null>(null);
-  const [currentOutput, setCurrentOutput] = useState<AgentOutputV1 | null>(null);
   const [currentRunMetadata, setCurrentRunMetadata] = useState<{
     runId: string;
     nodeTimings: { langgraphInvokeMs: number; totalMs: number };
@@ -92,10 +85,6 @@ export const AIAgentPage: React.FC = () => {
   /** Progressive character reveal after the full reply arrives (not live token streaming). */
   const [streamReplyDisplay, setStreamReplyDisplay] = useState(true);
   const revealRafRef = useRef<number | null>(null);
-
-  const latestPlan = useMemo(() => {
-    return currentPlan;
-  }, [currentPlan]);
 
   const watchlistRef = useRef(watchlistCtx);
   watchlistRef.current = watchlistCtx;
@@ -291,6 +280,36 @@ export const AIAgentPage: React.FC = () => {
     return new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(n);
   };
 
+  const formatBidAskCell = (row: WatchlistContextItem) => {
+    const b = row.bidPrice;
+    const a = row.askPrice;
+    const hasB = b != null && Number.isFinite(Number(b));
+    const hasA = a != null && Number.isFinite(Number(a));
+    if (!hasB && !hasA) return '—';
+    const bidStr = hasB ? formatQuote(Number(b), row.assetType) : '—';
+    const askStr = hasA ? formatQuote(Number(a), row.assetType) : '—';
+    let bpsLine: React.ReactElement | null = null;
+    if (hasB && hasA) {
+      const nb = Number(b);
+      const na = Number(a);
+      const mid = (nb + na) / 2;
+      const bps = mid > 0 ? ((na - nb) / mid) * 10000 : null;
+      if (bps != null && Number.isFinite(bps)) {
+        bpsLine = (
+          <div className="text-[10px] tabular-nums text-kib-muted">{bps.toFixed(1)} bps spread</div>
+        );
+      }
+    }
+    return (
+      <div className="text-right">
+        <div className="tabular-nums">
+          {bidStr} <span className="text-kib-muted">/</span> {askStr}
+        </div>
+        {bpsLine}
+      </div>
+    );
+  };
+
   const sortedWatchlistItems = useMemo(() => {
     const items = watchlistCtx?.items ? [...watchlistCtx.items] : [];
     const { key, dir } = wlSort;
@@ -435,8 +454,6 @@ export const AIAgentPage: React.FC = () => {
         assistantIntent: assistantMode,
         conversationHistory
       });
-      setCurrentPlan(response.plan);
-      setCurrentOutput(response.output);
       setCurrentRunMetadata(response.runMetadata || null);
       setAgentPreferences(response.preferencesUsed);
       setLastAgentReply(response.reply);
@@ -458,33 +475,6 @@ export const AIAgentPage: React.FC = () => {
     }
   };
 
-  const applyCandidateAsAlert = async (candidate: AgentCandidate) => {
-    const assetType = inferAlertAssetType(candidate.symbol, lastAgentReply);
-    const plan: AgentPlan = {
-      summary: `Apply ranked candidate ${candidate.symbol}`,
-      riskNotes: candidate.riskFlags?.length ? [...candidate.riskFlags] : ['Review thresholds before enabling.'],
-      proposedAlert: {
-        symbol: candidate.symbol.toUpperCase(),
-        assetType,
-        smallThreshold: 5,
-        mediumThreshold: 10,
-        largeThreshold: 15
-      }
-    };
-    try {
-      setIsBusy(true);
-      const response = await applyAgentPlan(plan);
-      toast.success(response.message);
-      addMessage('system', response.message);
-    } catch (error: any) {
-      const msg = error?.response?.data?.message || 'Failed to create alert';
-      toast.error(msg);
-      addMessage('system', `Apply failed: ${msg}`);
-    } finally {
-      setIsBusy(false);
-    }
-  };
-
   const showWatchlistSetupHint =
     lastAgentReply.includes('AGENT_INTERNAL_SECRET') || lastAgentReply.includes('Watchlist-only mode');
 
@@ -493,7 +483,7 @@ export const AIAgentPage: React.FC = () => {
       <div className="mb-6 sm:mb-8">
         <h1 className="text-2xl font-semibold tracking-tight text-kib-fg sm:text-3xl">Dashboard</h1>
         <p className="mt-2 max-w-2xl text-sm text-kib-muted sm:text-base">
-          Watchlist and alert policy first — then chat with the assistant and review ranked opportunities.
+          Watchlist and alert policy first — then chat with the assistant.
         </p>
       </div>
 
@@ -671,7 +661,7 @@ export const AIAgentPage: React.FC = () => {
                 </p>
                 <div className="-mx-1 overflow-x-auto rounded-lg border border-white/[0.06] bg-kib-surface px-1 sm:mx-0 sm:px-0">
                   <div className="max-h-[min(70vh,560px)] overflow-y-auto overscroll-x-contain sm:max-h-[min(520px,65vh)]">
-                    <table className="w-full min-w-[1180px] text-[13px] sm:min-w-[1240px] sm:text-sm">
+                    <table className="w-full min-w-[1380px] text-[13px] sm:min-w-[1480px] sm:text-sm">
                       <thead className="sticky top-0 z-20 border-b border-white/[0.06] bg-kib-surface/95 backdrop-blur-sm">
                         <tr className="text-left text-[10px] font-medium uppercase tracking-wide text-kib-muted sm:text-[11px]">
                           <th className="sticky left-0 top-0 z-30 border-r border-white/[0.06] bg-kib-surface/95 px-2 py-2.5 pl-3 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.5)] lg:static lg:top-auto lg:z-auto lg:border-0 lg:bg-transparent lg:px-3 lg:py-3 lg:pl-4 lg:shadow-none">
@@ -694,6 +684,24 @@ export const AIAgentPage: React.FC = () => {
                             </button>
                           </th>
                           <th className="px-2 py-2.5 text-right tabular-nums lg:px-3 lg:py-3">Volume</th>
+                          <th
+                            className="px-2 py-2.5 text-right tabular-nums lg:px-3 lg:py-3"
+                            title="Session open (vendor snapshot when available)"
+                          >
+                            Open
+                          </th>
+                          <th
+                            className="px-2 py-2.5 text-right tabular-nums lg:px-3 lg:py-3"
+                            title="Session VWAP — Polygon/Massive day.vw when present"
+                          >
+                            VWAP
+                          </th>
+                          <th
+                            className="px-2 py-2.5 text-right tabular-nums lg:px-3 lg:py-3"
+                            title="Best bid / best ask from snapshot or exchange 24h ticker"
+                          >
+                            Bid / Ask
+                          </th>
                           <th className="px-2 py-2.5 text-right tabular-nums lg:px-3 lg:py-3">Day range</th>
                           <th className="min-w-[128px] px-2 py-2.5 lg:min-w-[140px] lg:px-3 lg:py-3">52W range</th>
                           <th className="px-2 py-2.5 text-right tabular-nums lg:px-3 lg:py-3">Baseline</th>
@@ -767,12 +775,49 @@ export const AIAgentPage: React.FC = () => {
                               <td className="px-2 py-2 text-right tabular-nums text-slate-300 align-top lg:px-3 lg:py-2.5">
                                 {formatVolume(row.volume ?? undefined)}
                               </td>
+                              <td
+                                className="px-2 py-2 text-right tabular-nums text-slate-300 align-top lg:px-3 lg:py-2.5"
+                                title={
+                                  row.quoteSourceUsed
+                                    ? `Open · quote source: ${row.quoteSourceUsed}`
+                                    : 'Regular-session open when vendor provides it'
+                                }
+                              >
+                                {row.dayOpen != null && Number.isFinite(row.dayOpen)
+                                  ? formatQuote(row.dayOpen, row.assetType)
+                                  : '—'}
+                              </td>
+                              <td
+                                className="px-2 py-2 text-right tabular-nums text-slate-300 align-top lg:px-3 lg:py-2.5"
+                                title="Session VWAP (e.g. Polygon day.vw)"
+                              >
+                                {row.sessionVwap != null && Number.isFinite(row.sessionVwap)
+                                  ? formatQuote(row.sessionVwap, row.assetType)
+                                  : '—'}
+                              </td>
+                              <td
+                                className="px-2 py-2 text-right text-slate-300 align-top lg:px-3 lg:py-2.5"
+                                title={
+                                  row.quoteSourceUsed
+                                    ? `Bid/ask · ${row.quoteSourceUsed}`
+                                    : 'Best bid and ask when vendor exposes them'
+                                }
+                              >
+                                {formatBidAskCell(row)}
+                              </td>
                               <td className="px-2 py-2 text-right tabular-nums text-slate-400 text-xs align-top lg:px-3 lg:py-2.5">
-                                {row.dayHigh != null && row.dayLow != null ? (
+                                {row.dayHigh != null &&
+                                Number.isFinite(Number(row.dayHigh)) &&
+                                row.dayLow != null &&
+                                Number.isFinite(Number(row.dayLow)) ? (
                                   <>
                                     {formatQuote(row.dayHigh, row.assetType)} /{' '}
                                     {formatQuote(row.dayLow, row.assetType)}
                                   </>
+                                ) : row.dayHigh != null && Number.isFinite(Number(row.dayHigh)) ? (
+                                  <>{formatQuote(row.dayHigh, row.assetType)} / —</>
+                                ) : row.dayLow != null && Number.isFinite(Number(row.dayLow)) ? (
+                                  <>— / {formatQuote(row.dayLow, row.assetType)}</>
                                 ) : (
                                   '—'
                                 )}
@@ -846,7 +891,14 @@ export const AIAgentPage: React.FC = () => {
               <div className="shrink-0 border-b border-white/[0.06] bg-kib-surface/90 px-4 py-3">
                 <h3 className="text-sm font-semibold text-kib-fg">Opportunity alerts</h3>
                 <p className="mt-1 text-[11px] leading-snug text-kib-muted">
-                  When a watchlist price moves enough vs your baseline, we flag a dip tier. Rules apply to every symbol the same way; below you choose how you get notified.
+                  Stage 1 flags dips vs your baselines (same host rules for every symbol). Stage 2{' '}
+                  <strong className="text-kib-fg/90">UltimateDipBuyer AI</strong> (Grok) adds verdict, confidence, and
+                  timing notes on the <strong className="text-kib-fg/90">same Signals row</strong>. Profile dip briefing +
+                  opportunity email toggles + server flags control the rich email; gated runs still show under{' '}
+                  <Link to="/opportunity-signals" className="text-kib-cyber underline-offset-2 hover:underline">
+                    Signals
+                  </Link>
+                  . Details in the policy panel.
                 </p>
               </div>
               <OpportunityPolicyPanel embedInPanel />
@@ -854,39 +906,6 @@ export const AIAgentPage: React.FC = () => {
               }
             />
 
-            <div className="rounded-lg border border-white/[0.08] bg-kib-card">
-              <div className="border-b border-white/[0.06] bg-kib-surface/90 px-4 py-3 sm:px-5">
-                <h3 className="text-sm font-semibold text-kib-fg sm:text-base">Latest plan</h3>
-                <p className="mt-1 text-[11px] text-kib-muted">
-                  From your last assistant reply that proposed alert thresholds.
-                </p>
-              </div>
-              <div className="p-4 sm:p-5">
-                {latestPlan?.proposedAlert ? (
-                  <div className="space-y-2 text-sm text-slate-300">
-                    <p>
-                      <span className="font-medium">Symbol:</span> {latestPlan.proposedAlert.symbol}
-                    </p>
-                    <p>
-                      <span className="font-medium">Asset:</span> {latestPlan.proposedAlert.assetType}
-                    </p>
-                    <p>
-                      <span className="font-medium">Thresholds:</span>{' '}
-                      {latestPlan.proposedAlert.smallThreshold}% / {latestPlan.proposedAlert.mediumThreshold}% /{' '}
-                      {latestPlan.proposedAlert.largeThreshold}%
-                    </p>
-                    <p className="text-kib-muted">{latestPlan.summary}</p>
-                    <ul className="list-disc pl-4 text-kib-muted">
-                      {latestPlan.riskNotes.map((note) => (
-                        <li key={note}>{note}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : (
-                  <p className="text-sm text-kib-muted">No plan yet. Send a prompt to generate one.</p>
-                )}
-              </div>
-            </div>
             </div>
           </section>
 
@@ -1020,78 +1039,6 @@ export const AIAgentPage: React.FC = () => {
             </div>
           </div>
         </div>
-
-          <ResizablePair
-            storageKey="kib-dashboard-opps-meta-split"
-            defaultPct={52}
-            minLeftPx={280}
-            minRightPx={220}
-            breakpoint="md"
-            left={
-          <div className="card">
-            <h3 className="mb-3 text-base font-semibold text-kib-fg sm:text-lg">Top opportunities</h3>
-            {currentOutput?.topCandidates?.length ? (
-              <div className="space-y-3 text-sm text-slate-300">
-                {currentOutput.topCandidates.map((candidate) => (
-                  <div key={candidate.symbol} className="space-y-2 rounded-lg border border-white/[0.06] bg-kib-surface p-3">
-                    <p><span className="font-medium">Symbol:</span> {candidate.symbol}</p>
-                    {candidate.liveQuote && (
-                      <p className="text-kib-muted">
-                        <span className="font-medium text-slate-300">Live:</span> $
-                        {candidate.liveQuote.price.toFixed(candidate.liveQuote.price >= 100 ? 2 : 4)}
-                        {candidate.liveQuote.changePercent != null && (
-                          <span>
-                            {' '}
-                            ({Number(candidate.liveQuote.changePercent) >= 0 ? '+' : ''}
-                            {Number(candidate.liveQuote.changePercent).toFixed(2)}%)
-                          </span>
-                        )}
-                      </p>
-                    )}
-                    <p><span className="font-medium">Score:</span> {candidate.score}</p>
-                    <p><span className="font-medium">Confidence:</span> {candidate.confidence}</p>
-                    <p><span className="font-medium">Why now:</span> {candidate.whyNow}</p>
-                    <p>
-                      <span className="font-medium">Limit band:</span> {candidate.suggestedLimitBand.min} -{' '}
-                      {candidate.suggestedLimitBand.max}
-                    </p>
-                    <p>
-                      <span className="font-medium">Risk flags:</span>{' '}
-                      {(candidate.riskFlags || []).join(', ') || '—'}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => applyCandidateAsAlert(candidate)}
-                      disabled={isBusy}
-                      className="mt-1 w-full btn-primary py-2 text-xs disabled:opacity-50"
-                    >
-                      Apply 5% / 10% / 15% alert for {candidate.symbol}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-kib-muted">No opportunities yet. Send a prompt to generate ranked candidates.</p>
-            )}
-          </div>
-            }
-            right={
-          <div className="card">
-            <h3 className="mb-3 text-base font-semibold text-kib-fg sm:text-lg">Run metadata</h3>
-            {currentRunMetadata ? (
-              <div className="space-y-1 text-sm text-slate-300">
-                <p><span className="font-medium">Run ID:</span> {currentRunMetadata.runId}</p>
-                <p><span className="font-medium">Provider:</span> {currentRunMetadata.providerUsed}</p>
-                <p><span className="font-medium">Fallback Used:</span> {currentRunMetadata.fallbackUsed ? 'Yes' : 'No'}</p>
-                <p><span className="font-medium">LangGraph ms:</span> {currentRunMetadata.nodeTimings.langgraphInvokeMs}</p>
-                <p><span className="font-medium">Total ms:</span> {currentRunMetadata.nodeTimings.totalMs}</p>
-              </div>
-            ) : (
-              <p className="text-sm text-kib-muted">No run metadata yet.</p>
-            )}
-          </div>
-            }
-          />
 
       </div>
     </div>

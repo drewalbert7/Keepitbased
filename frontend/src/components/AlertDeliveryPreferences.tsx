@@ -28,6 +28,9 @@ export const AlertDeliveryPreferences: React.FC = () => {
 
   const [opportunityEmail, setOpportunityEmail] = useState(true);
   const [notifyLevel, setNotifyLevel] = useState<'all' | 'overreaction_only'>('all');
+  const [emailNotifyLevel, setEmailNotifyLevel] = useState<
+    'all' | 'overreaction_only' | 'capitulation_only'
+  >('overreaction_only');
   const [respectQuietHours, setRespectQuietHours] = useState(true);
   const [stockMarketHoursOnly, setStockMarketHoursOnly] = useState(true);
   const [startHour, setStartHour] = useState(22);
@@ -39,6 +42,10 @@ export const AlertDeliveryPreferences: React.FC = () => {
     const n = user.notificationPreferences;
     setOpportunityEmail(n.opportunityEmail !== false);
     setNotifyLevel(n.opportunityNotifyLevel === 'overreaction_only' ? 'overreaction_only' : 'all');
+    const enl = n.opportunityEmailNotifyLevel;
+    setEmailNotifyLevel(
+      enl === 'all' || enl === 'capitulation_only' ? enl : 'overreaction_only'
+    );
     setRespectQuietHours(n.opportunityRespectQuietHours !== false);
     setStockMarketHoursOnly(n.opportunityStockMarketHoursOnly !== false);
     setStartHour(
@@ -66,6 +73,7 @@ export const AlertDeliveryPreferences: React.FC = () => {
           ...base,
           opportunityEmail,
           opportunityNotifyLevel: notifyLevel,
+          opportunityEmailNotifyLevel: emailNotifyLevel,
           opportunityRespectQuietHours: respectQuietHours,
           opportunityStockMarketHoursOnly: stockMarketHoursOnly,
           researchQuietHoursLocal: { startHour, endHour },
@@ -85,8 +93,17 @@ export const AlertDeliveryPreferences: React.FC = () => {
     <div className="mt-4 border-t border-white/[0.06] pt-4">
       <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-kib-muted">Your notifications</p>
       <p className="mb-3 text-[11px] leading-relaxed text-kib-muted">
-        Email, quiet hours, and how “loud” a dip must be before we ping you. Stock emails default to regular market hours;
-        crypto is 24/7.
+        Quiet hours, stock session timing, and separate tiers for <strong className="text-kib-fg/90">in-app toasts</strong>{' '}
+        vs <strong className="text-kib-fg/90">emails</strong> — by default, opportunity <strong>emails</strong> skip the
+        smaller <span className="font-mono text-kib-fg/80">on_sale</span> tier (you still see those on the Signals page).
+        US stock toasts/emails default to regular session; crypto is 24/7.
+      </p>
+      <p className="mb-3 text-[11px] leading-relaxed text-kib-muted">
+        Checking <strong className="text-kib-fg/90">Email me opportunity dip alerts</strong> covers the short
+        opportunity email when SMTP is configured. The richer <strong className="text-kib-fg/90">UltimateDipBuyer / Grok</strong>{' '}
+        email also needs <strong className="text-kib-fg/90">Profile → Dip briefing emails (Grok)</strong> (and host{' '}
+        <code className="rounded bg-black/20 px-1 font-mono text-[10px]">ENABLE_DIP_INSIGHT_EMAIL</code>). If Grok is off,
+        you still get the shorter template when this email toggle is on.
       </p>
 
       <div className="space-y-3 text-sm">
@@ -110,7 +127,7 @@ export const AlertDeliveryPreferences: React.FC = () => {
 
         <div>
           <label htmlFor="opp-notify-level" className="mb-1 block text-xs font-medium text-slate-300">
-            Notify me for
+            In-app toasts for
           </label>
           <select
             id="opp-notify-level"
@@ -120,8 +137,30 @@ export const AlertDeliveryPreferences: React.FC = () => {
           >
             <option value="all">All qualifying dip signals (including smaller &quot;on sale&quot; tier)</option>
             <option value="overreaction_only">
-              Larger / structural dips only (overreaction or long-term capitulation — fewer pings)
+              Larger / structural dips only (overreaction or capitulation — fewer toasts)
             </option>
+          </select>
+        </div>
+
+        <div>
+          <label htmlFor="opp-email-level" className="mb-1 block text-xs font-medium text-slate-300">
+            Opportunity emails for
+          </label>
+          <select
+            id="opp-email-level"
+            value={emailNotifyLevel}
+            onChange={(e) =>
+              setEmailNotifyLevel(e.target.value as 'all' | 'overreaction_only' | 'capitulation_only')
+            }
+            className="input-field w-full max-w-md text-sm"
+          >
+            <option value="overreaction_only">
+              Important dips only — overreaction or major capitulation (default; no email for on_sale-only)
+            </option>
+            <option value="capitulation_only">
+              Major capitulation only (long-term tier — rarest emails)
+            </option>
+            <option value="all">Every qualifying tier including smaller &quot;on sale&quot; signals</option>
           </select>
         </div>
 
@@ -134,7 +173,8 @@ export const AlertDeliveryPreferences: React.FC = () => {
           />
           <span className="text-kib-fg">
             <strong className="font-medium text-kib-fg/90">US stocks:</strong> only send opportunity{' '}
-            <strong className="font-medium text-kib-fg/90">toasts &amp; emails</strong> during regular session (Mon–Fri
+            <strong className="font-medium text-kib-fg/90">toasts and opportunity emails</strong> during regular session
+            (Mon–Fri
             9:30 AM–4:00 PM ET). <span className="text-kib-muted">Crypto signals are not restricted by this.</span>
           </span>
         </label>

@@ -263,6 +263,16 @@ export interface WatchlistContextItem {
   /** Trailing ~252 sessions from daily aggregates when market data available */
   week52High?: number | null;
   week52Low?: number | null;
+  /** Regular-session open (e.g. Polygon `day.o`, Binance `openPrice`) */
+  dayOpen?: number | null;
+  /** Session volume-weighted average price when vendor provides it (e.g. Polygon `day.vw`) */
+  sessionVwap?: number | null;
+  /** Best bid (e.g. snapshot `lastQuote.p`) */
+  bidPrice?: number | null;
+  /** Best ask (e.g. snapshot `lastQuote.P`) */
+  askPrice?: number | null;
+  /** Redis quote payload source tag (`polygon_snapshot`, `binance_24h`, …) */
+  quoteSourceUsed?: string | null;
 }
 
 export interface WatchlistContextResponse {
