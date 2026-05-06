@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from autoresearch.evaluator import ExperimentScore, run_synthetic_audit, statistically_better
 from autoresearch.git_manager import GitExperimentManager
-from autoresearch.researcher import TOTAL_LLM_MICRO_USD, propose_with_optional_llm
+import autoresearch.researcher as researcher_mod
 
 from config import settings
 from db import ExperimentRow, engine, init_db
@@ -55,7 +55,7 @@ def persist_experiment(
         metrics_dump={
             "baseline_aggregate": baseline.aggregate,
             "candidate_aggregate": candidate.aggregate,
-            "llm_spend_micro_est": TOTAL_LLM_MICRO_USD,
+            "llm_spend_micro_est": researcher_mod.TOTAL_LLM_MICRO_USD,
             "code_artifact_filenames": sorted(code_artifact_filenames or []),
         },
     )
@@ -134,7 +134,7 @@ def run_autoresearch_night(*, iterations: Optional[int] = None) -> None:
 
 
 
-        proposal = propose_with_optional_llm(seed)
+        proposal = researcher_mod.propose_with_optional_llm(seed)
 
         branch = gm.create_branch(f"itr-{seed}")
 

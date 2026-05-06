@@ -38,7 +38,7 @@ Use **`QUANT_AGI_LLM_PROVIDER`** (`grok`|`none`|…) if you already set **`LLM_P
 | `QUANT_AGI_LLM_PROVIDER` | Overrides `LLM_PROVIDER` when set — avoids clashes with LangGraph on the Python service |
 | `LLM_PROVIDER` | Fallback: `none` (default after merge), **`grok`**, `openai`, `anthropic` |
 | `GROK_API_KEY` or `XAI_API_KEY` | Same as Python service — usually already in `python-service/.env` |
-| `GROK_BASE_URL` / `GROK_MODEL` | Optional; **`LLM_MODEL`** from the Python service is used if `grok_model` / `GROK_MODEL` unset |
+| `GROK_BASE_URL` / `GROK_MODEL` / `LLM_MODEL` | Defaults to **`grok-4.20-reasoning`** (same as Python service) if none set |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | Alternative LLM proposers |
 | `EXPERIMENT_MAX_RUNTIME_SEC` | Wall-clock fuse per `run-loop` invocation (default 3600) |
 | `SWARM_DEFAULT_AGENTS` | Default particle count (CSV via pydantic `Settings` naming) — see `config.py` |
