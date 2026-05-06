@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from typing import Literal, Optional
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,10 +17,32 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parent
 
 
+def _quant_agi_dotenv_candidates() -> tuple[Path, ...]:
+    """Load the same credential files used elsewhere in KeepItBased (later files override).
+
+    Typical layout: Grok keys live in ``python-service/.env`` alongside ``LLM_PROVIDER`` / ``LLM_MODEL``.
+    ``quant_agi/.env`` is last so you can override with ``QUANT_AGI_LLM_PROVIDER`` or Quant-only knobs.
+    """
+    repo = _repo_root().parent.resolve()
+    candidates = (
+        repo / ".env",
+        repo / "backend" / ".env",
+        repo / "python-service" / ".env",
+        _repo_root() / ".env",
+    )
+    return tuple(p for p in candidates if p.is_file())
+
+
+_cfg_dict: dict = {"env_file_encoding": "utf-8", "extra": "ignore"}
+_env_files = _quant_agi_dotenv_candidates()
+if _env_files:
+    _cfg_dict["env_file"] = _env_files
+
+
 class Settings(BaseSettings):
     """Runtime settings — override via environment variables."""
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(**_cfg_dict)
 
     # --- Repo & KeepItBased bridge ---
     keepitbased_root: Path = Field(default_factory=lambda: _repo_root().parent)
@@ -46,7 +68,11 @@ class Settings(BaseSettings):
     """Cap swarm scale inside synthetic evaluator so overnight loops stay bounded."""
     autoresearch_eval_rounds: int = Field(default=6, ge=2, le=24)
 
-    llm_provider: Literal["openai", "anthropic", "grok", "none"] = Field(default="none")
+    llm_provider: Literal["openai", "anthropic", "grok", "none"] = Field(
+        default="none",
+        validation_alias=AliasChoices("QUANT_AGI_LLM_PROVIDER", "LLM_PROVIDER"),
+        description="Prefer QUANT_AGI_LLM_PROVIDER in shared .env files to avoid clashes with Python service.",
+    )
     openai_api_key: Optional[str] = Field(default=None)
     openai_model: str = Field(default="gpt-4o-mini")
     anthropic_api_key: Optional[str] = Field(default=None)
@@ -54,7 +80,10 @@ class Settings(BaseSettings):
     grok_api_key: Optional[str] = Field(default=None)
     """xAI API key; `XAI_API_KEY` env is also read at call time if this is unset."""
     grok_base_url: str = Field(default="https://api.x.ai/v1")
-    grok_model: str = Field(default="grok-3-latest")
+    grok_model: Optional[str] = Field(
+        default=None,
+        description="If unset, falls back to GROK_MODEL then LLM_MODEL (python-service naming).",
+    )
     grok_request_timeout_sec: int = Field(default=90, ge=15, le=300)
 
     llm_monthly_budget_usd: float = Field(default=25.0)
@@ -73,6 +102,15 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def resolved_grok_model() -> str:
+    """Match python-service: prefer explicit Quant override, then GROK_MODEL, then LLM_MODEL."""
+    for cand in (settings.grok_model, os.getenv("GROK_MODEL"), os.getenv("LLM_MODEL")):
+        if cand and str(cand).strip():
+            return str(cand).strip()
+    return "grok-3-latest"
+
 
 # Ensure dirs exist early (no-op harmful)
 for d in (settings.data_cache_dir, settings.sqlite_path.parent, settings.autoresearch_repo_path):

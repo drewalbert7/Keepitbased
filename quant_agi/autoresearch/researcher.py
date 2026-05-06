@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 import numpy as np
 
 from autoresearch.grok_client import effective_grok_api_key, grok_json_object
-from config import settings
+from config import resolved_grok_model, settings
 from utils.logger import get_logger
 
 _LOG = get_logger(__name__)
@@ -239,7 +239,7 @@ def propose_with_optional_llm(iteration_seed: int) -> Proposal:
         blob = grok_json_object(
             api_key=key,
             base_url=settings.grok_base_url,
-            model=settings.grok_model,
+            model=resolved_grok_model(),
             system=_SYSTEM_JSON,
             user=user,
             timeout_sec=float(settings.grok_request_timeout_sec),

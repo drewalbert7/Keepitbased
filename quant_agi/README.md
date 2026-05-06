@@ -22,18 +22,23 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu  # or CUDA wh
 pip install -r requirements.txt
 ```
 
-Copy env:
+Copy env (optional):
 
 ```bash
-cp .env.example .env   # if present; else export vars below
+cp .env.example .env   # Quant-only overrides; Grok keys often already live in ../python-service/.env
 ```
+
+Quant AGI merges dotenv files (when present): repo `../.env`, `../backend/.env`, `../python-service/.env`, then `quant_agi/.env` (last wins). It uses **`GROK_API_KEY`**, **`XAI_API_KEY`**, **`GROK_BASE_URL`**, and **`LLM_MODEL`** the same way as `python-service/langgraph_agent/llm_client.py`.
+
+Use **`QUANT_AGI_LLM_PROVIDER`** (`grok`|`none`|…) if you already set **`LLM_PROVIDER`** for LangGraph alone and want a different Quant autoresearch mode; otherwise **`LLM_PROVIDER`** is read too.
 
 | Variable | Meaning |
 |----------|---------|
 | `KEEPITBASED_ROOT` | Path to main KeepItBased repo (default: parent of `quant_agi/`) |
-| `LLM_PROVIDER` | `none` (default), **`grok`** (xAI), `openai`, or `anthropic` |
-| `GROK_API_KEY` or `XAI_API_KEY` | Grok autoresearch JSON proposals + optional `generated_modules` (written to sandbox git only) |
-| `GROK_BASE_URL` / `GROK_MODEL` | Defaults `https://api.x.ai/v1`, `grok-3-latest` |
+| `QUANT_AGI_LLM_PROVIDER` | Overrides `LLM_PROVIDER` when set — avoids clashes with LangGraph on the Python service |
+| `LLM_PROVIDER` | Fallback: `none` (default after merge), **`grok`**, `openai`, `anthropic` |
+| `GROK_API_KEY` or `XAI_API_KEY` | Same as Python service — usually already in `python-service/.env` |
+| `GROK_BASE_URL` / `GROK_MODEL` | Optional; **`LLM_MODEL`** from the Python service is used if `grok_model` / `GROK_MODEL` unset |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | Alternative LLM proposers |
 | `EXPERIMENT_MAX_RUNTIME_SEC` | Wall-clock fuse per `run-loop` invocation (default 3600) |
 | `SWARM_DEFAULT_AGENTS` | Default particle count (CSV via pydantic `Settings` naming) — see `config.py` |
