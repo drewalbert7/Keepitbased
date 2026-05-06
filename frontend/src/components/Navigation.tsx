@@ -30,11 +30,11 @@ const Navigation: React.FC = () => {
 
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
+    { name: 'Quant AGI', href: '/quant-agi', icon: CpuChipIcon },
     { name: 'Stock Charts', href: '/charts', icon: ChartBarIcon },
     { name: 'Crypto Charts', href: '/crypto', icon: CurrencyDollarIcon },
     { name: 'Signals', href: '/opportunity-signals', icon: InboxIcon },
     { name: 'Chat', href: '/chat', icon: ChatBubbleLeftRightIcon },
-    { name: 'Quant AGI', href: '/quant-agi', icon: CpuChipIcon },
     { name: 'Profile', href: '/profile', icon: UserCircleIcon }
   ];
 
