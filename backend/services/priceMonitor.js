@@ -548,7 +548,8 @@ class PriceMonitor {
           baselinePrice,
           alertId: signalId != null ? String(signalId) : undefined,
           message:
-            `deterministic_flags=${evalResult.flags.join(',')} vs_baseline_pct=${evalResult.vsBaselinePct ?? ''}`
+            `deterministic_flags=${evalResult.flags.join(',')} vs_baseline_pct=${evalResult.vsBaselinePct ?? ''}`,
+          assetType
         });
       }
       if (signalId != null && quantAgiEnrichment) {

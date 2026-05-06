@@ -36,6 +36,7 @@ def _serialize_enhanced(obj: EnhancedAlertSignal) -> dict:
     f = obj.swarm_forecast
     return {
         "symbol": obj.symbol,
+        "history_source": obj.history_source,
         "swarm": {**f.to_dict(), "confidence_summary": obj.swarm_confidence_summary},
         "reflexivity_tag": obj.reflexivity_tag,
         "reflexivity_score": obj.reflexivity_score,

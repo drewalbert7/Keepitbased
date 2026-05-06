@@ -14,7 +14,7 @@ function resolveQuantAgiEnhanceUrl(raw) {
 }
 
 /**
- * @param {{ symbol: string, baselinePrice: number, alertId?: string, message?: string }} input
+ * @param {{ symbol: string, baselinePrice: number, alertId?: string, message?: string, assetType?: 'stock'|'crypto' }} input
  * @returns {Promise<object|null>}
  */
 async function fetchQuantAgiEnrichment(input) {
@@ -32,7 +32,8 @@ async function fetchQuantAgiEnrichment(input) {
         symbol: sym,
         baseline_price: Number(input.baselinePrice),
         ...(input.alertId != null ? { alertId: String(input.alertId) } : {}),
-        ...(input.message ? { message: String(input.message) } : {})
+        ...(input.message ? { message: String(input.message) } : {}),
+        ...(input.assetType ? { assetType: input.assetType } : {})
       },
       {
         timeout: config.QUANT_AGI_TIMEOUT_MS,

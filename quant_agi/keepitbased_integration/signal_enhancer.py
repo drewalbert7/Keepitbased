@@ -9,7 +9,7 @@ from swarm.knowledge_graph import build_seed_graph, reflexive_backfire_score
 from swarm.swarm_manager import SwarmManager
 from swarm.emergence import EmergentForecast
 from utils import reflexivity as soros
-from keepitbased_integration.data_fetcher import KeepItBasedDataFetcher, TickerPulse
+from keepitbased_integration.data_fetcher import KeepItBasedDataFetcher, TickerAsset, TickerPulse
 
 
 @dataclass
@@ -22,6 +22,12 @@ class EnhancedAlertSignal:
     reflexivity_tag: str
     reflexivity_score: float
     knowledge_graph_bonus: Dict[str, Any] = field(default_factory=dict)
+    history_source: str = "unknown"
+
+
+def _infer_asset_type(payload: Dict[str, Any]) -> TickerAsset:
+    raw = payload.get("assetType") or payload.get("asset_type") or ""
+    return "crypto" if str(raw).strip().lower() == "crypto" else "stock"
 
 
 class SignalEnhancer:
@@ -36,8 +42,11 @@ class SignalEnhancer:
         symbol = str(alert_payload.get("symbol") or alert_payload.get("ticker")).upper()
 
         bp = alert_payload.get("baseline_price") or alert_payload.get("baselinePrice")
+        ast = _infer_asset_type(alert_payload)
 
-        pulse: TickerPulse = self.fetcher.build_pulse_from_alert(symbol=symbol, baseline_price=float(bp))
+        pulse: TickerPulse = self.fetcher.build_pulse_from_alert(
+            symbol=symbol, baseline_price=float(bp), asset_type=ast
+        )
 
         G = build_seed_graph(
             ticker=pulse.symbol,
@@ -78,6 +87,7 @@ class SignalEnhancer:
             reflexivity_tag=tag,
             reflexivity_score=reflex,
             knowledge_graph_bonus={"feedback_loop_proxy": kg_bonus},
+            history_source=pulse.history_source,
         )
 
         return ea

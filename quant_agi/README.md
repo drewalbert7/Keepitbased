@@ -35,6 +35,10 @@ Use **`QUANT_AGI_LLM_PROVIDER`** (`grok`|`none`|…) if you already set **`LLM_P
 | Variable | Meaning |
 |----------|---------|
 | `KEEPITBASED_ROOT` | Path to main KeepItBased repo (default: parent of `quant_agi/`) |
+| `POLYGON_API_KEY` / `MASSIVE_API_KEY` | Loaded from merged `.env` (same as Node backend); daily bars from Massive/Polygon aggregates |
+| `MARKET_DATA_API_URL` | e.g. `https://api.massive.com` or `https://api.polygon.io` (must match key vendor) |
+| `QUANT_AGI_SYNTHETIC_HISTORY_ONLY` | When `true`, skip Massive (offline/tests) |
+| `MASSIVE_CALENDAR_DAYS_LOOKBACK` / `MASSIVE_HTTP_TIMEOUT_SEC` | History window / HTTP patience (defaults ~450 days, 35s) |
 | `QUANT_AGI_LLM_PROVIDER` | Overrides `LLM_PROVIDER` when set — avoids clashes with LangGraph on the Python service |
 | `LLM_PROVIDER` | Fallback: `none` (default after merge), **`grok`**, `openai`, `anthropic` |
 | `GROK_API_KEY` or `XAI_API_KEY` | Same as Python service — usually already in `python-service/.env` |
@@ -72,6 +76,9 @@ python main.py experiments-tail --limit 20
 - `POST /v1/analyze` alias
 - `GET /diag/keepitbased-health?base=http://127.0.0.1:3001`
 - `GET /diag/experiments?limit=5` read-only tail of autoresearch rows (CORS for local dashboard when `QUANT_AGI_CORS_ORIGINS` is set)
+- `GET /diag/massive-bars?symbol=AAPL&crypto=false&refresh=false` confirms daily history source (`massive_*` vs `synthetic_*`) and row count
+
+If upstream returns HTTP 429, Quant AGI **falls back to synthetic OHLC** and tags `history_source` accordingly (offline-safe enrichment).
 
 ## Docker
 

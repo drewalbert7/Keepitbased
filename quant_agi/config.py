@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from typing import Literal, Optional
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -50,6 +50,27 @@ class Settings(BaseSettings):
 
     data_cache_dir: Path = Field(default_factory=lambda: _repo_root() / "models" / "cache")
     sqlite_path: Path = Field(default_factory=lambda: _repo_root() / "models" / "quant_agi.sqlite3")
+
+    # --- Polygon / Massive-compatible market data (same as backend) ---
+    market_data_api_url: str = Field(
+        default="https://api.polygon.io",
+        description="Polygon-compatible REST host; use https://api.massive.com for massive.com keys.",
+    )
+    polygon_api_key: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("POLYGON_API_KEY", "MASSIVE_API_KEY"),
+    )
+    quant_agi_synthetic_history_only: bool = Field(
+        default=False,
+        description="If true, never call Massive/Polygon (offline or golden tests).",
+    )
+    massive_calendar_days_lookback: int = Field(default=450, ge=30, le=800)
+    massive_http_timeout_sec: float = Field(default=35.0, ge=5, le=120)
+
+    @field_validator("market_data_api_url", mode="after")
+    @staticmethod
+    def _strip_market_base(url: str) -> str:
+        return str(url).strip().rstrip("/")
 
     # --- Swarm (MiroFish-style simulation) ---
     swarm_default_agents: int = Field(default=5_000, ge=64, le=100_000)
