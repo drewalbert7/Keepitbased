@@ -64,6 +64,8 @@ pip install -r requirements.txt
 python main.py enhance-alerts --symbol AAPL --baseline 205
 python main.py swarm-once --symbol NVDA --agents 4096
 python main.py run-loop --nights 4
+# Autoresearch LLM (optional): LLM_PROVIDER=grok + GROK_API_KEY → reasoning + artifacts in sandbox git
+
 python main.py serve --port 8844   # POST /webhook/swarm-enhance`}
         </pre>
       </div>

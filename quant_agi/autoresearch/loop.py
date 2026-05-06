@@ -36,17 +36,13 @@ def _handle_sig(_, __) -> None:  # noqa: ANN001
 def persist_experiment(
     *,
     branch: str,
-
     sha: str,
-
     baseline: ExperimentScore,
     candidate: ExperimentScore,
-
     improved: bool,
     reason: Optional[str],
-
+    code_artifact_filenames: Optional[list[str]] = None,
 ) -> None:
-
     row = ExperimentRow(
         branch=branch,
         commit_sha=sha,
@@ -54,18 +50,14 @@ def persist_experiment(
         candidate_sharpe=candidate.sharpe_alert_proxy,
         baseline_winrate=baseline.win_hit_rate_proxy,
         candidate_winrate=candidate.win_hit_rate_proxy,
-
         improved=1 if improved else 0,
         rejection_reason=reason,
-
         metrics_dump={
             "baseline_aggregate": baseline.aggregate,
             "candidate_aggregate": candidate.aggregate,
-
             "llm_spend_micro_est": TOTAL_LLM_MICRO_USD,
-
+            "code_artifact_filenames": sorted(code_artifact_filenames or []),
         },
-
     )
 
     with Session(engine) as s:
@@ -162,22 +154,21 @@ def run_autoresearch_night(*, iterations: Optional[int] = None) -> None:
         )
 
 
-        sha = gm.commit_mirror_files(msg, mirror)
+        sha = gm.commit_mirror_files(
+            msg,
+            mirror,
+            grok_artifacts=proposal.code_artifacts if proposal.code_artifacts else None,
+            grok_dir_slug=branch.replace("/", "_"),
+        )
 
         persist_experiment(
-
             branch=branch,
-
             sha=sha,
-
             baseline=champ,
-
             candidate=cand,
-
             improved=win,
-
             reason=None if win else "insufficient_aggregate_uplift",
-
+            code_artifact_filenames=sorted(proposal.code_artifacts.keys()),
         )
 
 

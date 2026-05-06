@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from shutil import copy2
-from typing import Iterable, Optional
+from typing import Dict, Iterable, Optional
 
 from git import Repo
 
@@ -54,9 +54,18 @@ class GitExperimentManager:
 
         return name
 
-    def commit_mirror_files(self, message: str, files: Iterable[Path]) -> str:
+    def commit_mirror_files(
+        self,
+        message: str,
+        files: Iterable[Path],
+        *,
+        grok_artifacts: Optional[Dict[str, str]] = None,
+        grok_dir_slug: str = "run",
+    ) -> str:
+        """Mirror snapshot files at repo root; optionally write Grok `generated_modules` under `grok_artifacts/<slug>/`."""
         r = self.repo()
         staged: list[str] = []
+
         for src in files:
             if not Path(src).is_file():
                 continue
@@ -64,11 +73,25 @@ class GitExperimentManager:
             copy2(src, dest)
             staged.append(dest.name)
 
+        extras = grok_artifacts or {}
+        if extras:
+            clean = "".join(c if (c.isalnum() or c in "-_.") else "_" for c in grok_dir_slug)[:80]
+            art_root = self.path / "grok_artifacts" / clean
+            art_root.mkdir(parents=True, exist_ok=True)
+            for fname, body in extras.items():
+                safe = Path(fname).name
+                if not safe or safe != fname:
+                    _LOG.warning("Skipping artifact name with path segments: %s", fname)
+                    continue
+                p = art_root / safe
+                p.write_text(body, encoding="utf-8")
+                staged.append(str(p.relative_to(self.path)))
+
         if not staged:
             return str(r.head.commit.hexsha)
 
         r.index.add(staged)
         commit = r.index.commit(message[:8000])
         sha = str(commit.hexsha)
-        _LOG.info("Committed experiment %s (files=%s)", sha[:8], ", ".join(staged))
+        _LOG.info("Committed experiment %s (files=%s)", sha[:8], ", ".join(staged[:12]) + ("…" if len(staged) > 12 else ""))
         return sha

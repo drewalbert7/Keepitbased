@@ -46,11 +46,16 @@ class Settings(BaseSettings):
     """Cap swarm scale inside synthetic evaluator so overnight loops stay bounded."""
     autoresearch_eval_rounds: int = Field(default=6, ge=2, le=24)
 
-    llm_provider: Literal["openai", "anthropic", "none"] = Field(default="none")
+    llm_provider: Literal["openai", "anthropic", "grok", "none"] = Field(default="none")
     openai_api_key: Optional[str] = Field(default=None)
     openai_model: str = Field(default="gpt-4o-mini")
     anthropic_api_key: Optional[str] = Field(default=None)
     anthropic_model: str = Field(default="claude-3-5-haiku-20241022")
+    grok_api_key: Optional[str] = Field(default=None)
+    """xAI API key; `XAI_API_KEY` env is also read at call time if this is unset."""
+    grok_base_url: str = Field(default="https://api.x.ai/v1")
+    grok_model: str = Field(default="grok-3-latest")
+    grok_request_timeout_sec: int = Field(default=90, ge=15, le=300)
 
     llm_monthly_budget_usd: float = Field(default=25.0)
     llm_call_max_tokens: int = Field(default=4_096)

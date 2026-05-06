@@ -31,8 +31,10 @@ cp .env.example .env   # if present; else export vars below
 | Variable | Meaning |
 |----------|---------|
 | `KEEPITBASED_ROOT` | Path to main KeepItBased repo (default: parent of `quant_agi/`) |
-| `LLM_PROVIDER` | `none` (default), `openai`, or `anthropic` |
-| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | For autoresearch proposals |
+| `LLM_PROVIDER` | `none` (default), **`grok`** (xAI), `openai`, or `anthropic` |
+| `GROK_API_KEY` or `XAI_API_KEY` | Grok autoresearch JSON proposals + optional `generated_modules` (written to sandbox git only) |
+| `GROK_BASE_URL` / `GROK_MODEL` | Defaults `https://api.x.ai/v1`, `grok-3-latest` |
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | Alternative LLM proposers |
 | `EXPERIMENT_MAX_RUNTIME_SEC` | Wall-clock fuse per `run-loop` invocation (default 3600) |
 | `SWARM_DEFAULT_AGENTS` | Default particle count (CSV via pydantic `Settings` naming) — see `config.py` |
 
@@ -85,6 +87,11 @@ For **NVIDIA** hosts, change the base image to CUDA, install the matching `torch
 
 - Git: `models/autoresearch_git/` sandbox repository (`git log`).
 - SQLite: `models/quant_agi.sqlite3` table `experiments` (use `python main.py experiments-tail`).
+- When `LLM_PROVIDER=grok` (or JSON models return `generated_modules`), each commit may include `grok_artifacts/<branch>/` with `.py`/`.md` sketches for human review — they are **not** auto-imported or executed.
+
+## Grok autoresearch
+
+Set `LLM_PROVIDER=grok` and `GROK_API_KEY` (or `XAI_API_KEY`). The loop still benchmarks only **hyperparameters** (`SwarmManager` agents/rounds) on the synthetic harness; Grok-produced code is persisted as artifacts for iterative human merge, aligned with sandbox safety.
 
 ## Safety rails
 
