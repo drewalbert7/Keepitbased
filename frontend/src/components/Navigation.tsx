@@ -10,7 +10,8 @@ import {
   InboxIcon,
   Bars3Icon,
   XMarkIcon,
-  ChatBubbleLeftRightIcon
+  ChatBubbleLeftRightIcon,
+  CpuChipIcon
 } from '@heroicons/react/24/outline';
 
 const Navigation: React.FC = () => {
@@ -33,6 +34,7 @@ const Navigation: React.FC = () => {
     { name: 'Crypto Charts', href: '/crypto', icon: CurrencyDollarIcon },
     { name: 'Signals', href: '/opportunity-signals', icon: InboxIcon },
     { name: 'Chat', href: '/chat', icon: ChatBubbleLeftRightIcon },
+    { name: 'Quant AGI', href: '/quant-agi', icon: CpuChipIcon },
     { name: 'Profile', href: '/profile', icon: UserCircleIcon }
   ];
 

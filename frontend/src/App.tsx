@@ -15,6 +15,7 @@ import { CryptoPage } from './pages/CryptoPage';
 import AIAgentPage from './pages/AIAgentPage';
 import OpportunitySignalsPage from './pages/OpportunitySignalsPage';
 import GlobalChatPage from './pages/GlobalChatPage';
+import QuantAgiPage from './pages/QuantAgiPage';
 import { AuthenticatedChatLayer } from './components/AuthenticatedChatLayer';
 import LoadingSpinner from './components/ui/LoadingSpinner';
 
@@ -106,6 +107,14 @@ const AppRoutes: React.FC = () => {
               element={
                 <ProtectedRoute>
                   <GlobalChatPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/quant-agi"
+              element={
+                <ProtectedRoute>
+                  <QuantAgiPage />
                 </ProtectedRoute>
               }
             />

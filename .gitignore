@@ -4,11 +4,17 @@ node_modules/
 # Python virtualenvs & bytecode
 venv/
 .venv/
+quant_agi/.venv*/
 trading-env/
 python-service/venv/
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Quant AGI local DB / artifacts
+quant_agi/models/*.sqlite3
+quant_agi/models/autoresearch_git/
+quant_agi/models/cache/
 
 # Build output
 frontend/build/

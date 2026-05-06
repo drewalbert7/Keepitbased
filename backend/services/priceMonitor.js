@@ -15,7 +15,11 @@ const {
   allowsSendDuringQuietHours,
   isUsStockRegularTradingHours
 } = require('../utils/researchAlertGates');
-const { recordOpportunitySignal } = require('./opportunitySignalsPersistence');
+const {
+  recordOpportunitySignal,
+  patchOpportunitySignalAiAssessment
+} = require('./opportunitySignalsPersistence');
+const { fetchQuantAgiEnrichment } = require('../utils/quantAgiClient');
 const emailService = require('./emailService');
 const { tryDipInsightEmailOrThrow } = require('./dipInsightEmailService');
 const { evaluateDipInsightFusionGate } = require('./researchFusionGate');
@@ -527,17 +531,6 @@ class PriceMonitor {
 
       if (!evalResult.evaluated || !evalResult.flags.length) continue;
 
-      const payload = {
-        kind: 'opportunity_signal',
-        symbol,
-        assetType,
-        flags: evalResult.flags,
-        reasons: evalResult.reasons,
-        vsBaselinePct: evalResult.vsBaselinePct,
-        price: priceData.price,
-        timestamp: new Date().toISOString()
-      };
-
       const signalId = await recordOpportunitySignal({
         userId: row.user_id,
         symbol,
@@ -547,6 +540,32 @@ class PriceMonitor {
         vsBaselinePct: evalResult.vsBaselinePct,
         price: priceData.price
       });
+
+      let quantAgiEnrichment = null;
+      if (config.QUANT_AGI_ENHANCE_URL && Number.isFinite(baselinePrice)) {
+        quantAgiEnrichment = await fetchQuantAgiEnrichment({
+          symbol,
+          baselinePrice,
+          alertId: signalId != null ? String(signalId) : undefined,
+          message:
+            `deterministic_flags=${evalResult.flags.join(',')} vs_baseline_pct=${evalResult.vsBaselinePct ?? ''}`
+        });
+      }
+      if (signalId != null && quantAgiEnrichment) {
+        await patchOpportunitySignalAiAssessment(row.user_id, signalId, { quant_agi: quantAgiEnrichment });
+      }
+
+      const payload = {
+        kind: 'opportunity_signal',
+        symbol,
+        assetType,
+        flags: evalResult.flags,
+        reasons: evalResult.reasons,
+        vsBaselinePct: evalResult.vsBaselinePct,
+        price: priceData.price,
+        timestamp: new Date().toISOString(),
+        ...(quantAgiEnrichment ? { quantAgi: quantAgiEnrichment } : {})
+      };
 
       const prefs = mergeNotificationPreferences(row.notification_preferences);
       const notifyLevel = prefs.opportunityNotifyLevel === 'overreaction_only' ? 'overreaction_only' : 'all';

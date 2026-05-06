@@ -53,6 +53,26 @@ async function updateOpportunitySignalAiAssessment(userId, signalId, assessment)
   }
 }
 
+/**
+ * Merge a shallow JSON patch into `ai_assessment` without clobbering existing keys (e.g. Grok dip insight).
+ * @param {number} userId
+ * @param {number} signalId
+ * @param {object} patch
+ */
+async function patchOpportunitySignalAiAssessment(userId, signalId, patch) {
+  if (!userId || !signalId || !patch || typeof patch !== 'object') return;
+  try {
+    await db.query(
+      `UPDATE opportunity_signals
+       SET ai_assessment = COALESCE(ai_assessment, '{}'::jsonb) || $3::jsonb
+       WHERE id = $1 AND user_id = $2`,
+      [signalId, userId, JSON.stringify(patch)]
+    );
+  } catch (err) {
+    logger.warn(`opportunity_signals ai_assessment patch skipped: ${err.message}`);
+  }
+}
+
 async function listOpportunitySignals(userId, limit = 50) {
   const cap = Math.min(Math.max(Number(limit) || 50, 1), 100);
   const result = await db.query(
@@ -69,5 +89,6 @@ async function listOpportunitySignals(userId, limit = 50) {
 module.exports = {
   recordOpportunitySignal,
   updateOpportunitySignalAiAssessment,
+  patchOpportunitySignalAiAssessment,
   listOpportunitySignals
 };

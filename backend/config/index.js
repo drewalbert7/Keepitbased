@@ -36,6 +36,16 @@ const config = {
   // Python Service
   PYTHON_SERVICE_URL: process.env.PYTHON_SERVICE_URL || 'http://127.0.0.1:5001',
 
+  /**
+   * Optional Quant AGI sidecar (`quant_agi` FastAPI): base URL without trailing slash, e.g. http://127.0.0.1:8844
+   * When set, opportunity toasts / stored rows get additive `quantAgi` JSON from POST /webhook/swarm-enhance.
+   */
+  QUANT_AGI_ENHANCE_URL: (process.env.QUANT_AGI_ENHANCE_URL || '').trim(),
+  QUANT_AGI_TIMEOUT_MS: (() => {
+    const n = parseInt(process.env.QUANT_AGI_TIMEOUT_MS, 10);
+    return Number.isFinite(n) && n > 200 ? n : 3500;
+  })(),
+
   // JWT - CRITICAL: Always have a fallback secret
   JWT_SECRET: process.env.JWT_SECRET || 'fallback-jwt-secret-change-in-production-' + Date.now(),
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '7d',
