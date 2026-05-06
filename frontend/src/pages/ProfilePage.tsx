@@ -3,6 +3,32 @@ import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 import { authService } from '../services/authService';
+import type { User } from '../types';
+
+const COMMON_TIMEZONES = [
+  'UTC',
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Los_Angeles',
+  'America/Phoenix',
+  'Europe/London',
+  'Europe/Paris',
+  'Asia/Tokyo',
+  'Asia/Singapore',
+  'Australia/Sydney'
+];
+
+type OpportunityToastTier = 'all' | 'overreaction_only';
+type OpportunityEmailTier = 'all' | 'overreaction_only' | 'capitulation_only';
+
+function defaultTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
+  } catch {
+    return 'America/New_York';
+  }
+}
 
 const ProfilePage: React.FC = () => {
   const { user, updateUser } = useAuth();
@@ -19,9 +45,17 @@ const ProfilePage: React.FC = () => {
     email: true,
     push: true,
     opportunityToasts: true,
+    opportunityEmail: true,
+    opportunityNotifyLevel: 'all' as OpportunityToastTier,
+    opportunityEmailNotifyLevel: 'all' as OpportunityEmailTier,
+    opportunityRespectQuietHours: true,
+    opportunityStockMarketHoursOnly: true,
+    quietStartHour: 22,
+    quietEndHour: 7,
+    timezone: defaultTimezone(),
     dipInsightEmail: true,
-    researchDigestEmail: false,
-    dailyWatchlistDigestEmail: false,
+    researchDigestEmail: true,
+    dailyWatchlistDigestEmail: true,
     agentMaxPositionSizePct: 10
   });
   const [notifSaving, setNotifSaving] = useState(false);
@@ -55,20 +89,40 @@ const ProfilePage: React.FC = () => {
   }, [user?.id]);
 
   useEffect(() => {
-    if (!user?.notificationPreferences) return;
-    const n = user.notificationPreferences;
+    if (!user) return;
+    const n = (user.notificationPreferences ?? {}) as Partial<
+      NonNullable<User['notificationPreferences']>
+    >;
     const pctRaw = n.agentMaxPositionSizePct;
     const pct =
       typeof pctRaw === 'number' && Number.isFinite(pctRaw)
         ? Math.min(50, Math.max(1, Math.round(pctRaw)))
         : 10;
+    const enl = n.opportunityEmailNotifyLevel;
     setNotifPrefs({
       email: n.email !== false,
       push: n.push !== false,
       opportunityToasts: n.opportunityToasts !== false,
+      opportunityEmail: n.opportunityEmail !== false,
+      opportunityNotifyLevel: n.opportunityNotifyLevel === 'overreaction_only' ? 'overreaction_only' : 'all',
+      opportunityEmailNotifyLevel:
+        enl === 'all' || enl === 'overreaction_only' || enl === 'capitulation_only' ? enl : 'all',
+      opportunityRespectQuietHours: n.opportunityRespectQuietHours !== false,
+      opportunityStockMarketHoursOnly: n.opportunityStockMarketHoursOnly !== false,
+      quietStartHour:
+        typeof n.researchQuietHoursLocal?.startHour === 'number' &&
+        Number.isFinite(n.researchQuietHoursLocal.startHour)
+          ? Math.min(23, Math.max(0, Math.round(n.researchQuietHoursLocal.startHour)))
+          : 22,
+      quietEndHour:
+        typeof n.researchQuietHoursLocal?.endHour === 'number' && Number.isFinite(n.researchQuietHoursLocal.endHour)
+          ? Math.min(23, Math.max(0, Math.round(n.researchQuietHoursLocal.endHour)))
+          : 7,
+      timezone:
+        typeof n.timezone === 'string' && n.timezone.trim().length > 0 ? n.timezone.trim() : defaultTimezone(),
       dipInsightEmail: n.dipInsightEmail !== false,
-      researchDigestEmail: n.researchDigestEmail === true,
-      dailyWatchlistDigestEmail: n.dailyWatchlistDigestEmail === true,
+      researchDigestEmail: n.researchDigestEmail !== false,
+      dailyWatchlistDigestEmail: n.dailyWatchlistDigestEmail !== false,
       agentMaxPositionSizePct: pct
     });
   }, [user]);
@@ -149,9 +203,32 @@ const ProfilePage: React.FC = () => {
   };
 
   const handleSaveNotifications = async () => {
+    if (!user) return;
     setNotifSaving(true);
     try {
-      const updated = await authService.updateProfile({ notificationPreferences: notifPrefs });
+      const base = (user.notificationPreferences || {}) as NonNullable<User['notificationPreferences']>;
+      const updated = await authService.updateProfile({
+        notificationPreferences: {
+          ...base,
+          email: notifPrefs.email,
+          push: notifPrefs.push,
+          opportunityToasts: notifPrefs.opportunityToasts,
+          opportunityEmail: notifPrefs.opportunityEmail,
+          opportunityNotifyLevel: notifPrefs.opportunityNotifyLevel,
+          opportunityEmailNotifyLevel: notifPrefs.opportunityEmailNotifyLevel,
+          opportunityRespectQuietHours: notifPrefs.opportunityRespectQuietHours,
+          opportunityStockMarketHoursOnly: notifPrefs.opportunityStockMarketHoursOnly,
+          researchQuietHoursLocal: {
+            startHour: notifPrefs.quietStartHour,
+            endHour: notifPrefs.quietEndHour
+          },
+          timezone: notifPrefs.timezone.trim(),
+          dipInsightEmail: notifPrefs.dipInsightEmail,
+          researchDigestEmail: notifPrefs.researchDigestEmail,
+          dailyWatchlistDigestEmail: notifPrefs.dailyWatchlistDigestEmail,
+          agentMaxPositionSizePct: notifPrefs.agentMaxPositionSizePct
+        }
+      });
       updateUser({
         notificationPreferences: updated.notificationPreferences,
         username: updated.username,
@@ -313,105 +390,261 @@ const ProfilePage: React.FC = () => {
 
         {/* Notifications */}
         <div className="card">
-          <h2 className="text-xl font-semibold text-kib-fg mb-2">Notifications</h2>
-          <p className="text-sm text-kib-muted mb-4">
-            Opportunity toasts fire when price action matches your alert baseline (deduped hourly). Signals are always saved for review.
+          <h2 className="text-xl font-semibold text-kib-fg mb-1">Notifications</h2>
+          <p className="text-sm text-kib-muted mb-6">
+            Control channels, dip-alert email behavior, quiet hours, and optional Grok briefings. Opportunity rows are
+            always recorded for review.
           </p>
-          <div className="space-y-3">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={notifPrefs.email}
-                onChange={(e) => setNotifPrefs((p) => ({ ...p, email: e.target.checked }))}
-                className="rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
-              />
-              <span className="text-kib-fg">
-                Email alerts (price alerts + opportunity signal emails)
-              </span>
-            </label>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={notifPrefs.push}
-                onChange={(e) => setNotifPrefs((p) => ({ ...p, push: e.target.checked }))}
-                className="rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
-              />
-              <span className="text-kib-fg">Push notifications</span>
-            </label>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={notifPrefs.opportunityToasts}
-                onChange={(e) =>
-                  setNotifPrefs((p) => ({ ...p, opportunityToasts: e.target.checked }))
-                }
-                className="rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
-              />
-              <span className="text-kib-fg">In-app opportunity toasts</span>
-            </label>
 
-            <div className="pt-4 mt-4 border-t border-kib-line">
-              <h3 className="text-sm font-semibold text-kib-fg mb-1">Dip briefing emails (Grok)</h3>
-              <p className="text-xs text-kib-muted mb-3">
-                When your symbol hits a deterministic dip vs baseline, we can send the UltimateDipBuyer email: Grok
-                verdict and confidence, timing notes, X context via x_search, tranche % (capped below), and links. The
-                same assessment is stored on <strong className="text-kib-fg/90">Opportunity signals</strong> in the app.
-                Requires <code className="text-kib-fg/90">ENABLE_DIP_INSIGHT_EMAIL</code> on the server and opportunity
-                emails enabled (dashboard + master email). If the server flag is off, this toggle has no effect.
+          <div className="space-y-8">
+            <section>
+              <h3 className="text-sm font-semibold text-kib-fg mb-3">Channels</h3>
+              <div className="space-y-3">
+                <label className="flex cursor-pointer items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={notifPrefs.email}
+                    onChange={(e) => setNotifPrefs((p) => ({ ...p, email: e.target.checked }))}
+                    className="rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
+                  />
+                  <span className="text-kib-fg">Email</span>
+                </label>
+                <label className="flex cursor-pointer items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={notifPrefs.push}
+                    onChange={(e) => setNotifPrefs((p) => ({ ...p, push: e.target.checked }))}
+                    className="rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
+                  />
+                  <span className="text-kib-fg">Push (when supported)</span>
+                </label>
+                <label className="flex cursor-pointer items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={notifPrefs.opportunityToasts}
+                    onChange={(e) =>
+                      setNotifPrefs((p) => ({ ...p, opportunityToasts: e.target.checked }))
+                    }
+                    className="rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
+                  />
+                  <span className="text-kib-fg">In-app opportunity toasts</span>
+                </label>
+              </div>
+            </section>
+
+            <section className="border-t border-kib-line pt-6">
+              <h3 className="text-sm font-semibold text-kib-fg mb-1">Opportunity dip alerts</h3>
+              <p className="mb-4 text-xs text-kib-muted">
+                Fires when live quotes cross our dip tiers vs your alert baseline. Crypto is 24/7; US stocks can be
+                limited to regular session below.
               </p>
-              <label className="flex items-center gap-3 cursor-pointer mb-4">
-                <input
-                  type="checkbox"
-                  checked={notifPrefs.dipInsightEmail}
-                  onChange={(e) =>
-                    setNotifPrefs((p) => ({ ...p, dipInsightEmail: e.target.checked }))
-                  }
-                  className="rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
-                  disabled={!notifPrefs.email}
-                />
-                <span className={`text-kib-fg ${!notifPrefs.email ? 'opacity-50' : ''}`}>
-                  Use Grok dip briefing email (instead of short opportunity-only email when enabled)
-                </span>
-              </label>
-              <label className="flex items-center gap-3 cursor-pointer mb-2">
-                <input
-                  type="checkbox"
-                  checked={notifPrefs.researchDigestEmail}
-                  onChange={(e) =>
-                    setNotifPrefs((p) => ({ ...p, researchDigestEmail: e.target.checked }))
-                  }
-                  className="rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
-                  disabled={!notifPrefs.email || !notifPrefs.dipInsightEmail}
-                />
-                <span
-                  className={`text-kib-fg text-sm ${!notifPrefs.email || !notifPrefs.dipInsightEmail ? 'opacity-50' : ''}`}
-                >
-                  Require stored news for Grok email (fusion gate — at least one headline in our DB for that symbol
-                  in the server lookback window; otherwise you get the short opportunity email only)
-                </span>
-              </label>
-              <label className="flex items-start gap-3 cursor-pointer mb-2">
-                <input
-                  type="checkbox"
-                  checked={notifPrefs.dailyWatchlistDigestEmail}
-                  onChange={(e) =>
-                    setNotifPrefs((p) => ({ ...p, dailyWatchlistDigestEmail: e.target.checked }))
-                  }
-                  className="mt-0.5 rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
-                  disabled={!notifPrefs.email}
-                />
-                <span className={`text-kib-fg text-sm ${!notifPrefs.email ? 'opacity-50' : ''}`}>
-                  Daily <strong className="text-kib-fg/90">market briefing</strong> email — macro backdrop, tape tone,
-                  your watchlist commentary, Polygon-ingested headlines, optional X/discourse synthesis, and{' '}
-                  <strong className="text-kib-fg/90">two</strong> liquid US equities to research (off your list) with separate
-                  1&ndash;3 year vs long-run framing. Requires{' '}
-                  <code className="text-kib-fg/90">ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL</code>, SMTP, Polygon news ingestion for
-                  best headline coverage, and Python + Grok.
-                </span>
-              </label>
-              <div className="max-w-xs">
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Max portfolio % for suggested tranche (1–50)
+              <div className="space-y-4 text-sm">
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={notifPrefs.opportunityEmail && notifPrefs.email}
+                    disabled={!notifPrefs.email}
+                    onChange={(e) => setNotifPrefs((p) => ({ ...p, opportunityEmail: e.target.checked }))}
+                    className="mt-0.5 rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
+                  />
+                  <span className={!notifPrefs.email ? 'text-kib-muted' : 'text-kib-fg'}>
+                    Email me dip alerts
+                    {!notifPrefs.email ? (
+                      <span className="mt-0.5 block text-[11px] text-amber-200/90">
+                        Turn on Email above to enable dip emails.
+                      </span>
+                    ) : null}
+                  </span>
+                </label>
+
+                <div>
+                  <label htmlFor="prof-toast-tier" className="mb-1 block text-xs font-medium text-slate-300">
+                    In-app toasts
+                  </label>
+                  <select
+                    id="prof-toast-tier"
+                    value={notifPrefs.opportunityNotifyLevel}
+                    onChange={(e) =>
+                      setNotifPrefs((p) => ({
+                        ...p,
+                        opportunityNotifyLevel: e.target.value as OpportunityToastTier
+                      }))
+                    }
+                    className="input-field max-w-md w-full text-sm"
+                  >
+                    <option value="all">All tiers (including smaller dips)</option>
+                    <option value="overreaction_only">Larger dips only (fewer toasts)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="prof-email-tier" className="mb-1 block text-xs font-medium text-slate-300">
+                    Dip emails
+                  </label>
+                  <select
+                    id="prof-email-tier"
+                    value={notifPrefs.opportunityEmailNotifyLevel}
+                    onChange={(e) =>
+                      setNotifPrefs((p) => ({
+                        ...p,
+                        opportunityEmailNotifyLevel: e.target.value as OpportunityEmailTier
+                      }))
+                    }
+                    className="input-field max-w-md w-full text-sm"
+                  >
+                    <option value="all">All qualifying tiers</option>
+                    <option value="overreaction_only">Important dips only (no email for smallest tier)</option>
+                    <option value="capitulation_only">Major long-term tier only</option>
+                  </select>
+                </div>
+
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={notifPrefs.opportunityStockMarketHoursOnly}
+                    onChange={(e) =>
+                      setNotifPrefs((p) => ({
+                        ...p,
+                        opportunityStockMarketHoursOnly: e.target.checked
+                      }))
+                    }
+                    className="mt-0.5 rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
+                  />
+                  <span className="text-kib-fg">
+                    US stocks: only notify during regular session (Mon–Fri 9:30–16:00 ET). Crypto unaffected.
+                  </span>
+                </label>
+
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={notifPrefs.opportunityRespectQuietHours}
+                    onChange={(e) =>
+                      setNotifPrefs((p) => ({
+                        ...p,
+                        opportunityRespectQuietHours: e.target.checked
+                      }))
+                    }
+                    className="mt-0.5 rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
+                  />
+                  <span className="text-kib-fg">Pause dip emails during quiet hours (below)</span>
+                </label>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:items-end">
+                  <div>
+                    <label htmlFor="prof-qh-start" className="mb-1 block text-xs font-medium text-slate-300">
+                      Quiet hours start (local hour)
+                    </label>
+                    <select
+                      id="prof-qh-start"
+                      value={notifPrefs.quietStartHour}
+                      onChange={(e) =>
+                        setNotifPrefs((p) => ({ ...p, quietStartHour: Number(e.target.value) }))
+                      }
+                      className="input-field w-full text-sm"
+                    >
+                      {Array.from({ length: 24 }, (_, i) => (
+                        <option key={i} value={i}>
+                          {i}:00
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="prof-qh-end" className="mb-1 block text-xs font-medium text-slate-300">
+                      Quiet hours end (local hour)
+                    </label>
+                    <select
+                      id="prof-qh-end"
+                      value={notifPrefs.quietEndHour}
+                      onChange={(e) =>
+                        setNotifPrefs((p) => ({ ...p, quietEndHour: Number(e.target.value) }))
+                      }
+                      className="input-field w-full text-sm"
+                    >
+                      {Array.from({ length: 24 }, (_, i) => (
+                        <option key={i} value={i}>
+                          {i}:00
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="prof-tz" className="mb-1 block text-xs font-medium text-slate-300">
+                      Time zone
+                    </label>
+                    <input
+                      id="prof-tz"
+                      list="kib-profile-tz-list"
+                      value={notifPrefs.timezone}
+                      onChange={(e) => setNotifPrefs((p) => ({ ...p, timezone: e.target.value }))}
+                      placeholder="America/New_York"
+                      className="input-field w-full font-mono text-sm"
+                    />
+                    <datalist id="kib-profile-tz-list">
+                      {COMMON_TIMEZONES.map((tz) => (
+                        <option key={tz} value={tz} />
+                      ))}
+                    </datalist>
+                  </div>
+                </div>
+                <p className="text-[11px] leading-relaxed text-kib-muted">
+                  Overnight windows work (e.g. 22:00–07:00). Uses IANA time zones.
+                </p>
+              </div>
+            </section>
+
+            <section className="border-t border-kib-line pt-6">
+              <h3 className="text-sm font-semibold text-kib-fg mb-3">Research & briefings</h3>
+              <div className="space-y-3">
+                <label className="flex cursor-pointer items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={notifPrefs.dipInsightEmail}
+                    onChange={(e) =>
+                      setNotifPrefs((p) => ({ ...p, dipInsightEmail: e.target.checked }))
+                    }
+                    className="rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
+                    disabled={!notifPrefs.email}
+                  />
+                  <span className={`text-kib-fg ${!notifPrefs.email ? 'opacity-50' : ''}`}>
+                    Grok dip briefing (rich email when the server enables it)
+                  </span>
+                </label>
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={notifPrefs.researchDigestEmail}
+                    onChange={(e) =>
+                      setNotifPrefs((p) => ({ ...p, researchDigestEmail: e.target.checked }))
+                    }
+                    className="mt-0.5 rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
+                    disabled={!notifPrefs.email || !notifPrefs.dipInsightEmail}
+                  />
+                  <span
+                    className={`text-sm ${!notifPrefs.email || !notifPrefs.dipInsightEmail ? 'text-kib-muted' : 'text-kib-fg'}`}
+                  >
+                    Require a stored headline before sending the full Grok email (otherwise short dip email only)
+                  </span>
+                </label>
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={notifPrefs.dailyWatchlistDigestEmail}
+                    onChange={(e) =>
+                      setNotifPrefs((p) => ({ ...p, dailyWatchlistDigestEmail: e.target.checked }))
+                    }
+                    className="mt-0.5 rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
+                    disabled={!notifPrefs.email}
+                  />
+                  <span className={`text-sm ${!notifPrefs.email ? 'text-kib-muted' : 'text-kib-fg'}`}>
+                    Daily market briefing (watchlist overview and ideas; host must schedule it)
+                  </span>
+                </label>
+              </div>
+              <div className="mt-5 max-w-xs">
+                <label className="mb-1 block text-xs font-medium text-slate-300">
+                  Max suggested tranche % (1–50)
                 </label>
                 <input
                   type="number"
@@ -427,19 +660,23 @@ const ProfilePage: React.FC = () => {
                       agentMaxPositionSizePct: Math.min(50, Math.max(1, Math.round(v)))
                     }));
                   }}
-                  className="block w-full px-3 py-2 rounded-md border border-kib-line bg-kib-raise text-kib-fg text-sm focus:outline-none focus:ring-2 focus:ring-kib-cyber"
+                  className="block w-full rounded-md border border-kib-line bg-kib-raise px-3 py-2 text-sm text-kib-fg focus:outline-none focus:ring-2 focus:ring-kib-cyber"
                 />
-                <p className="text-xs text-kib-muted mt-1">
-                  Caps the model&apos;s suggested allocation line in the email; not a buy order.
+                <p className="mt-1 text-xs text-kib-muted">
+                  Caps suggested sizing text in AI emails; not an order.
                 </p>
               </div>
-            </div>
+              <p className="mt-4 text-[11px] text-kib-muted">
+                Briefings need SMTP plus Python/Grok on the host; daily briefing also needs the digest job enabled
+                server-side.
+              </p>
+            </section>
 
             <button
               type="button"
-              onClick={handleSaveNotifications}
+              onClick={() => void handleSaveNotifications()}
               disabled={notifSaving}
-              className="btn-primary mt-2 disabled:opacity-50"
+              className="btn-primary disabled:opacity-50"
             >
               {notifSaving ? 'Saving…' : 'Save notification preferences'}
             </button>

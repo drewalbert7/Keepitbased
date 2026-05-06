@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertDeliveryPreferences } from './AlertDeliveryPreferences';
 import { fetchPublicHealthConfig, type PublicHealthConfig } from '../services/healthConfigService';
 
 function formatDedupe(ttlSec: number | undefined) {
@@ -82,40 +81,28 @@ export const OpportunityPolicyPanel: React.FC<{
       {embedInPanel && (
         <div className="mb-3 space-y-2 text-[11px] leading-relaxed text-kib-muted">
           <p>
-            <span className="font-medium text-kib-fg/90">Stage 1 — Engine:</span> opportunity flags (
+            <span className="font-medium text-kib-fg/90">Stage 1 — Engine:</span> flags{' '}
             <span className="font-mono text-kib-fg/80">on_sale</span>,{' '}
             <span className="font-mono text-kib-fg/80">overreaction</span>,{' '}
-            <span className="font-mono text-kib-fg/80">capitulation</span>) use the same host rules for every symbol
-            (values below). Each qualifying hit creates a row on{' '}
+            <span className="font-mono text-kib-fg/80">capitulation</span> use the host rules below for everyone. Each
+            hit logs to{' '}
             <Link to="/opportunity-signals" className="text-kib-cyber underline-offset-2 hover:underline">
               Signals
-            </Link>{' '}
-            (optional toasts + emails per Profile; opportunity <strong className="text-kib-fg/90">emails</strong> default to
-            stronger tiers so small <span className="font-mono text-kib-fg/80">on_sale</span>-only hits stay in-app).
+            </Link>
+            . Toasts, email tiers, quiet hours, and Grok opt-ins live in{' '}
+            <Link to="/profile" className="text-kib-cyber underline-offset-2 hover:underline">
+              Profile → Notifications
+            </Link>
+            .
           </p>
           <p>
-            <span className="font-medium text-kib-fg/90">Stage 2 — UltimateDipBuyer AI (Grok):</span> after Stage 1,
-            the Python service can call Grok (x_search + your snapshot: price vs baseline, ATR/52w). That produces an
-            educational verdict, confidence, timing/invalidation notes, and a tranche % capped by your Profile max.
-            It is stored on the <strong className="text-kib-fg/90">same signal row</strong> as Stage 1. Requires: host{' '}
-            <code className="rounded bg-black/25 px-1 font-mono text-[10px]">ENABLE_DIP_INSIGHT_EMAIL</code>, Profile{' '}
-            <strong className="text-kib-fg/90">Email alerts</strong> +{' '}
-            <strong className="text-kib-fg/90">Dip briefing emails (Grok)</strong>, and below{' '}
-            <strong className="text-kib-fg/90">Email me opportunity dip alerts</strong>. If Grok is off or fails, you
-            may still get the short opportunity-only email when opportunity email is allowed.
+            <span className="font-medium text-kib-fg/90">Stage 2 — Grok:</span> after Stage 1, Python may call Grok for a
+            richer verdict (when the host enables it and your Profile allows). Same row in Signals; failure falls back to
+            the short dip email when allowed.
           </p>
           <p>
-            <span className="font-medium text-kib-fg/90">Research fusion (optional):</span> if Profile{' '}
-            <strong className="text-kib-fg/90">Require stored news for Grok email</strong> is on, the rich Grok path may
-            be skipped when no headline exists for that symbol—you can receive the short opportunity email instead (same
-            signal row; AI fields stay empty until a successful Grok run).
-          </p>
-          <p>
-            <span className="font-medium text-kib-fg/90">Rich email vs Signals:</span> the inbox always shows the AI
-            block when Grok completes. The HTML email can additionally be limited by the host (for example{' '}
-            <strong className="text-kib-fg/90">Buy / Strong Buy</strong> only and/or a minimum confidence score);{' '}
-            <strong className="text-kib-fg/90">Hold</strong> or <strong className="text-kib-fg/90">Pass</strong> may
-            appear in Signals without a matching email.
+            <span className="font-medium text-kib-fg/90">Fusion:</span> optional headline gate for the full Grok email —
+            toggle in Profile.
           </p>
         </div>
       )}
@@ -227,7 +214,6 @@ export const OpportunityPolicyPanel: React.FC<{
         </p>
       </div>
 
-      <AlertDeliveryPreferences />
     </aside>
   );
 };

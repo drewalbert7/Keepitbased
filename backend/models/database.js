@@ -29,7 +29,25 @@ async function initializeDatabase() {
 
 async function runInitializeDatabase() {
   const client = await pool.connect();
-  
+
+  /** Persisted default for new rows — aligns with mergeNotificationPreferences + Profile “all on” for dip + daily digest. */
+  const defaultNotificationPrefsJson = JSON.stringify({
+    email: true,
+    push: true,
+    opportunityToasts: true,
+    opportunityEmail: true,
+    opportunityNotifyLevel: 'all',
+    opportunityEmailNotifyLevel: 'all',
+    opportunityRespectQuietHours: true,
+    opportunityStockMarketHoursOnly: true,
+    researchQuietHoursLocal: { startHour: 22, endHour: 7 },
+    timezone: 'UTC',
+    dipInsightEmail: true,
+    researchDigestEmail: true,
+    dailyWatchlistDigestEmail: true,
+    agentMaxPositionSizePct: 10
+  });
+
   try {
     // Users table
     await client.query(`
@@ -39,7 +57,7 @@ async function runInitializeDatabase() {
         password_hash VARCHAR(255) NOT NULL,
         first_name VARCHAR(100),
         last_name VARCHAR(100),
-        notification_preferences JSONB DEFAULT '{"email": true, "push": true}',
+        notification_preferences JSONB DEFAULT '${defaultNotificationPrefsJson}'::jsonb,
         verified BOOLEAN DEFAULT false,
         reset_token VARCHAR(500),
         reset_token_expires TIMESTAMP,
@@ -295,6 +313,11 @@ async function runInitializeDatabase() {
       ON users (LOWER(username))
       WHERE username IS NOT NULL;
     `);
+
+    await client.query(
+      `ALTER TABLE users ALTER COLUMN notification_preferences SET DEFAULT $1::jsonb`,
+      [defaultNotificationPrefsJson]
+    );
 
     logger.info('Database initialized successfully');
     

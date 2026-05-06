@@ -5,8 +5,8 @@ import { useAuth } from '../contexts/AuthContext';
 const HomePage: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  const [currentPrice, setCurrentPrice] = useState(236.45);
-  const [isAnimating, setIsAnimating] = useState(false);
+  const [demoPx, setDemoPx] = useState(178.42);
+  const [pulse, setPulse] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -15,24 +15,23 @@ const HomePage: React.FC = () => {
     }
 
     const interval = setInterval(() => {
-      setIsAnimating(true);
-      setCurrentPrice((prev) => {
-        const change = (Math.random() - 0.5) * 5;
-        return Math.max(200, Math.min(300, prev + change));
+      setPulse(true);
+      setDemoPx((prev) => {
+        const drift = (Math.random() - 0.55) * 0.8;
+        return Math.round((prev + drift) * 100) / 100;
       });
-      setTimeout(() => setIsAnimating(false), 500);
-    }, 3000);
+      setTimeout(() => setPulse(false), 400);
+    }, 3200);
 
     return () => clearInterval(interval);
   }, [isAuthenticated, navigate]);
 
   return (
     <div className="relative min-h-screen overflow-x-hidden app-shell">
-      {/* Subtle vignette */}
       <div
         className="pointer-events-none fixed inset-0 z-0 opacity-60"
         style={{
-          background: 'radial-gradient(ellipse 70% 60% at 50% 0%, transparent 0%, #0d1117 75%)'
+          background: 'radial-gradient(ellipse 70% 55% at 50% -10%, rgba(34, 211, 238, 0.08) 0%, transparent 50%), radial-gradient(ellipse 60% 50% at 80% 60%, rgba(0, 200, 5, 0.04) 0%, transparent 45%), #0d1117'
         }}
       />
 
@@ -41,25 +40,22 @@ const HomePage: React.FC = () => {
           <div className="flex justify-between items-center py-6">
             <div className="flex items-center gap-3">
               <span className="hidden sm:inline-flex font-mono text-[10px] text-kib-cyber/80 border border-kib-cyber/40 px-1.5 py-0.5 rounded tracking-widest uppercase">
-                v1_live
+                research · alerts
               </span>
               <Link to="/" className="font-mono text-xl font-semibold text-kib-fg tracking-tight">
                 <span className="text-kib-cyber">{'>'}</span> KeepItBased
               </Link>
             </div>
             <div className="flex items-center space-x-4">
-              <a
-                href="https://app.keepitbased.com/login"
+              <Link
+                to="/login"
                 className="text-kib-muted hover:text-kib-cyber font-medium transition-colors duration-200 text-sm"
               >
-                Sign In
-              </a>
-              <a
-                href="https://app.keepitbased.com/register"
-                className="btn-primary py-2 px-4 text-sm font-semibold"
-              >
+                Sign in
+              </Link>
+              <Link to="/register" className="btn-primary py-2 px-4 text-sm font-semibold">
                 Create account
-              </a>
+              </Link>
             </div>
           </div>
         </nav>
@@ -67,94 +63,98 @@ const HomePage: React.FC = () => {
 
       <div className="relative z-10">
         <div className="mx-auto max-w-[1360px] px-4 sm:px-6 lg:px-8">
-          <div className="relative pt-16 pb-16 sm:pb-24">
-            <div className="lg:grid lg:grid-cols-12 lg:gap-8 items-center">
-              <div className="sm:text-center md:max-w-2xl md:mx-auto lg:col-span-6 lg:text-left lg:flex lg:items-center">
-                <div>
-                  <p className="font-mono text-xs text-kib-cyber mb-4 tracking-[0.2em] uppercase">
-                    Signal stack · Stocks & Crypto
-                  </p>
-                  <p className="mb-4 inline-flex flex-wrap items-center gap-2 rounded-lg border border-kib-cyber/35 bg-kib-cyber/10 px-3 py-2 font-mono text-xs text-kib-cyber/95 sm:text-sm">
-                    <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-kib-cyber shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
-                    Invite-only — access is extended by invitation
-                  </p>
-                  <h1 className="text-4xl font-bold text-kib-fg sm:text-5xl md:text-6xl leading-tight">
-                    Never Miss a
-                    <span className="block hero-gradient pb-1">Buy the Dip</span>
-                    Opportunity
-                  </h1>
-                  <p className="mt-6 text-xl text-kib-muted sm:max-w-xl">
-                    Get instant alerts when your favorite stocks and crypto hit your buy zones. Structured signals for
-                    disciplined entries — not hype.
-                  </p>
-                  <div className="mt-8 sm:max-w-lg sm:mx-auto sm:text-center lg:text-left">
-                    <div className="flex flex-col sm:flex-row gap-4">
-                      <a
-                        href="https://app.keepitbased.com/register"
-                        className="btn-primary text-center text-lg py-4 px-8 inline-flex items-center justify-center gap-2"
-                      >
-                        <span className="font-mono text-sm opacity-80">&gt;_</span>
-                        Start with your invite
-                      </a>
-                      <a
-                        href="https://app.keepitbased.com/charts"
-                        className="btn-secondary text-center text-lg py-4 px-8 inline-flex items-center justify-center"
-                      >
-                        View Charts
-                      </a>
-                    </div>
-                    <p className="mt-4 text-sm font-mono text-kib-muted/90">
-                      <span className="text-robinhood-green mr-2">●</span>
-                      New accounts are invite-only. Have an invite? Create an account or sign in from the header.
-                    </p>
+          <div className="relative pt-14 pb-20 sm:pb-28">
+            <div className="lg:grid lg:grid-cols-12 lg:gap-10 lg:items-center">
+              <div className="sm:text-center md:max-w-2xl md:mx-auto lg:col-span-6 lg:text-left lg:mx-0 lg:max-w-none">
+                <p className="font-mono text-xs text-kib-cyber mb-4 tracking-[0.2em] uppercase">
+                  Watchlist · Charts · AI agent
+                </p>
+                <p className="mb-5 inline-flex flex-wrap items-center gap-2 rounded-lg border border-kib-cyber/35 bg-kib-cyber/10 px-3 py-2 font-mono text-xs text-kib-cyber/95 sm:text-sm">
+                  <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-kib-cyber shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
+                  Invite-only access
+                </p>
+                <h1 className="text-4xl font-bold text-kib-fg sm:text-5xl md:text-6xl leading-[1.08] tracking-tight">
+                  Spot dips with{' '}
+                  <span className="hero-gradient bg-clip-text text-transparent">signal discipline</span>
+                  <span className="block mt-1 text-kib-fg">— context when you want it</span>
+                </h1>
+                <p className="mt-6 text-lg sm:text-xl text-kib-muted sm:max-w-xl lg:max-w-none leading-relaxed">
+                  Deterministic opportunity tiers vs <strong className="font-medium text-kib-fg/90">your</strong> alert
+                  baselines, plus a dashboard <strong className="font-medium text-kib-fg/90">AI agent</strong> that scans
+                  your watchlist and explains setups with{' '}
+                  <strong className="font-medium text-kib-fg/90">tool-backed numbers</strong> — not invented prices.
+                  Optional Grok-powered dip briefings and a daily market briefing when your host enables them.
+                </p>
+                <div className="mt-9 sm:max-w-lg sm:mx-auto lg:mx-0 sm:text-center lg:text-left">
+                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                    <Link
+                      to="/register"
+                      className="btn-primary text-center text-base sm:text-lg py-3.5 px-7 inline-flex items-center justify-center gap-2"
+                    >
+                      <span className="font-mono text-sm opacity-80">&gt;_</span>
+                      Start with your invite
+                    </Link>
+                    <Link
+                      to="/charts"
+                      className="btn-secondary text-center text-base sm:text-lg py-3.5 px-7 inline-flex items-center justify-center"
+                    >
+                      Open charts
+                    </Link>
                   </div>
+                  <p className="mt-5 text-sm text-kib-muted/90 leading-relaxed">
+                    Educational tooling only — not investment advice. You control email, toasts, tiers, and quiet hours in
+                    Profile.
+                  </p>
                 </div>
               </div>
 
-              <div className="mt-12 relative lg:mt-0 lg:col-span-6 lg:flex lg:items-center lg:justify-end">
+              <div className="mt-14 relative lg:mt-0 lg:col-span-6 lg:flex lg:items-center lg:justify-end">
                 <div className="relative mx-auto w-full max-w-md lg:max-w-none">
-                  <div className="absolute -inset-1 rounded-[2rem] bg-gradient-to-br from-kib-cyber/20 via-transparent to-robinhood-green/10 blur-xl opacity-80" />
-                  <div className="relative rounded-2xl border border-white/[0.08] bg-kib-card p-8 shadow-soft backdrop-blur-sm">
-                    <div className="absolute top-4 right-4 font-mono text-[10px] text-kib-cyber/70">SIG_OK</div>
-                    <div className="text-center mb-6">
-                      <h3 className="text-lg font-semibold font-mono text-kib-fg">AAPL</h3>
-                      <p className="text-xs text-kib-muted uppercase tracking-wider">Apple Inc.</p>
+                  <div className="absolute -inset-1 rounded-[2rem] bg-gradient-to-br from-kib-cyber/25 via-transparent to-emerald-500/10 blur-xl opacity-90" />
+                  <div className="relative rounded-2xl border border-white/[0.08] bg-kib-card/95 p-7 sm:p-8 shadow-soft backdrop-blur-sm">
+                    <div className="flex items-start justify-between gap-3 mb-6">
+                      <div>
+                        <p className="font-mono text-[10px] uppercase tracking-wider text-kib-muted">Illustrative</p>
+                        <h3 className="text-lg font-semibold font-mono text-kib-fg">NVDA</h3>
+                        <p className="text-xs text-kib-muted">Example signal card</p>
+                      </div>
+                      <span className="font-mono text-[10px] text-kib-cyber/80 border border-kib-cyber/30 px-2 py-1 rounded">
+                        opportunity_signal
+                      </span>
                     </div>
 
                     <div className="space-y-4">
-                      <div className="rounded-xl p-4 border border-robinhood-green/30 bg-[linear-gradient(135deg,rgba(0,200,5,0.12),transparent)]">
-                        <div className="flex items-center justify-between">
+                      <div className="rounded-xl p-4 border border-white/[0.06] bg-black/25">
+                        <div className="flex items-center justify-between gap-4">
                           <div>
-                            <p className="text-xs font-mono text-kib-muted uppercase">Last px</p>
+                            <p className="text-xs font-mono text-kib-muted uppercase">Last vs your baseline</p>
                             <p
-                              className={`text-2xl font-bold tabular-nums font-mono text-kib-fg transition-all duration-500 ${isAnimating ? 'scale-110 text-kib-cyber' : ''}`}
+                              className={`text-2xl font-bold tabular-nums font-mono text-kib-fg transition-transform duration-300 ${pulse ? 'scale-[1.02] text-kib-cyber' : ''}`}
                             >
-                              ${currentPrice.toFixed(2)}
+                              ${demoPx.toFixed(2)}
                             </p>
                           </div>
                           <div className="text-right">
-                            <p className="text-xs font-mono text-kib-muted uppercase">Δ session</p>
-                            <p className="text-lg font-bold font-mono text-robinhood-green">-12.5%</p>
+                            <p className="text-xs font-mono text-kib-muted uppercase">Flags</p>
+                            <p className="text-sm font-mono text-amber-200/95">overreaction</p>
                           </div>
                         </div>
                       </div>
 
-                      <div className="rounded-xl p-4 border border-amber-500/35 bg-kib-raise/90">
-                        <div className="flex items-center">
-                          <div className="w-2 h-2 bg-amber-400 rounded-full mr-3 animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
-                          <p className="text-sm font-mono font-medium text-amber-200">MEDIUM_BUY_SIGNAL</p>
-                        </div>
-                        <p className="text-xs text-amber-200/75 mt-2 font-mono">
-                          px &lt; threshold_10pct // baseline_watch
+                      <div className="rounded-xl p-4 border border-kib-cyber/25 bg-kib-cyber/5">
+                        <p className="text-xs font-mono text-kib-muted uppercase mb-2">Engine</p>
+                        <p className="text-sm text-kib-fg/90 leading-snug">
+                          Tiers use volatility-aware rules vs baseline (e.g. ATR-style depth on the host). Crypto runs
+                          24/7; US stocks can be limited to regular session — your choice.
                         </p>
                       </div>
 
-                      <button
-                        type="button"
-                        className="w-full py-3 px-4 rounded-lg font-mono text-sm font-semibold text-kib-bg bg-kib-cyber hover:bg-kib-glow transition-colors shadow-[0_0_16px_rgba(34,211,238,0.25)]"
+                      <Link
+                        to="/register"
+                        className="block w-full py-3 px-4 rounded-lg font-mono text-sm font-semibold text-center text-kib-bg bg-kib-cyber hover:bg-kib-glow transition-colors shadow-[0_0_16px_rgba(34,211,238,0.2)]"
                       >
-                        open_app ──▶
-                      </button>
+                        Create account ──▶
+                      </Link>
                     </div>
                   </div>
                 </div>
@@ -163,254 +163,262 @@ const HomePage: React.FC = () => {
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="border-y border-kib-line bg-kib-surface/90 py-14">
+        {/* Honest pillars — no vanity metrics */}
+        <div className="border-y border-kib-line bg-kib-surface/80 py-12 sm:py-14">
           <div className="mx-auto max-w-[1360px] px-4 sm:px-6 lg:px-8">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-10 text-center">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-10">
               {[
-                ['10K+', 'active_users'],
-                ['50M+', 'alerts_sent'],
-                ['2.5K+', 'assets_tracked'],
-                ['94%', 'signal_accuracy']
-              ].map(([n, lab]) => (
-                <div key={lab}>
-                  <p className="text-3xl font-bold font-mono text-kib-cyber tabular-nums">{n}</p>
-                  <p className="text-xs font-mono text-kib-muted uppercase tracking-wider mt-2">{lab.replace('_', ' ')}</p>
+                {
+                  title: 'Deterministic dips',
+                  body: 'Opportunity flags are computed from live quotes and your per-symbol baseline — auditable and consistent for everyone on the same host config.'
+                },
+                {
+                  title: 'AI agent & research',
+                  body: 'Dashboard assistant for watchlist scans and Q&A; dip briefings can layer Grok + live search when enabled. Numbers in emails come from tools and your snapshot, not model memory.'
+                },
+                {
+                  title: 'Notifications you own',
+                  body: 'Email and in-app toasts, separate tiers for inbox vs toasts, quiet hours, optional daily briefing — all in Profile.'
+                }
+              ].map((item) => (
+                <div key={item.title} className="text-center md:text-left">
+                  <p className="font-mono text-xs text-kib-cyber uppercase tracking-wider mb-2">{item.title}</p>
+                  <p className="text-sm text-kib-muted leading-relaxed">{item.body}</p>
                 </div>
               ))}
             </div>
           </div>
         </div>
 
-        {/* Features */}
+        {/* Signal tiers — aligned with product vocabulary */}
         <div className="py-20 relative">
           <div className="mx-auto max-w-[1360px] px-4 sm:px-6 lg:px-8">
-            <div className="text-center">
-              <h2 className="text-3xl font-bold text-kib-fg sm:text-4xl">Smart Alerts for Smart Investors</h2>
-              <p className="mt-4 text-lg text-kib-muted font-mono text-sm uppercase tracking-[0.15em]">
-                Three configurable trigger tiers
+            <div className="max-w-3xl mx-auto text-center lg:mx-0 lg:text-left lg:max-w-2xl">
+              <h2 className="text-3xl font-bold text-kib-fg sm:text-4xl tracking-tight">Three opportunity tiers</h2>
+              <p className="mt-4 text-kib-muted leading-relaxed">
+                Short labels in the app: <span className="font-mono text-kib-fg/80">on_sale</span>,{' '}
+                <span className="font-mono text-kib-fg/80">overreaction</span>, and long-horizon{' '}
+                <span className="font-mono text-kib-fg/80">capitulation</span>. Depth is measured vs{' '}
+                <strong className="text-kib-fg/90">your</strong> baseline using host rules (typically volatility-aware, not
+                one-size-fits-all percentages). You choose which tiers notify by email vs in-app.
               </p>
             </div>
 
-            <div className="mt-16 grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="group relative rounded-2xl p-8 border border-amber-500/25 bg-kib-card hover:border-amber-400/45 transition-all duration-300 hover:shadow-[0_0_32px_rgba(251,191,36,0.06)]">
-                <div className="w-12 h-12 rounded-lg flex items-center justify-center mb-6 bg-amber-500/15 border border-amber-500/30 font-mono text-amber-300 text-lg">
-                  L1
+            <div className="mt-14 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="rounded-2xl p-7 border border-amber-500/20 bg-kib-card hover:border-amber-400/35 transition-colors">
+                <div className="w-11 h-11 rounded-lg flex items-center justify-center mb-5 bg-amber-500/12 border border-amber-500/25 font-mono text-amber-300 text-sm">
+                  ①
                 </div>
-                <h3 className="text-xl font-semibold text-kib-fg mb-3">Small Dip Alert</h3>
-                <p className="text-kib-muted mb-4">
-                  Notified when price drops ~5% from your baseline — steady accumulation cadence.
+                <h3 className="text-lg font-semibold text-kib-fg mb-2">Smaller dislocation</h3>
+                <p className="text-sm text-kib-muted leading-relaxed">
+                  First meaningful dip vs baseline — steady accumulation zone when your rules say so.
                 </p>
-                <ul className="space-y-2 text-sm text-kib-muted font-mono">
-                  <li className="flex items-center gap-2">
-                    <span className="text-amber-400">▸</span> threshold: 5%
+              </div>
+
+              <div className="relative rounded-2xl p-7 border border-orange-400/30 bg-kib-card hover:border-orange-300/45 transition-colors lg:scale-[1.02] shadow-[0_0_40px_rgba(251,146,60,0.06)]">
+                <div className="absolute -top-2.5 right-5 font-mono text-[10px] font-semibold px-2.5 py-1 rounded-full bg-kib-cyber/90 text-kib-bg">
+                  common
+                </div>
+                <div className="w-11 h-11 rounded-lg flex items-center justify-center mb-5 bg-orange-500/12 border border-orange-400/30 font-mono text-orange-300 text-sm">
+                  ②
+                </div>
+                <h3 className="text-lg font-semibold text-kib-fg mb-2">Larger flush</h3>
+                <p className="text-sm text-kib-muted leading-relaxed">
+                  Deeper move vs baseline — often where email defaults focus so your inbox stays meaningful.
+                </p>
+              </div>
+
+              <div className="rounded-2xl p-7 border border-red-500/25 bg-kib-card hover:border-red-400/35 transition-colors sm:col-span-2 lg:col-span-1 relative">
+                <div className="w-11 h-11 rounded-lg flex items-center justify-center mb-5 bg-red-500/12 border border-red-400/25 font-mono text-red-300 text-sm">
+                  ③
+                </div>
+                <h3 className="text-lg font-semibold text-kib-fg mb-2">Major long-term setup</h3>
+                <p className="text-sm text-kib-muted leading-relaxed">
+                  Capitulation-style context: stricter structural checks (e.g. drawdown vs range) — rarest tier, separate
+                  dedupe so it does not spam.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* AI & notifications */}
+        <div className="py-20 bg-kib-surface/85 border-y border-kib-line">
+          <div className="mx-auto max-w-[1360px] px-4 sm:px-6 lg:px-8">
+            <div className="lg:grid lg:grid-cols-2 lg:gap-16 lg:items-start">
+              <div>
+                <h2 className="text-3xl font-bold text-kib-fg sm:text-4xl tracking-tight">AI agent & research</h2>
+                <p className="mt-4 text-kib-muted leading-relaxed">
+                  From the dashboard: scan and rank watchlist names, ask questions in plain language, or let Smart route
+                  intent. Outputs emphasize structured candidates, risk notes, and reasoning tied to data we pass in —
+                  not standalone price targets from the model.
+                </p>
+                <ul className="mt-8 space-y-4 text-sm text-kib-fg/90">
+                  <li className="flex gap-3">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-kib-cyber" />
+                    <span>
+                      <strong className="text-kib-fg">Watchlist context</strong> — agent calls include your live table and
+                      snapshot fields (quotes, baselines where configured).
+                    </span>
                   </li>
-                  <li className="flex items-center gap-2">
-                    <span className="text-amber-400">▸</span> email + push
+                  <li className="flex gap-3">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-kib-cyber" />
+                    <span>
+                      <strong className="text-kib-fg">Dip insight path</strong> — optional richer email when a tier fires,
+                      if your operator enables Grok and you opt in; fusion can require ingested headlines when you choose
+                      that stricter mode.
+                    </span>
+                  </li>
+                  <li className="flex gap-3">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-kib-cyber" />
+                    <span>
+                      <strong className="text-kib-fg">Daily briefing</strong> — optional digest-style email summarizing
+                      macro, tape, and watchlist themes when the server schedules it and SMTP is configured.
+                    </span>
                   </li>
                 </ul>
               </div>
-
-              <div className="group relative rounded-2xl p-8 border border-orange-400/35 bg-kib-card hover:border-orange-300/55 transition-all duration-300 hover:shadow-[0_0_36px_rgba(251,146,60,0.1)] lg:scale-[1.02]">
-                <div className="absolute -top-3 -right-3 font-mono text-[10px] font-bold px-3 py-1 rounded-full bg-kib-cyber text-kib-bg border border-kib-glow">
-                  HOT
-                </div>
-                <div className="w-12 h-12 rounded-lg flex items-center justify-center mb-6 bg-orange-500/15 border border-orange-400/35 font-mono text-orange-300 text-lg">
-                  L2
-                </div>
-                <h3 className="text-xl font-semibold text-kib-fg mb-3">Medium Dip Alert</h3>
-                <p className="text-kib-muted mb-4">
-                  ~10% drawdown signals stronger mean-reversion potential with priority routing.
-                </p>
-                <ul className="space-y-2 text-sm text-kib-muted font-mono">
-                  <li className="flex items-center gap-2">
-                    <span className="text-orange-400">▸</span> threshold: 10%
+              <div className="mt-12 lg:mt-2 rounded-2xl border border-white/[0.07] bg-black/20 p-8">
+                <h3 className="font-mono text-xs uppercase tracking-[0.2em] text-kib-cyber mb-4">Notifications</h3>
+                <ul className="space-y-4 text-sm text-kib-muted leading-relaxed">
+                  <li className="flex gap-3">
+                    <span className="font-mono text-robinhood-green shrink-0">✓</span>
+                    Master email switch; separate “email me dip alerts” and tier filters for inbox vs smallest tier.
                   </li>
-                  <li className="flex items-center gap-2">
-                    <span className="text-orange-400">▸</span> priority notify
+                  <li className="flex gap-3">
+                    <span className="font-mono text-robinhood-green shrink-0">✓</span>
+                    In-app toasts on opportunity signals (socket-delivered when you are logged in).
                   </li>
-                </ul>
-              </div>
-
-              <div className="group relative rounded-2xl p-8 border border-red-500/30 bg-kib-card hover:border-red-400/45 transition-all duration-300 hover:shadow-[0_0_32px_rgba(248,113,113,0.08)] sm:col-span-2 lg:col-span-1">
-                <div className="w-12 h-12 rounded-lg flex items-center justify-center mb-6 bg-red-500/15 border border-red-400/35 font-mono text-red-300 text-lg">
-                  L3
-                </div>
-                <h3 className="text-xl font-semibold text-kib-fg mb-3">Large Dip Alert</h3>
-                <p className="text-kib-muted mb-4">
-                  Major 15%+ dislocations flagged for conviction-sized entries with instant paths.
-                </p>
-                <ul className="space-y-2 text-sm text-kib-muted font-mono">
-                  <li className="flex items-center gap-2">
-                    <span className="text-red-400">▸</span> threshold: 15%+
+                  <li className="flex gap-3">
+                    <span className="font-mono text-robinhood-green shrink-0">✓</span>
+                    Quiet hours + timezone; optional US regular session only for stocks (crypto unaffected).
                   </li>
-                  <li className="flex items-center gap-2">
-                    <span className="text-red-400">▸</span> instant_alert
+                  <li className="flex gap-3">
+                    <span className="font-mono text-robinhood-green shrink-0">✓</span>
+                    Every signal row can be reviewed later — emails may be suppressed by policy without deleting history.
                   </li>
                 </ul>
+                <p className="mt-6 text-xs text-kib-muted/80 border-t border-white/[0.06] pt-6 leading-relaxed">
+                  Availability of Grok, news ingestion, and digest cron depends on your deployment and API keys — not
+                  guaranteed by the client alone.
+                </p>
               </div>
             </div>
           </div>
         </div>
 
         {/* How */}
-        <div className="py-20 bg-kib-surface/80 border-y border-kib-line">
+        <div className="py-20">
           <div className="mx-auto max-w-[1360px] px-4 sm:px-6 lg:px-8">
-            <div className="text-center">
-              <h2 className="text-3xl font-bold text-kib-fg sm:text-4xl">How KeepItBased Works</h2>
-              <p className="mt-4 text-kib-muted">Deploy your watch pipeline in minutes</p>
-            </div>
+            <h2 className="text-center text-3xl font-bold text-kib-fg sm:text-4xl">How it flows</h2>
+            <p className="text-center mt-3 text-kib-muted max-w-2xl mx-auto">
+              From baseline to inbox — you stay in control of noise.
+            </p>
 
-            <div className="mt-16 grid grid-cols-1 gap-12 md:grid-cols-3">
+            <div className="mt-14 grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
               {[
                 {
                   step: '01',
-                  title: 'Add Your Favorites',
-                  body: 'Search tickers and set custom thresholds per symbol.',
-                  icon: '+'
+                  title: 'Set baselines',
+                  body: 'Active alerts with a baseline price per symbol — that is the anchor the engine compares on each poll.'
                 },
                 {
                   step: '02',
-                  title: 'We Monitor 24/7',
-                  body: 'Price streams and alert engine run continuously.',
-                  icon: '~'
+                  title: 'Engine evaluates',
+                  body: 'Deterministic tiers vs baseline and volatility context. Rows land in Opportunity signals with flags and reasons.'
                 },
                 {
                   step: '03',
-                  title: 'Get Instant Alerts',
-                  body: 'Email and push the moment triggers fire.',
-                  icon: '▸'
+                  title: 'Optional AI layer',
+                  body: 'Agent chat, dip briefings, or daily digest when enabled server-side — prose explains; numbers stay tool-backed.'
+                },
+                {
+                  step: '04',
+                  title: 'You decide',
+                  body: 'Notifications respect Profile. Nothing here places trades; educational output only.'
                 }
               ].map((s) => (
-                <div key={s.step} className="text-center">
-                  <div className="mb-6 inline-flex h-14 w-14 items-center justify-center rounded-xl border border-white/[0.08] bg-kib-raise font-mono text-kib-cyber shadow-soft">
-                    {s.step}
-                  </div>
-                  <p className="font-mono text-xs text-kib-cyber/80 mb-2">{s.icon} init</p>
-                  <h3 className="text-xl font-semibold text-kib-fg mb-3">{s.title}</h3>
-                  <p className="text-kib-muted">{s.body}</p>
+                <div key={s.step} className="relative rounded-2xl border border-white/[0.06] bg-kib-card/50 p-6 text-left">
+                  <span className="font-mono text-xs text-kib-cyber">{s.step}</span>
+                  <h3 className="text-lg font-semibold text-kib-fg mt-2 mb-2">{s.title}</h3>
+                  <p className="text-sm text-kib-muted leading-relaxed">{s.body}</p>
                 </div>
               ))}
             </div>
           </div>
         </div>
 
-        {/* Testimonials */}
-        <div className="py-20">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 className="text-center text-3xl font-bold text-kib-fg sm:text-4xl mb-14">Trusted by Smart Investors</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {[
-                {
-                  initials: 'S',
-                  name: 'Sarah Chen',
-                  role: 'Day Trader',
-                  quote:
-                    "\"KeepItBased changed how I size dips. The TSLA -18% week didn’t sneak past — alerts hit before I opened Twitter.\""
-                },
-                {
-                  initials: 'M',
-                  name: 'Mike Rodriguez',
-                  role: 'Long-term Investor',
-                  quote:
-                    "\"I can’t watch tape all day. This is the disciplined nudge layer I needed — no noise, just thresholds.\""
-                }
-              ].map((t) => (
-                <div key={t.name} className="rounded-2xl p-8 border border-kib-line bg-kib-card hover:border-kib-cyber/25 transition-colors">
-                  <div className="flex items-center mb-4">
-                    <div className="w-12 h-12 rounded-lg flex items-center justify-center font-mono font-bold text-kib-bg bg-gradient-to-br from-kib-cyber to-teal-600 mr-4">
-                      {t.initials}
-                    </div>
-                    <div>
-                      <p className="font-semibold text-kib-fg">{t.name}</p>
-                      <p className="text-sm font-mono text-kib-muted">{t.role}</p>
-                    </div>
-                  </div>
-                  <p className="text-slate-300 italic leading-relaxed">{t.quote}</p>
-                  <div className="flex text-robinhood-green mt-4 tracking-widest">★★★★★</div>
-                </div>
-              ))}
-            </div>
+        {/* Principles instead of fake reviews */}
+        <div className="py-16 sm:py-20 border-t border-kib-line bg-gradient-to-b from-kib-surface/40 to-transparent">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <h2 className="text-2xl sm:text-3xl font-bold text-kib-fg tracking-tight">What we optimize for</h2>
+            <p className="mt-6 text-kib-muted leading-relaxed">
+              Clear thresholds over hype. Traceable signals over black-box tips. Invite-only access so the product can stay
+              focused and supportable — we do not publish paid testimonials or user counts we have not earned yet.
+            </p>
+            <p className="mt-6 text-sm font-mono text-kib-muted/90">
+              Educational software · not a broker · not personalized investment advice
+            </p>
           </div>
         </div>
 
         {/* CTA */}
-        <div className="relative py-20 overflow-hidden border-t border-kib-cyber/20">
-          <div className="absolute inset-0 bg-gradient-to-br from-teal-900/40 via-kib-card to-kib-bg" />
-          <div className="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_30%_50%,rgba(34,211,238,0.2),transparent_55%)]" />
-          <div className="relative max-w-4xl mx-auto text-center px-4 sm:px-6 lg:px-8">
-            <h2 className="text-3xl font-bold text-kib-fg sm:text-4xl font-mono tracking-tight">execute_on_opportunity()</h2>
-            <p className="mt-6 text-lg text-kib-muted">
-              Join investors who refuse to chase green candles — access is by invitation.
+        <div className="relative py-20 overflow-hidden border-t border-kib-cyber/15">
+          <div className="absolute inset-0 bg-gradient-to-br from-teal-950/50 via-kib-card/80 to-kib-bg" />
+          <div className="absolute inset-0 opacity-50 bg-[radial-gradient(ellipse_80%_60% at 50% 0%,rgba(34,211,238,0.12),transparent_55%)]" />
+          <div className="relative max-w-3xl mx-auto text-center px-4 sm:px-6 lg:px-8">
+            <h2 className="text-2xl sm:text-3xl font-bold text-kib-fg font-mono tracking-tight">
+              Ready when your invite is
+            </h2>
+            <p className="mt-5 text-lg text-kib-muted leading-relaxed">
+              Same stack: charts, watchlist, dashboard agent, and notification controls — one account.
             </p>
-            <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-              <a
-                href="https://app.keepitbased.com/login"
-                className="btn-primary inline-block rounded-xl px-10 py-4 text-lg font-semibold"
+            <div className="mt-10 flex flex-col items-stretch gap-3 sm:flex-row sm:justify-center sm:items-center sm:gap-4">
+              <Link
+                to="/login"
+                className="btn-primary inline-block rounded-xl px-10 py-3.5 text-base font-semibold text-center"
               >
                 Sign in
-              </a>
-              <a
-                href="https://app.keepitbased.com/register"
-                className="btn-secondary inline-block rounded-xl px-10 py-4 text-lg font-semibold"
+              </Link>
+              <Link
+                to="/register"
+                className="btn-secondary inline-block rounded-xl px-10 py-3.5 text-base font-semibold text-center"
               >
                 Create account
-              </a>
+              </Link>
             </div>
-            <p className="mt-6 text-sm font-mono text-kib-muted">invite_only · contact your host for access</p>
+            <p className="mt-8 text-sm font-mono text-kib-muted">invite_only · ask your host for a code</p>
           </div>
         </div>
 
         {/* Footer */}
         <footer className="bg-kib-surface border-t border-kib-line py-12">
           <div className="mx-auto max-w-[1360px] px-4 sm:px-6 lg:px-8">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-              {[
-                {
-                  title: 'Product',
-                  links: [
-                    ['Charts', 'https://app.keepitbased.com/charts'],
-                    ['Dashboard', 'https://app.keepitbased.com/dashboard']
-                  ]
-                },
-                {
-                  title: 'Company',
-                  links: [
-                    ['About', '#'],
-                    ['Careers', '#']
-                  ]
-                },
-                {
-                  title: 'Support',
-                  links: [
-                    ['Help', '#'],
-                    ['Contact', '#']
-                  ]
-                },
-                {
-                  title: 'Legal',
-                  links: [
-                    ['Privacy', '#'],
-                    ['Terms', '#']
-                  ]
-                }
-              ].map((col) => (
-                <div key={col.title}>
-                  <h3 className="font-mono font-semibold text-kib-fg text-sm uppercase tracking-wider mb-4">{col.title}</h3>
-                  <ul className="space-y-2 text-sm text-kib-muted">
-                    {col.links.map(([label, href]) => (
-                      <li key={label}>
-                        <a href={href} className="hover:text-kib-cyber transition-colors">
-                          {label}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-8">
+              <div>
+                <p className="font-mono font-semibold text-kib-fg">KeepItBased</p>
+                <p className="mt-1 text-sm text-kib-muted max-w-md leading-relaxed">
+                  Stocks, crypto charts, watchlist opportunity engine, and dashboard AI — invite-only.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-x-8 gap-y-3 text-sm">
+                <Link to="/charts" className="text-kib-muted hover:text-kib-cyber transition-colors">
+                  Charts
+                </Link>
+                <Link to="/dashboard" className="text-kib-muted hover:text-kib-cyber transition-colors">
+                  Dashboard
+                </Link>
+                <Link to="/login" className="text-kib-muted hover:text-kib-cyber transition-colors">
+                  Sign in
+                </Link>
+                <Link to="/register" className="text-kib-muted hover:text-kib-cyber transition-colors">
+                  Register
+                </Link>
+              </div>
             </div>
-            <div className="border-t border-kib-line mt-12 pt-8 text-center font-mono text-xs text-kib-muted">
-              © {new Date().getFullYear()} KeepItBased · <span className="text-robinhood-green">online</span> · never_miss_a_dip
+            <div className="border-t border-kib-line mt-10 pt-8 text-center font-mono text-xs text-kib-muted">
+              © {new Date().getFullYear()} KeepItBased ·{' '}
+              <span className="text-robinhood-green/90">signal_discipline</span>
             </div>
           </div>
         </footer>

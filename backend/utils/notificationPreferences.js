@@ -27,7 +27,8 @@ function mergeNotificationPreferences(raw) {
     email: p.email !== false,
     push: p.push !== false,
     opportunityToasts: p.opportunityToasts !== false,
-    researchDigestEmail: p.researchDigestEmail === true,
+    /** Opt-out: unset defaults to on (fusion gate applies when enabled). */
+    researchDigestEmail: p.researchDigestEmail !== false,
     researchMaxEmailsPerDay: clampInt(p.researchMaxEmailsPerDay, 1, 20, 5),
     researchQuietHoursLocal,
     timezone:
@@ -51,14 +52,14 @@ function mergeNotificationPreferences(raw) {
       : 'all',
 
     /**
-     * Opportunity **email** tier (plain + dip-insight). Default `overreaction_only` = no inbox mail for
-     * small `on_sale`-only signals. `capitulation_only` = major long-term tier only.
+     * Opportunity **email** tier (plain + dip-insight). Default `all` = mail for every qualifying tier.
+     * `capitulation_only` = major long-term tier only.
      */
     opportunityEmailNotifyLevel: ['all', 'overreaction_only', 'capitulation_only'].includes(
       p.opportunityEmailNotifyLevel
     )
       ? p.opportunityEmailNotifyLevel
-      : 'overreaction_only',
+      : 'all',
 
     /** When true (default), skip opportunity emails during researchQuietHoursLocal in prefs.timezone. */
     opportunityRespectQuietHours: p.opportunityRespectQuietHours !== false,
@@ -69,10 +70,8 @@ function mergeNotificationPreferences(raw) {
      */
     opportunityStockMarketHoursOnly: p.opportunityStockMarketHoursOnly !== false,
 
-    /**
-     * Daily batched email: Grok overview of Main watchlist + suggested names (requires server ENABLE_*).
-     */
-    dailyWatchlistDigestEmail: p.dailyWatchlistDigestEmail === true
+    /** Daily summary email — opt-out; unset defaults to on (host ENABLE_* + cron still required to send). */
+    dailyWatchlistDigestEmail: p.dailyWatchlistDigestEmail !== false
   };
 }
 

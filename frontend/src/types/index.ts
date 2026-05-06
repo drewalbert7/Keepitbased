@@ -12,7 +12,7 @@ export interface User {
     push: boolean;
     /** In-app toast when deterministic opportunity signals fire (Socket `opportunitySignal`). Default true. */
     opportunityToasts?: boolean;
-    /** §11 fused research+dip digest emails (Phase D). Default false. */
+    /** §11 fused research+dip digest emails (Phase D). Default on unless opted out. */
     researchDigestEmail?: boolean;
     researchMaxEmailsPerDay?: number;
     researchQuietHoursLocal?: { startHour: number; endHour: number };
@@ -26,12 +26,12 @@ export interface User {
     /** In-app toasts: `overreaction_only` skips on_sale-only (still in Signals). */
     opportunityNotifyLevel?: 'all' | 'overreaction_only';
     /**
-     * Opportunity **emails** only. Default `overreaction_only` (no email for on_sale-only).
+     * Opportunity **emails** only. Default `all`; use `overreaction_only` to skip smallest tier in inbox.
      * `capitulation_only` = major long-term tier only.
      */
     opportunityEmailNotifyLevel?: 'all' | 'overreaction_only' | 'capitulation_only';
 
-    /** Daily batched Grok email (server flag + Python Grok). */
+    /** Daily batched Grok email (server flag + Python Grok). Default on unless opted out. */
     dailyWatchlistDigestEmail?: boolean;
     /** When true, skip opportunity emails during quiet hours (not toasts). Default true. */
     opportunityRespectQuietHours?: boolean;
