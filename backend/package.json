@@ -9,6 +9,7 @@
     "test": "jest",
     "test:charts": "node scripts/chartRegressionCheck.js",
     "email:test-opportunity": "node scripts/sendTestOpportunityEmail.js",
+    "digest:run-once": "node scripts/runDailyWatchlistDigestOnce.js",
     "migrate:supabase-chat": "node scripts/applySupabaseChatMigration.js",
     "setup:supabase-chat": "node scripts/setupSupabaseChat.js"
   },

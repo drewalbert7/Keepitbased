@@ -38,10 +38,7 @@ async function runInitializeDatabase() {
     opportunityEmail: true,
     opportunityNotifyLevel: 'all',
     opportunityEmailNotifyLevel: 'all',
-    opportunityRespectQuietHours: true,
     opportunityStockMarketHoursOnly: true,
-    researchQuietHoursLocal: { startHour: 22, endHour: 7 },
-    timezone: 'UTC',
     dipInsightEmail: true,
     researchDigestEmail: true,
     dailyWatchlistDigestEmail: true,
@@ -314,10 +311,11 @@ async function runInitializeDatabase() {
       WHERE username IS NOT NULL;
     `);
 
-    await client.query(
-      `ALTER TABLE users ALTER COLUMN notification_preferences SET DEFAULT $1::jsonb`,
-      [defaultNotificationPrefsJson]
-    );
+    /* DDL DEFAULT cannot reliably use bind params with some PgBouncer / pg configurations (08P01). */
+    const escPrefs = defaultNotificationPrefsJson.replace(/'/g, "''");
+    await client.query(`
+      ALTER TABLE users ALTER COLUMN notification_preferences SET DEFAULT '${escPrefs}'::jsonb
+    `);
 
     logger.info('Database initialized successfully');
     

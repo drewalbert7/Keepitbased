@@ -21,6 +21,7 @@ export type PublicHealthConfig = {
   opportunityAtrMinPctOfPrice?: number;
   dailyWatchlistDigestEnabled?: boolean;
   dailyWatchlistDigestCron?: string;
+  smtpConfigured?: boolean;
   marketDataKeyPresent?: boolean;
 };
 

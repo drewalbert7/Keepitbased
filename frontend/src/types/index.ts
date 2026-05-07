@@ -15,8 +15,6 @@ export interface User {
     /** §11 fused research+dip digest emails (Phase D). Default on unless opted out. */
     researchDigestEmail?: boolean;
     researchMaxEmailsPerDay?: number;
-    researchQuietHoursLocal?: { startHour: number; endHour: number };
-    timezone?: string;
     /** Requires backend ENABLE_DIP_INSIGHT_EMAIL; Grok dip briefing vs plain opportunity email. */
     dipInsightEmail?: boolean;
     /** Caps suggested tranche % in dip briefing emails (1–50). */
@@ -33,8 +31,6 @@ export interface User {
 
     /** Daily batched Grok email (server flag + Python Grok). Default on unless opted out. */
     dailyWatchlistDigestEmail?: boolean;
-    /** When true, skip opportunity emails during quiet hours (not toasts). Default true. */
-    opportunityRespectQuietHours?: boolean;
     /**
      * When true (default), US stock opportunity toasts/emails only during regular session. Crypto is always 24/7.
      */

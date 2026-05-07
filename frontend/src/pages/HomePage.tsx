@@ -102,7 +102,7 @@ const HomePage: React.FC = () => {
                     </Link>
                   </div>
                   <p className="mt-5 text-sm text-kib-muted/90 leading-relaxed">
-                    Educational tooling only — not investment advice. You control email, toasts, tiers, and quiet hours in
+                    Educational tooling only — not investment advice. You control email, toasts, and tiers in
                     Profile.
                   </p>
                 </div>
@@ -178,7 +178,7 @@ const HomePage: React.FC = () => {
                 },
                 {
                   title: 'Notifications you own',
-                  body: 'Email and in-app toasts, separate tiers for inbox vs toasts, quiet hours, optional daily briefing — all in Profile.'
+                  body: 'Email and in-app toasts, separate tiers for inbox vs toasts, optional daily briefing — all in Profile.'
                 }
               ].map((item) => (
                 <div key={item.title} className="text-center md:text-left">
@@ -291,7 +291,7 @@ const HomePage: React.FC = () => {
                   </li>
                   <li className="flex gap-3">
                     <span className="font-mono text-robinhood-green shrink-0">✓</span>
-                    Quiet hours + timezone; optional US regular session only for stocks (crypto unaffected).
+                    Optional US regular session only for stocks (crypto unaffected).
                   </li>
                   <li className="flex gap-3">
                     <span className="font-mono text-robinhood-green shrink-0">✓</span>

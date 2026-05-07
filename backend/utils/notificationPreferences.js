@@ -4,22 +4,15 @@
  * §11 research+dip prefs:
  * - researchDigestEmail: when true with dipInsightEmail, Grok dip email requires ≥1 `research_artifacts` row (lookback RESEARCH_FUSION_LOOKBACK_HOURS); else plain opportunity email
  * - researchMaxEmailsPerDay: cap for fused digests
- * - researchQuietHoursLocal: { startHour, endHour } local clock 0–23, overnight supported (start > end)
- * - timezone: IANA tz for quiet hours (fallback UTC)
+ *
+ * Legacy keys `researchQuietHoursLocal`, `timezone`, `opportunityRespectQuietHours` are stripped — we no longer gate sends on quiet hours.
  */
 function mergeNotificationPreferences(raw) {
   const p =
-    raw != null && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
-
-  const researchQuietHoursLocal =
-    p.researchQuietHoursLocal &&
-    typeof p.researchQuietHoursLocal === 'object' &&
-    !Array.isArray(p.researchQuietHoursLocal)
-      ? {
-          startHour: clampHour(p.researchQuietHoursLocal.startHour),
-          endHour: clampHour(p.researchQuietHoursLocal.endHour)
-        }
-      : { startHour: 22, endHour: 7 };
+    raw != null && typeof raw === 'object' && !Array.isArray(raw) ? { ...raw } : {};
+  delete p.opportunityRespectQuietHours;
+  delete p.researchQuietHoursLocal;
+  delete p.timezone;
 
   const enableDipInsight = process.env.ENABLE_DIP_INSIGHT_EMAIL === 'true';
 
@@ -30,11 +23,6 @@ function mergeNotificationPreferences(raw) {
     /** Opt-out: unset defaults to on (fusion gate applies when enabled). */
     researchDigestEmail: p.researchDigestEmail !== false,
     researchMaxEmailsPerDay: clampInt(p.researchMaxEmailsPerDay, 1, 20, 5),
-    researchQuietHoursLocal,
-    timezone:
-      typeof p.timezone === 'string' && p.timezone.trim().length > 0
-        ? p.timezone.trim()
-        : 'UTC',
     /** Grok dip briefing email when ENABLE_DIP_INSIGHT_EMAIL=true; default on under flag. */
     dipInsightEmail: enableDipInsight ? p.dipInsightEmail !== false : false,
     /** Matches dashboard agent slider default; used to cap suggestedTranchePct server-side. */
@@ -61,24 +49,15 @@ function mergeNotificationPreferences(raw) {
       ? p.opportunityEmailNotifyLevel
       : 'all',
 
-    /** When true (default), skip opportunity emails during researchQuietHoursLocal in prefs.timezone. */
-    opportunityRespectQuietHours: p.opportunityRespectQuietHours !== false,
-
     /**
      * When true (default), stock opportunity toasts/emails only during US regular session (not crypto).
-     * Set false to allow stock notifications 24/7 (still subject to quiet hours for email).
+     * Set false to allow stock notifications 24/7.
      */
     opportunityStockMarketHoursOnly: p.opportunityStockMarketHoursOnly !== false,
 
     /** Daily summary email — opt-out; unset defaults to on (host ENABLE_* + cron still required to send). */
     dailyWatchlistDigestEmail: p.dailyWatchlistDigestEmail !== false
   };
-}
-
-function clampHour(v) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return 0;
-  return Math.min(23, Math.max(0, Math.round(n)));
 }
 
 function clampInt(v, lo, hi, fallback) {

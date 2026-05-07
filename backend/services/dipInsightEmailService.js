@@ -127,6 +127,26 @@ async function sendDipInsightForOpportunity(params) {
     );
   }
 
+  /** Rich HTML was skipped by policy — still send the same plain opportunity mail as the non–dip-insight path */
+  let plainOpportunityEmailSent = false;
+  if (!emailSent) {
+    const oppPayload = {
+      kind: 'opportunity_signal',
+      symbol,
+      assetType,
+      flags: evalResult.flags,
+      reasons: evalResult.reasons,
+      vsBaselinePct: evalResult.vsBaselinePct,
+      price: priceData.price,
+      timestamp: dipContext.timestamp
+    };
+    await emailService.sendOpportunitySignalEmail(email, oppPayload);
+    plainOpportunityEmailSent = true;
+    logger.info(
+      `Plain opportunity email sent (dip insight rich email suppressed) user=${userId} ${assetType}:${symbol}`
+    );
+  }
+
   const assessment = {
     schemaVersion: 'ultimate_dip_buyer_v1',
     verdict: insight.verdict ?? null,
@@ -141,7 +161,9 @@ async function sendDipInsightForOpportunity(params) {
     runMetadata,
     citations: citationUrls,
     emailSent,
-    emailSuppressReason: emailSent ? null : suppressReason
+    plainOpportunityEmailSent,
+    emailSuppressReason:
+      emailSent || plainOpportunityEmailSent ? null : suppressReason
   };
 
   if (signalId) {

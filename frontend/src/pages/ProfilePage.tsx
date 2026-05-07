@@ -3,32 +3,11 @@ import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 import { authService } from '../services/authService';
+import { fetchPublicHealthConfig, type PublicHealthConfig } from '../services/healthConfigService';
 import type { User } from '../types';
-
-const COMMON_TIMEZONES = [
-  'UTC',
-  'America/New_York',
-  'America/Chicago',
-  'America/Denver',
-  'America/Los_Angeles',
-  'America/Phoenix',
-  'Europe/London',
-  'Europe/Paris',
-  'Asia/Tokyo',
-  'Asia/Singapore',
-  'Australia/Sydney'
-];
 
 type OpportunityToastTier = 'all' | 'overreaction_only';
 type OpportunityEmailTier = 'all' | 'overreaction_only' | 'capitulation_only';
-
-function defaultTimezone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
-  } catch {
-    return 'America/New_York';
-  }
-}
 
 const ProfilePage: React.FC = () => {
   const { user, updateUser } = useAuth();
@@ -48,17 +27,15 @@ const ProfilePage: React.FC = () => {
     opportunityEmail: true,
     opportunityNotifyLevel: 'all' as OpportunityToastTier,
     opportunityEmailNotifyLevel: 'all' as OpportunityEmailTier,
-    opportunityRespectQuietHours: true,
     opportunityStockMarketHoursOnly: true,
-    quietStartHour: 22,
-    quietEndHour: 7,
-    timezone: defaultTimezone(),
     dipInsightEmail: true,
     researchDigestEmail: true,
     dailyWatchlistDigestEmail: true,
     agentMaxPositionSizePct: 10
   });
   const [notifSaving, setNotifSaving] = useState(false);
+
+  const [hostNotifCfg, setHostNotifCfg] = useState<PublicHealthConfig | null>(null);
 
   const [username, setUsername] = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
@@ -89,6 +66,17 @@ const ProfilePage: React.FC = () => {
   }, [user?.id]);
 
   useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const c = await fetchPublicHealthConfig();
+      if (!cancelled) setHostNotifCfg(c);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!user) return;
     const n = (user.notificationPreferences ?? {}) as Partial<
       NonNullable<User['notificationPreferences']>
@@ -107,19 +95,7 @@ const ProfilePage: React.FC = () => {
       opportunityNotifyLevel: n.opportunityNotifyLevel === 'overreaction_only' ? 'overreaction_only' : 'all',
       opportunityEmailNotifyLevel:
         enl === 'all' || enl === 'overreaction_only' || enl === 'capitulation_only' ? enl : 'all',
-      opportunityRespectQuietHours: n.opportunityRespectQuietHours !== false,
       opportunityStockMarketHoursOnly: n.opportunityStockMarketHoursOnly !== false,
-      quietStartHour:
-        typeof n.researchQuietHoursLocal?.startHour === 'number' &&
-        Number.isFinite(n.researchQuietHoursLocal.startHour)
-          ? Math.min(23, Math.max(0, Math.round(n.researchQuietHoursLocal.startHour)))
-          : 22,
-      quietEndHour:
-        typeof n.researchQuietHoursLocal?.endHour === 'number' && Number.isFinite(n.researchQuietHoursLocal.endHour)
-          ? Math.min(23, Math.max(0, Math.round(n.researchQuietHoursLocal.endHour)))
-          : 7,
-      timezone:
-        typeof n.timezone === 'string' && n.timezone.trim().length > 0 ? n.timezone.trim() : defaultTimezone(),
       dipInsightEmail: n.dipInsightEmail !== false,
       researchDigestEmail: n.researchDigestEmail !== false,
       dailyWatchlistDigestEmail: n.dailyWatchlistDigestEmail !== false,
@@ -206,23 +182,20 @@ const ProfilePage: React.FC = () => {
     if (!user) return;
     setNotifSaving(true);
     try {
-      const base = (user.notificationPreferences || {}) as NonNullable<User['notificationPreferences']>;
+      const base = { ...(user.notificationPreferences || {}) } as Record<string, unknown>;
+      delete base.opportunityRespectQuietHours;
+      delete base.researchQuietHoursLocal;
+      delete base.timezone;
       const updated = await authService.updateProfile({
         notificationPreferences: {
-          ...base,
+          ...(base as NonNullable<User['notificationPreferences']>),
           email: notifPrefs.email,
           push: notifPrefs.push,
           opportunityToasts: notifPrefs.opportunityToasts,
           opportunityEmail: notifPrefs.opportunityEmail,
           opportunityNotifyLevel: notifPrefs.opportunityNotifyLevel,
           opportunityEmailNotifyLevel: notifPrefs.opportunityEmailNotifyLevel,
-          opportunityRespectQuietHours: notifPrefs.opportunityRespectQuietHours,
           opportunityStockMarketHoursOnly: notifPrefs.opportunityStockMarketHoursOnly,
-          researchQuietHoursLocal: {
-            startHour: notifPrefs.quietStartHour,
-            endHour: notifPrefs.quietEndHour
-          },
-          timezone: notifPrefs.timezone.trim(),
           dipInsightEmail: notifPrefs.dipInsightEmail,
           researchDigestEmail: notifPrefs.researchDigestEmail,
           dailyWatchlistDigestEmail: notifPrefs.dailyWatchlistDigestEmail,
@@ -392,8 +365,8 @@ const ProfilePage: React.FC = () => {
         <div className="card">
           <h2 className="text-xl font-semibold text-kib-fg mb-1">Notifications</h2>
           <p className="text-sm text-kib-muted mb-6">
-            Control channels, dip-alert email behavior, quiet hours, and optional Grok briefings. Opportunity rows are
-            always recorded for review.
+            Control channels, dip-alert tiers, and optional Grok briefings. Opportunity rows are always recorded for
+            review.
           </p>
 
           <div className="space-y-8">
@@ -514,83 +487,6 @@ const ProfilePage: React.FC = () => {
                     US stocks: only notify during regular session (Mon–Fri 9:30–16:00 ET). Crypto unaffected.
                   </span>
                 </label>
-
-                <label className="flex cursor-pointer items-start gap-3">
-                  <input
-                    type="checkbox"
-                    checked={notifPrefs.opportunityRespectQuietHours}
-                    onChange={(e) =>
-                      setNotifPrefs((p) => ({
-                        ...p,
-                        opportunityRespectQuietHours: e.target.checked
-                      }))
-                    }
-                    className="mt-0.5 rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber"
-                  />
-                  <span className="text-kib-fg">Pause dip emails during quiet hours (below)</span>
-                </label>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:items-end">
-                  <div>
-                    <label htmlFor="prof-qh-start" className="mb-1 block text-xs font-medium text-slate-300">
-                      Quiet hours start (local hour)
-                    </label>
-                    <select
-                      id="prof-qh-start"
-                      value={notifPrefs.quietStartHour}
-                      onChange={(e) =>
-                        setNotifPrefs((p) => ({ ...p, quietStartHour: Number(e.target.value) }))
-                      }
-                      className="input-field w-full text-sm"
-                    >
-                      {Array.from({ length: 24 }, (_, i) => (
-                        <option key={i} value={i}>
-                          {i}:00
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="prof-qh-end" className="mb-1 block text-xs font-medium text-slate-300">
-                      Quiet hours end (local hour)
-                    </label>
-                    <select
-                      id="prof-qh-end"
-                      value={notifPrefs.quietEndHour}
-                      onChange={(e) =>
-                        setNotifPrefs((p) => ({ ...p, quietEndHour: Number(e.target.value) }))
-                      }
-                      className="input-field w-full text-sm"
-                    >
-                      {Array.from({ length: 24 }, (_, i) => (
-                        <option key={i} value={i}>
-                          {i}:00
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="prof-tz" className="mb-1 block text-xs font-medium text-slate-300">
-                      Time zone
-                    </label>
-                    <input
-                      id="prof-tz"
-                      list="kib-profile-tz-list"
-                      value={notifPrefs.timezone}
-                      onChange={(e) => setNotifPrefs((p) => ({ ...p, timezone: e.target.value }))}
-                      placeholder="America/New_York"
-                      className="input-field w-full font-mono text-sm"
-                    />
-                    <datalist id="kib-profile-tz-list">
-                      {COMMON_TIMEZONES.map((tz) => (
-                        <option key={tz} value={tz} />
-                      ))}
-                    </datalist>
-                  </div>
-                </div>
-                <p className="text-[11px] leading-relaxed text-kib-muted">
-                  Overnight windows work (e.g. 22:00–07:00). Uses IANA time zones.
-                </p>
               </div>
             </section>
 
@@ -641,6 +537,37 @@ const ProfilePage: React.FC = () => {
                     Daily market briefing (watchlist overview and ideas; host must schedule it)
                   </span>
                 </label>
+                {hostNotifCfg &&
+                  (!hostNotifCfg.dailyWatchlistDigestEnabled || hostNotifCfg.smtpConfigured === false) &&
+                  notifPrefs.email &&
+                  notifPrefs.dailyWatchlistDigestEmail && (
+                    <div className="rounded-lg border border-amber-500/35 bg-amber-950/25 px-3 py-2 text-xs leading-relaxed text-amber-100/95">
+                      {!hostNotifCfg.dailyWatchlistDigestEnabled && (
+                        <p className="m-0">
+                          The daily digest job is{' '}
+                          <strong className="font-semibold text-amber-50">off on this server</strong>
+                          {hostNotifCfg.dailyWatchlistDigestCron != null &&
+                          String(hostNotifCfg.dailyWatchlistDigestCron).length > 0
+                            ? ` (schedule would be ${hostNotifCfg.dailyWatchlistDigestCron}, UTC)`
+                            : ''}
+                          . On the API host, remove{' '}
+                          <code className="rounded bg-black/35 px-1 py-0.5 font-mono text-[11px]">
+                            ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL=false
+                          </code>{' '}
+                          and ensure{' '}
+                          <code className="font-mono text-[11px]">DISABLE_DAILY_WATCHLIST_DIGEST_EMAIL</code>{' '}
+                          is not true, then restart (e.g. <code className="font-mono text-[11px]">pm2 reload</code>
+                          ). Digest is on by default once you deploy the latest API.
+                        </p>
+                      )}
+                      {hostNotifCfg.dailyWatchlistDigestEnabled &&
+                        hostNotifCfg.smtpConfigured === false && (
+                          <p className="m-0 mt-2 first:mt-0">
+                            SMTP is not configured on the host, so Grok summaries cannot be delivered by email.
+                          </p>
+                        )}
+                    </div>
+                  )}
               </div>
               <div className="mt-5 max-w-xs">
                 <label className="mb-1 block text-xs font-medium text-slate-300">

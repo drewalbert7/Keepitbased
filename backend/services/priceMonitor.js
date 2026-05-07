@@ -11,10 +11,7 @@ const {
   mergeNotificationPreferences,
   passesOpportunityEmailTierFilter
 } = require('../utils/notificationPreferences');
-const {
-  allowsSendDuringQuietHours,
-  isUsStockRegularTradingHours
-} = require('../utils/researchAlertGates');
+const { isUsStockRegularTradingHours } = require('../utils/researchAlertGates');
 const {
   recordOpportunitySignal,
   patchOpportunitySignalAiAssessment
@@ -593,17 +590,12 @@ class PriceMonitor {
         this.io.to(`user_${row.user_id}`).emit('opportunitySignal', payload);
       }
 
-      const quietBlocksOppEmail =
-        prefs.opportunityRespectQuietHours !== false &&
-        !allowsSendDuringQuietHours(prefs, new Date()).allowed;
-
       const wantOppEmail =
         passesEmailOutbound &&
         prefs.email !== false &&
         prefs.opportunityEmail !== false &&
         row.email &&
-        emailService.isConfigured() &&
-        !quietBlocksOppEmail;
+        emailService.isConfigured();
 
       if (wantOppEmail) {
         const useInsight =
@@ -646,17 +638,6 @@ class PriceMonitor {
         } else {
           await emailService.sendOpportunitySignalEmail(row.email, payload);
         }
-      } else if (
-        passesEmailOutbound &&
-        prefs.email !== false &&
-        prefs.opportunityEmail !== false &&
-        row.email &&
-        emailService.isConfigured() &&
-        quietBlocksOppEmail
-      ) {
-        logger.info(
-          `Opportunity email suppressed (quiet hours) user ${row.user_id} ${assetType}:${symbol}`
-        );
       } else if (
         passesEmailTier &&
         prefs.email !== false &&

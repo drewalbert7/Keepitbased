@@ -182,7 +182,7 @@ cron.schedule('*/1 * * * *', async () => {
 // §11 Phase B — Polygon news → research_artifacts (non-blocking; separate schedule from price polling)
 scheduleResearchIngestion();
 
-// Daily Grok watchlist digest (opt-in per user + ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL)
+// Daily Grok watchlist digest (Profile opt-out per user; ENABLE_* defaults on, see config)
 scheduleDailyWatchlistDigest(alertService);
 
 // Error handling

@@ -8,12 +8,16 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: 3001,
-        PYTHON_SERVICE_URL: 'http://127.0.0.1:5001'
+        PYTHON_SERVICE_URL: 'http://127.0.0.1:5001',
+        // PM2 vars are applied before backend/.env; dotenv does not overwrite existing keys.
+        // This wins over a stale ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL=false left in .env.
+        ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL: 'true'
       },
       env_production: {
         NODE_ENV: 'production',
         PORT: 3001,
-        PYTHON_SERVICE_URL: 'http://127.0.0.1:5001'
+        PYTHON_SERVICE_URL: 'http://127.0.0.1:5001',
+        ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL: 'true'
       },
       error_file: './logs/api-err.log',
       out_file: './logs/api-out.log',

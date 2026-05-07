@@ -89,7 +89,7 @@ export const OpportunityPolicyPanel: React.FC<{
             <Link to="/opportunity-signals" className="text-kib-cyber underline-offset-2 hover:underline">
               Signals
             </Link>
-            . Toasts, email tiers, quiet hours, and Grok opt-ins live in{' '}
+            . Toasts, email tiers, and Grok opt-ins live in{' '}
             <Link to="/profile" className="text-kib-cyber underline-offset-2 hover:underline">
               Profile → Notifications
             </Link>

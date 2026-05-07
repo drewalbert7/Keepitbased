@@ -180,9 +180,14 @@ const config = {
 
   /**
    * Scheduled daily email: Grok analysis of Main watchlist + suggested tickers (Python service + GROK_*).
-   * Users opt in via Profile `dailyWatchlistDigestEmail`; operator sets ENABLE_* on host.
+   * Users opt out via Profile `dailyWatchlistDigestEmail`. **Default on** for self-hosted installs;
+   * set `ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL=false` to skip scheduling, or `DISABLE_DAILY_WATCHLIST_DIGEST_EMAIL=true` as a kill switch.
    */
-  ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL: process.env.ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL === 'true',
+  ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL: (() => {
+    const v = (process.env.ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL || '').trim().toLowerCase();
+    if (v === 'false' || v === '0' || v === 'no' || v === 'off') return false;
+    return true;
+  })(),
   DISABLE_DAILY_WATCHLIST_DIGEST_EMAIL: process.env.DISABLE_DAILY_WATCHLIST_DIGEST_EMAIL === 'true',
   /** Cron for digest send (default 07:00 UTC daily). */
   DAILY_WATCHLIST_DIGEST_CRON: process.env.DAILY_WATCHLIST_DIGEST_CRON || '0 7 * * *',

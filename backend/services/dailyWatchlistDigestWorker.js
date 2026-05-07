@@ -6,7 +6,6 @@ const db = require('../models/database');
 const emailService = require('./emailService');
 const { mergeNotificationPreferences } = require('../utils/notificationPreferences');
 const { buildAgentWatchlistContext } = require('./agentWatchlistContext');
-const { allowsSendDuringQuietHours } = require('../utils/researchAlertGates');
 const { getResearchArtifactsForUser } = require('./researchArtifactsReader');
 
 let running = false;
@@ -43,20 +42,15 @@ async function runDailyWatchlistDigestTick(alertService) {
       `SELECT id, email, notification_preferences FROM users WHERE email IS NOT NULL AND email != ''`
     );
     const rows = result.rows || [];
-    const now = new Date();
 
     for (const row of rows) {
       const prefs = mergeNotificationPreferences(row.notification_preferences);
-      if (prefs.email !== true) {
+      // mergeNotificationPreferences uses opt-out semantics (undefined → on)
+      if (prefs.email === false) {
         skipped += 1;
         continue;
       }
-      if (prefs.dailyWatchlistDigestEmail !== true) {
-        skipped += 1;
-        continue;
-      }
-      const qh = allowsSendDuringQuietHours(prefs, now);
-      if (!qh.allowed) {
+      if (prefs.dailyWatchlistDigestEmail === false) {
         skipped += 1;
         continue;
       }
@@ -160,7 +154,9 @@ async function runDailyWatchlistDigestTick(alertService) {
  */
 function scheduleDailyWatchlistDigest(alertService, scheduleExpr) {
   if (!config.ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL) {
-    logger.info('Daily watchlist digest cron not scheduled (ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL is not true)');
+    logger.info(
+      'Daily watchlist digest cron not scheduled (ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL=false or off)'
+    );
     return;
   }
   if (config.DISABLE_DAILY_WATCHLIST_DIGEST_EMAIL) {
