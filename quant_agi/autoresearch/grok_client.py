@@ -115,3 +115,32 @@ def grok_json_object(
 
 def effective_grok_api_key(configured: Optional[str]) -> str:
     return (configured or os.environ.get("XAI_API_KEY") or os.environ.get("GROK_API_KEY") or "").strip()
+
+
+def grok_chat_text(
+    *,
+    api_key: str,
+    base_url: str,
+    model: str,
+    messages: list[dict[str, str]],
+    timeout_sec: float,
+    temperature: float = 0.35,
+) -> Optional[str]:
+    """
+    Plain conversational reply (chat completions). Used by coding-advisor UI.
+    `messages` must be OpenAI-style: [{"role":"system"|"user"|"assistant","content":"..."}, ...]
+    """
+    bu = base_url.rstrip("/")
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    body: Dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": 4096,
+    }
+    try:
+        data = _post_json(f"{bu}/chat/completions", body, headers, timeout_sec)
+        text = extract_chat_text(data)
+        return text.strip() if text else None
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        return None

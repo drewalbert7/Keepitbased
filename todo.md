@@ -444,6 +444,34 @@ Most of the original queue **shipped** (AgentOutput contract, LangGraph gateway,
 4. Define notification transport contract (in-app first, then optional email/push).
 5. Draft initial golden prompt set (normal market, high-volatility, news-shock scenarios).
 
+## 11) Quant AGI Terminal - Session Handoff (2026-05-07)
+
+Completed this session:
+
+1. Added J.A.R.V.I.S.-style Grok coding chat panel above code updates.
+2. Added `POST /v1/coding-chat` integration and production-safe Quant base URL resolution.
+3. Replaced market tape with Quant AGI stock suggestions and watchlist add action.
+4. Added broad-universe rank endpoint: `GET /diag/market-universe-rank`.
+5. Added Day 1-2 controls:
+   - liquidity gates (`min_price`, `min_avg_dollar_vol_20d`)
+   - accepted/excluded stats + exclusion reasons
+   - canonical scorecard endpoint: `GET /diag/scorecard`
+6. Updated terminal UI with:
+   - gate metadata
+   - ADV20 display
+   - scorecard panel in metrics
+
+Next steps for next session:
+
+1. Add UI controls (sliders/inputs) for `min_price` and `min_avg_dollar_vol_20d` and persist to URL/local storage.
+2. Expand universe from static 60 symbols to dynamic liquid-universe ingestion (with sector labels).
+3. Add transaction-cost proxy into rank score (spread/slippage estimate) and expose in `why`.
+4. Add position sizing fields (`target_weight`, `risk_budget`, `max_loss`) to rank payload.
+5. Add regression tests:
+   - rank endpoint schema + gate behavior
+   - scorecard endpoint window/cache behavior
+6. Add operational alert if gate excludes >80% of universe for sustained windows.
+
 ## 8) Commands
 
 ### Development

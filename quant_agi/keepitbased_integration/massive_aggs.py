@@ -115,6 +115,7 @@ def fetch_daily_aggs(
     highs: list[float] = []
     lows: list[float] = []
     closes: list[float] = []
+    volumes: list[float] = []
     for r in rows_raw:
         if not isinstance(r, dict):
             continue
@@ -123,6 +124,7 @@ def fetch_daily_aggs(
             high_v = float(r["h"])
             low_v = float(r["l"])
             close_v = float(r["c"])
+            vol_v = float(r.get("v", 0.0))
         except (KeyError, TypeError, ValueError):
             continue
         if min(high_v, low_v, close_v) <= 0 or high_v < low_v:
@@ -131,9 +133,13 @@ def fetch_daily_aggs(
         highs.append(high_v)
         lows.append(low_v)
         closes.append(close_v)
+        volumes.append(max(vol_v, 0.0))
 
     if len(closes) < 14:
         return None
 
-    df = pd.DataFrame({"high": highs, "low": lows, "close": closes}, index=pd.DatetimeIndex(idx, name="date"))
+    df = pd.DataFrame(
+        {"high": highs, "low": lows, "close": closes, "volume": volumes},
+        index=pd.DatetimeIndex(idx, name="date"),
+    )
     return df[~df.index.duplicated(keep="last")]

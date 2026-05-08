@@ -41,13 +41,33 @@ server {
     root /home/dstrad/keepitbased/frontend/build;
     index index.html;
     
-    # Redirect API and WebSocket to app subdomain
+    # Redirect application routes to app subdomain so auth calls stay same-origin.
+    location ~ ^/(login|register|dashboard|alerts|portfolio|profile|quant-agi|charts)(/|$) {
+        return 302 https://app.keepitbased.com$request_uri;
+    }
+
+    # API proxy (same backend as app subdomain) to avoid cross-origin redirect issues on cached root pages.
     location /api/ {
-        return 301 https://app.keepitbased.com$request_uri;
+        proxy_pass http://127.0.0.1:3001/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
     }
     
     location /socket.io/ {
-        return 301 https://app.keepitbased.com$request_uri;
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
     
     # Static assets with long cache

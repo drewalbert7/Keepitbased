@@ -57,8 +57,9 @@ def synthesize_demo_ohlc(symbol: str, days: int = 1200, seed: int = 42) -> pd.Da
     closes = px * np.exp(log_r).astype(np.float64)
     highs = closes * rng.uniform(1.0, 1.035, len(closes))
     lows = closes * rng.uniform(0.966, 1.0, len(closes))
+    volumes = rng.lognormal(mean=13.0, sigma=0.55, size=len(closes))
     idx = pd.date_range(end=pd.Timestamp.utcnow().normalize(), periods=days, freq="D")
-    return pd.DataFrame({"high": highs, "low": lows, "close": closes}, index=idx)
+    return pd.DataFrame({"high": highs, "low": lows, "close": closes, "volume": volumes}, index=idx)
 
 
 class KeepItBasedDataFetcher:
@@ -82,6 +83,9 @@ class KeepItBasedDataFetcher:
         if wants_massive:
             if not refresh and poly_path.exists():
                 df = pd.read_parquet(poly_path)
+                if "volume" not in df.columns:
+                    df = df.copy()
+                    df["volume"] = np.nan
                 if len(df.index) >= 30:
                     self.last_history_source = "massive_cached"
                     return df
@@ -109,7 +113,11 @@ class KeepItBasedDataFetcher:
         sp = _synth_cache_path(sym_u)
         if not refresh and sp.exists():
             self.last_history_source = "synthetic_cached"
-            return pd.read_parquet(sp)
+            df = pd.read_parquet(sp)
+            if "volume" not in df.columns:
+                df = df.copy()
+                df["volume"] = np.nan
+            return df
 
         hist = synthesize_demo_ohlc(sym_u)
         hist.to_parquet(sp)

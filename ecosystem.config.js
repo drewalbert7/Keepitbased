@@ -59,6 +59,43 @@ module.exports = {
       restart_delay: 10000,
       max_restarts: 5,
       min_uptime: '30s'
+    },
+    {
+      name: 'quant-agi-api',
+      script: '.venv_test/bin/python',
+      args: 'main.py serve --host 0.0.0.0 --port 8844',
+      cwd: './quant_agi',
+      instances: 1,
+      exec_mode: 'fork',
+      env: {
+        NODE_ENV: 'production'
+      },
+      error_file: './logs/quant-agi-api-err.log',
+      out_file: './logs/quant-agi-api-out.log',
+      time: true,
+      watch: false,
+      autorestart: true,
+      max_restarts: 10,
+      min_uptime: '10s'
+    },
+    {
+      name: 'quant-agi-frontend',
+      script: 'npm',
+      args: 'start -- --port 3010',
+      cwd: './quant_agi/frontend',
+      interpreter: 'none',
+      instances: 1,
+      exec_mode: 'fork',
+      env: {
+        NODE_ENV: 'production'
+      },
+      error_file: './logs/quant-agi-frontend-err.log',
+      out_file: './logs/quant-agi-frontend-out.log',
+      time: true,
+      watch: false,
+      autorestart: true,
+      max_restarts: 10,
+      min_uptime: '10s'
     }
   ]
 };
