@@ -22,8 +22,10 @@ from keepitbased_integration.massive_aggs import effective_market_api_key
 from keepitbased_integration.quant_strategies import (
     PHOTONICS_CHOKEPOINT_UNIVERSE,
     photonics_chokepoint_scores,
+    serenity_market_cap_band_ok,
 )
 from keepitbased_integration.signal_enhancer import EnhancedAlertSignal, SignalEnhancer
+from keepitbased_integration.ticker_ref import fetch_ticker_reference
 
 _enhancer: SignalEnhancer | None = None
 _rank_cache_entries: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -272,15 +274,35 @@ def _rank_photonics_payload(
     min_adv: float,
     now: float,
 ) -> dict[str, Any]:
-    """AI optics / chokepoint hunter — rules v1 (OHLC+V + curated priors; no EDGAR in this cut)."""
+    """Serenity / AI photonics chokepoint hunter — reference market cap band + NLP proxies + OHLCV."""
     ranked: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
     excluded_counts: dict[str, int] = {
         "price_below_min": 0,
         "liquidity_below_min": 0,
         "insufficient_history": 0,
+        "market_cap_band": 0,
+        "inactive_reference": 0,
     }
     for sym in PHOTONICS_CHOKEPOINT_UNIVERSE:
+        ref = fetch_ticker_reference(sym, api_key=key, refresh=False) if key else None
+        if ref is not None and ref.get("active") is False:
+            excluded_counts["inactive_reference"] += 1
+            rejected.append({"symbol": sym, "reason": "inactive_reference"})
+            continue
+
+        mc: Optional[float] = None
+        mc_reason = "mc_unknown"
+        if ref:
+            raw_mc = ref.get("market_cap")
+            if isinstance(raw_mc, (int, float)) and math.isfinite(float(raw_mc)):
+                mc = float(raw_mc)
+                ok_band, mc_reason = serenity_market_cap_band_ok(mc)
+                if not ok_band:
+                    excluded_counts["market_cap_band"] += 1
+                    rejected.append({"symbol": sym, "reason": "market_cap_band", "detail": mc_reason, "market_cap": mc})
+                    continue
+
         hist = fb.load_history(sym, refresh=False, asset_type="stock")
         src = fb.last_history_source
         if ("volume" not in hist.columns or hist.volume.dropna().empty) and key:
@@ -291,7 +313,8 @@ def _rank_photonics_payload(
             rejected.append({"symbol": sym, "reason": "insufficient_history"})
             continue
 
-        choke, asym, catalyst, tech, composite = photonics_chokepoint_scores(hist, sym)
+        fac = photonics_chokepoint_scores(hist, sym, ref)
+        composite = float(fac["composite"])
         score_mu, momentum_pct, vol_pct, drawdown_pct = _rank_symbol(hist)
         last_close = float(hist.close.iloc[-1]) if len(hist.index) else None
         prev_close = float(hist.close.iloc[-2]) if len(hist.index) > 1 else None
@@ -316,14 +339,24 @@ def _rank_photonics_payload(
             else None
         )
 
+        th = ", ".join(fac.get("theme_hits") or []) or "none"
+        hh = ", ".join(fac.get("hyperscaler_hits") or []) or "none"
+        mc_line = (
+            f"Market cap USD {mc:,.0f} ({mc_reason})"
+            if isinstance(mc, (int, float)) and math.isfinite(mc)
+            else f"Market cap unknown ({mc_reason}) — enable Massive/Polygon key for filing detail"
+        )
         why = [
             (
-                f"Composite {composite:.1f}/100 (=0.4×chokepoint {choke:.0f} +0.3×asymmetry(52w) {asym:.0f} "
-                f"+0.2×volume-catalyst {catalyst:.0f} +0.1×technical {tech:.0f})"
+                f"Composite {composite:.1f}/100 = "
+                f"0.40×merged choke ({fac['chokepoint_merged']:.1f}; prior {fac['choke_prior']:.0f}+theme+hyperscale NLP) "
+                f"+ 0.30×52w asym {fac['asymmetry']:.0f}"
+                f" + 0.20×vol catalyst {fac['catalyst_volume']:.0f} + 0.10×technical {fac['technical_band']:.0f}"
             ),
-            f"Tape context: mom20 {momentum_pct:+.2f}%, DD60 {drawdown_pct:.2f}%",
-            "Rules v1 — add EDGAR/TAM NLP when wired; curated chokepoint priors only today.",
-            "live market feed" if src == "massive_live" else "fallback/synthetic feed",
+            f"Issuer NLP theme hits ({th}); hyperscaler / DC hits ({hh})",
+            mc_line,
+            f"Tape: mom20 {momentum_pct:+.2f}%, DD60 {drawdown_pct:.2f}% — "
+            f"{'live Massive' if src == 'massive_live' else 'cached/synthetic history'}",
         ]
 
         ranked.append(
@@ -333,10 +366,17 @@ def _rank_photonics_payload(
                 "score": composite,
                 "strategy_factors": {
                     "kind": "photonics_chokepoint",
-                    "chokepoint": round(choke, 2),
-                    "asymmetry": round(asym, 2),
-                    "catalyst_volume": round(catalyst, 2),
-                    "technical_band": round(tech, 2),
+                    "market_cap_usd": mc,
+                    "mc_band_status": mc_reason,
+                    "choke_prior": fac["choke_prior"],
+                    "chokepoint_merged": fac["chokepoint_merged"],
+                    "theme_nlp": fac["theme_nlp"],
+                    "hyperscaler_nlp": fac["hyperscaler_nlp"],
+                    "theme_hits": fac["theme_hits"],
+                    "hyperscaler_hits": fac["hyperscaler_hits"],
+                    "asymmetry": fac["asymmetry"],
+                    "catalyst_volume": fac["catalyst_volume"],
+                    "technical_band": fac["technical_band"],
                     "legacy_momentum_tier_score": round(score_mu, 4),
                 },
                 "last_close": last_close,
@@ -359,10 +399,11 @@ def _rank_photonics_payload(
     return {
         "ok": True,
         "strategy": "photonics_chokepoint",
-        "strategy_label": "AI photonics chokepoint hunter (rules v1)",
+        "strategy_label": "Serenity — AI photonics chokepoint hunter",
         "strategy_disclaimer": (
-            "Heuristic screen for optics/CPO-supply-chain names using OHLCV + curator chokepoint weights. "
-            "No verified market-cap or EV/S math here yet — not investment advice."
+            "Rules-based screen: $100M–$5B market cap (when Polygon reference returns cap), "
+            "issuer description keyword proxies for photonics + hyperscaler exposure, "
+            "curated chokepoint priors, and OHLCV factors. Not EDGAR/13F/patent deep dive yet — educational only."
         ),
         "market_data_api_url": settings.market_data_api_url,
         "api_key_present": bool(key),
