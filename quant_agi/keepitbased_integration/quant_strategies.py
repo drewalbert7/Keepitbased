@@ -90,7 +90,9 @@ def serenity_theme_nlp_scores(ref: Optional[dict[str, Any]]) -> tuple[float, flo
     hypo = min(100.0, 14.0 + float(len(hypo_hits)) * 21.0)
     return round(theme, 2), round(hypo, 2), theme_hits, hypo_hits
 
-# Curated optics / photonics / DC-interconnect adjacent names (US listings where possible).
+# Curated optics / photonics / DC-interconnect adjacent names.
+# IMPORTANT: Serenity-style “mentions” do NOT automatically enter this screen — symbols must be added here (or we
+# replace this with dynamic discovery). OTC names (e.g. SIVERS as SIVEF) may rank with weaker Polygon aggregates.
 # Expand or replace with Massive ticker-directory ingestion later.
 PHOTONICS_CHOKEPOINT_UNIVERSE: tuple[str, ...] = tuple(
     sorted(
@@ -113,6 +115,7 @@ PHOTONICS_CHOKEPOINT_UNIVERSE: tuple[str, ...] = tuple(
             "OLED",
             "POET",
             "SANM",
+            "SIVEF",  # Sivers Semiconductors — OTC; photonics + mmWave chokepoint thesis (often cited w/ AI optics DC)
             "SYNA",
             "TTMI",
             "VIAV",
@@ -138,6 +141,7 @@ PHOTONICS_CHOKEPOINT_PRIORS: dict[str, float] = {
     "VIAV": 60.0,
     "TTMI": 58.0,
     "SANM": 55.0,
+    "SIVEF": 86.0,  # Sivers — silicon photonics / datacenter interconnect narrative upstream of many themes
     "SYNA": 54.0,
     "MTSI": 63.0,
     "POET": 71.0,
