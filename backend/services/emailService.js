@@ -1,6 +1,15 @@
 const nodemailer = require('nodemailer');
 const logger = require('../utils/logger');
 
+/** Coerce DB/Redis values (often strings) for safe numeric formatting. */
+function toFiniteNumber(v) {
+  if (typeof v === 'number' && Number.isFinite(v)) {
+    return v;
+  }
+  const n = parseFloat(String(v ?? '').replace(/,/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+
 function escapeHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;')
@@ -90,6 +99,17 @@ class EmailService {
 
   async sendAlert(email, alertData) {
     try {
+      const baselineNum = toFiniteNumber(alertData.baselinePrice);
+      const currentNum = toFiniteNumber(alertData.currentPrice);
+      if (baselineNum === null || currentNum === null) {
+        logger.error('Alert email skipped: invalid baseline/current price', {
+          symbol: alertData.symbol,
+          baselinePrice: alertData.baselinePrice,
+          currentPrice: alertData.currentPrice
+        });
+        return;
+      }
+
       const levelColors = {
         small: '#fbbf24',
         medium: '#f97316', 
@@ -123,13 +143,13 @@ class EmailService {
             
             <div style="margin: 20px 0;">
               <p style="font-size: 18px; margin: 10px 0;">
-                <strong>Current Price:</strong> $${alertData.currentPrice.toFixed(2)}
+                <strong>Current Price:</strong> $${currentNum.toFixed(2)}
               </p>
               <p style="font-size: 18px; margin: 10px 0;">
                 <strong>Drop:</strong> ${alertData.dropPercentage}%
               </p>
               <p style="font-size: 18px; margin: 10px 0;">
-                <strong>Baseline Price:</strong> $${alertData.baselinePrice.toFixed(2)}
+                <strong>Baseline Price:</strong> $${baselineNum.toFixed(2)}
               </p>
             </div>
             
@@ -373,7 +393,7 @@ class EmailService {
   async sendOpportunitySignalEmail(toAddress, payload, options = {}) {
     if (!this.isConfigured()) {
       logger.warn('Opportunity email skipped: SMTP not configured');
-      return;
+      return false;
     }
     try {
       const subjectPrefix =
@@ -476,8 +496,10 @@ class EmailService {
         headers: mergeMailHeaders()
       });
       logger.info(`Opportunity signal email sent to ${toAddress} for ${symbol}`);
+      return true;
     } catch (error) {
       logger.error('Error sending opportunity signal email:', error);
+      return false;
     }
   }
 

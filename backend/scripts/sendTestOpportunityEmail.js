@@ -192,9 +192,16 @@ async function main() {
     timestamp: new Date().toISOString()
   };
 
-  await emailService.sendOpportunitySignalEmail(userRow.email, payload, {
+  const sent = await emailService.sendOpportunitySignalEmail(userRow.email, payload, {
     subjectPrefix: '[TEST] '
   });
+
+  if (!sent) {
+    console.error(
+      'Email send failed. Typical causes: AWS SES sending paused (check Trust & Safety case inbox), sandbox recipient not verified, or wrong SMTP_* / region mismatch.'
+    );
+    process.exit(1);
+  }
 
   console.log(
     JSON.stringify(

@@ -78,6 +78,31 @@ This document provides a comprehensive overview of security measures implemented
 - **Secret rotation capabilities**
 - **Development/production separation**
 
+### ✅ **11. AWS SES & outbound email (mandatory)**
+
+**Incident pattern (2026):** SES **SMTP credentials** (`SMTP_USER` / `SMTP_PASS`) were committed in **`backend/.env.example`**. That allows anyone with repo access to send as your domain and triggers **Trust & Safety pauses** (`554 Sending paused`) and abuse.
+
+**Non‑negotiables**
+
+| Do | Never |
+|----|--------|
+| Real values only in **`backend/.env`** on the server (gitignored), or Secrets Manager / SSM | Real `AKIA…` SMTP usernames or passwords in **`.env.example`**, README, tickets, screenshots |
+| **`SMTP_FROM`** matches a **verified** SES identity in the **same region** as **`SMTP_HOST`** | Mix region between Identities UI and `email-smtp.<region>.amazonaws.com` |
+| **Rotate + deactivate** SES SMTP IAM keys after any leak suspicion | Assume “removed from latest commit” clears **git history** (rotate anyway if ever pushed with secrets) |
+| MFA on AWS console users; least‑privilege IAM for SMTP user | Sharing root/API keys broadly |
+
+**Copy `backend/.env` from `.env.example` only:** edit **`.env`** after copy — **never** paste production SMTP into `.env.example` when fixing templates.
+
+**DNS / deliverability (spot‑check periodically)**
+
+| Goal | Notes |
+|------|--------|
+| **SPF** | Apex domain should include **`include:amazonses.com`** alongside any other senders (e.g. registrar forwarding). Single TXT record — merge includes; avoid too many lookups. |
+| **DMARC** | Publish **`_dmarc.<domain>`** TXT (start **`p=none`** + `rua=` for aggregate reports). |
+| **DKIM** | SES **Identities → domain → Easy DKIM** lists CNAME hosts; **`dig`** each until it resolves. |
+
+**Test script:** `node backend/scripts/sendTestOpportunityEmail.js` — exits **1** if SES rejects (e.g. account paused).
+
 ## 🚀 **Security Implementation Guide**
 
 ### **Quick Start: Security Setup**

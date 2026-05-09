@@ -104,8 +104,12 @@ class AlertService {
         symbol: alert.symbol,
         assetType: alert.asset_type,
         level: level,
-        currentPrice: priceData.price,
-        baselinePrice: alert.baseline_price,
+        currentPrice:
+          typeof priceData.price === 'number' ? priceData.price : parseFloat(String(priceData.price)),
+        baselinePrice:
+          typeof alert.baseline_price === 'number'
+            ? alert.baseline_price
+            : parseFloat(String(alert.baseline_price)),
         dropPercentage: dropPercentage.toFixed(2),
         threshold: alert[`${level}_threshold`],
         timestamp: new Date().toISOString(),
@@ -161,7 +165,10 @@ class AlertService {
     const symbol = alert.symbol;
     const assetType = alert.asset_type.toUpperCase();
     
-    return `${emoji} ${level.toUpperCase()} BUY SIGNAL: ${assetType} ${symbol} has dropped ${dropPercentage.toFixed(2)}% to $${priceData.price.toFixed(2)}. Time to buy the dip!`;
+    const px =
+      typeof priceData.price === 'number' ? priceData.price : parseFloat(String(priceData.price));
+    const pxStr = Number.isFinite(px) ? px.toFixed(2) : String(priceData.price);
+    return `${emoji} ${level.toUpperCase()} BUY SIGNAL: ${assetType} ${symbol} has dropped ${dropPercentage.toFixed(2)}% to $${pxStr}. Time to buy the dip!`;
   }
 
   async updateBaselinePrice(alertId, newPrice) {
