@@ -1,6 +1,6 @@
 # KeepItBased Professional Implementation Plan
 
-Last updated: **2026-05-06** — **Profile + marketing + notification defaults:** **`ProfilePage`** — one **Notifications** section (channels, opportunity **dip email** + toast/email **tiers**, **quiet hours**, **timezone**, US **RTH** option, Grok/digest toggles); removed **`AlertDeliveryPreferences.tsx`**; **`OpportunityPolicyPanel`** dashboard copy + link to Profile only. **`backend/utils/notificationPreferences.js`:** merged defaults — **`opportunityEmailNotifyLevel`** default **`all`** (was smaller-tier filter by default); **`researchDigestEmail`** + **`dailyWatchlistDigestEmail`** **opt-out** (`!== false`). **`backend/models/database.js`:** **`notification_preferences`** rich **JSONB DEFAULT** + **`ALTER COLUMN … SET DEFAULT`** on init for new inserts. **`HomePage`** — marketing copy aligned to **AI agent**, **deterministic tiers** (`on_sale` / `overreaction` / `capitulation`), notifications; removed **vanity metrics** & **fabricated testimonials**; **`Link`** CTAs. **Ship:** **`npm run deploy`**.
+Last updated: **2026-05-09** — **Session checkpoint:** Quant fundamentals rank + dashboard Financials shipped; next = LangGraph fuses rank/macro/news/X (see *Resume Here* § save spot). **Prior (2026-05-06):** **Profile + marketing + notification defaults:** **`ProfilePage`** — one **Notifications** section (channels, opportunity **dip email** + toast/email **tiers**, **quiet hours**, **timezone**, US **RTH** option, Grok/digest toggles); removed **`AlertDeliveryPreferences.tsx`**; **`OpportunityPolicyPanel`** dashboard copy + link to Profile only. **`backend/utils/notificationPreferences.js`:** merged defaults — **`opportunityEmailNotifyLevel`** default **`all`** (was smaller-tier filter by default); **`researchDigestEmail`** + **`dailyWatchlistDigestEmail`** **opt-out** (`!== false`). **`backend/models/database.js`:** **`notification_preferences`** rich **JSONB DEFAULT** + **`ALTER COLUMN … SET DEFAULT`** on init for new inserts. **`HomePage`** — marketing copy aligned to **AI agent**, **deterministic tiers** (`on_sale` / `overreaction` / `capitulation`), notifications; removed **vanity metrics** & **fabricated testimonials**; **`Link`** CTAs. **Ship:** **`npm run deploy`**.
 
 **Prior (2026-05-05):** **Watchlist UX + mail + daily briefing:** Polygon/Massive-backed **Open / VWAP / Bid–Ask / `quoteSourceUsed`** end-to-end (PriceMonitor → Redis → **`buildAgentWatchlistContext`** → **`watchlistDerived`** merge + **`overlayFresherWatchlistQuotes`**); crypto **`dayChangeAbs`** stock-only in **`agentWatchlistContext.js`**. **`Opportunity email tier`** split from toasts: **`opportunityEmailNotifyLevel`** via **`passesOpportunityEmailTierFilter`** in **`priceMonitor.js`**; **`AlertDeliveryPreferences`** (later **removed** 2026-05-06) + **`notificationPreferences.js`**. **Fix:** missing `}` after RTH suppression branch in **`priceMonitor.js`** (deploy blocker). **Dashboard:** **`AIAgentPage`** — removed **Latest plan**, **Top opportunities**, **Run metadata** card; kept backup-mode strip. **Daily market briefing:** Node **`researchArtifacts`** → **`dailyWatchlistDigestWorker`**; Python **`generate_daily_watchlist_digest`**; **`sendDailyWatchlistDigestEmail`**. **§11 / dip:** `opportunity_signals.ai_assessment`, UltimateDipBuyer / confluence / email copy. **`npm run deploy`** + **`pm2 restart stock-service`** when Python changes.
 
@@ -48,6 +48,16 @@ Last updated: **2026-05-06** — **Profile + marketing + notification defaults:*
 - **Phases 2–5 & §9:** deferred until fusion + observability justify broader tooling and launch gates.
 
 ## Resume Here Next Session
+
+### Session save spot (2026-05-09) — continue here next time
+
+**Git:** `main` clean and pushed to `origin` at this milestone.
+
+**Shipped this arc:** `python-service` `/stock/:symbol/fundamentals`; Node `/api/fundamentals/:symbol`; Quant `fundamentals_bridge` + **photonics** valuation leg + **momentum** tilt via **`QUANT_AGI_MOMENTUM_FUNDAMENTALS_WEIGHT`**; photonics **SIVEF** + **~$50M–$5B** / **~$125k ADV** defaults; dashboard **Financials** modal + **SEC** link on watchlist stocks; Massive OTC path documented for tickers like SIVEF.
+
+**Ops:** Restart **python-service** after Flask changes (`pm2 restart stock-service` if used). Fundamentals modal depends on **`PYTHON_SERVICE_URL`**.
+
+**Next:** Wire **market-universe-rank** + batched fundamentals + macro/news/X into **dashboard LangGraph** / **`buildAgentWatchlistContext`** (roadmap bullet under *Roadmap position → Now* + long-form checklist in off-repo `todo.md` if you keep one).
 
 ### Recent session — Profile hub, landing page, notification defaults (2026-05-06, done)
 
