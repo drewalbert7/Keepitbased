@@ -44,6 +44,7 @@ Last updated: **2026-05-06** — **Profile + marketing + notification defaults:*
 - **Phase 0** (charts / regression): **✅ MVP complete** — non-blocking polish only if regressions appear (§2).
 - **Phase 1** (LangGraph foundation): **✅ Core complete** — gateway, Opportunity Scout graph, dip-insight path, persistence, golden smoke tests.
 - **Now:** **§11 Phase C** (tail) — **`signal_fusion_scorer`** + history vol; **§11 Phase B** — queue worker, EDGAR; **§11 Phase D** — dedupe + async send; **Phase E** briefing card.
+- **Also (Quant AGI + dashboard LangGraph, 2026-05-09):** Tape rank + **`QUANT_AGI_MOMENTUM_FUNDAMENTALS_WEIGHT`** move **`/diag/market-universe-rank`** only; **dashboard chat does not yet auto-ingest that blend**. Planned: inject rank snapshot + batched fundamentals + macro card + news + X sentiment into **`buildAgentWatchlistContext`** / agent→Python payloads, optional deterministic fusion before Grok narrative. See project review **`todo.md`** (home / execution roadmap copy) § *Quant AGI — unified stock selection for dashboard LangGraph* if maintained there.
 - **Phases 2–5 & §9:** deferred until fusion + observability justify broader tooling and launch gates.
 
 ## Resume Here Next Session
