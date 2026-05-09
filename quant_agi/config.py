@@ -137,6 +137,16 @@ class Settings(BaseSettings):
         default=None,
         description="Required descriptive User-Agent host part for SEC data.sec.gov; include contact email.",
     )
+    quant_agi_momentum_fundamentals_weight: float = Field(
+        default=0.22,
+        ge=0.0,
+        le=1.0,
+        validation_alias=AliasChoices("QUANT_AGI_MOMENTUM_FUNDAMENTALS_WEIGHT"),
+        description=(
+            "`momentum_liquidity` preset: blends yfinance valuation (via python-service, EV/Revenue + P/S) "
+            "into tape rank. 0 = tape only; higher = fundamentals tilt ordering more."
+        ),
+    )
 
     @field_validator("keepitbased_python_service_url", mode="after")
     @staticmethod

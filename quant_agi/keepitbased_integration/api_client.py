@@ -24,6 +24,7 @@ from keepitbased_integration.quant_strategies import (
     PHOTONICS_CHOKEPOINT_UNIVERSE,
     photonics_chokepoint_scores,
     photonics_serenity_market_cap_band_ok,
+    _valuation_score_from_fundamentals,
 )
 from keepitbased_integration.sec_filing_scan import fetch_recent_filing_keyword_score
 from keepitbased_integration.signal_enhancer import EnhancedAlertSignal, SignalEnhancer
@@ -163,12 +164,21 @@ def _avg_dollar_volume_20d(hist: Any) -> Optional[float]:
 RankStrategyId = Literal["momentum_liquidity", "photonics_chokepoint"]
 
 
+def _blend_momentum_with_valuation(tape_score: float, fundamentals_weight: float, valuation_pts: float) -> float:
+    """Tilt momentum tier score (~tanh-ish) toward valuation_pts (0–100, neutral 50). Weight 0 ⇒ no tilt."""
+    if fundamentals_weight <= 0 or not math.isfinite(valuation_pts):
+        return tape_score
+    tilt = max(-1.0, min(1.0, (valuation_pts - 50.0) / 50.0))
+    return tape_score + fundamentals_weight * 1.75 * tilt
+
+
 def _rank_momentum_payload(
     fb: KeepItBasedDataFetcher,
     key: Optional[str],
     lim: int,
     min_px: float,
     min_adv: float,
+    fundamentals_weight: float,
     now: float,
 ) -> dict[str, Any]:
     ranked: list[dict[str, Any]] = []
@@ -189,7 +199,16 @@ def _rank_momentum_payload(
             rejected.append({"symbol": sym, "reason": "insufficient_history"})
             continue
 
-        score, momentum_pct, vol_pct, drawdown_pct = _rank_symbol(hist)
+        tape_score, momentum_pct, vol_pct, drawdown_pct = _rank_symbol(hist)
+        fundamentals_weight = max(0.0, float(fundamentals_weight))
+        val_pts = 50.0
+        val_notes: list[str] = []
+        fu: Optional[dict[str, Any]] = None
+        if fundamentals_weight > 0:
+            fu = fetch_fundamentals_via_python_service(sym, refresh=False)
+            val_pts, val_notes = _valuation_score_from_fundamentals(fu)
+        blended = _blend_momentum_with_valuation(tape_score, fundamentals_weight, val_pts)
+
         last_close = float(hist.close.iloc[-1]) if len(hist.index) else None
         prev_close = float(hist.close.iloc[-2]) if len(hist.index) > 1 else None
         adv20 = _avg_dollar_volume_20d(hist)
@@ -212,18 +231,34 @@ def _rank_momentum_payload(
         )
 
         why = [
-            f"Momentum-tier rank (20D momentum {momentum_pct:+.2f}%)",
-            f"20D realized vol {vol_pct:.2f}%",
-            f"60D drawdown {drawdown_pct:.2f}%",
-            "live market feed" if src == "massive_live" else "fallback/synthetic feed",
+            f"Momentum-tier tape {tape_score:.3f}; blended rank {blended:.3f}" + (
+                f" (+ fundamentals weight {fundamentals_weight:g} × valuation ~{val_pts:.0f}/100)"
+                if fundamentals_weight > 0
+                else " (fundamentals tilt off)"
+            ),
+            f"20D momentum {momentum_pct:+.2f}%; 20D vol {vol_pct:.2f}%; 60D drawdown {drawdown_pct:.2f}%",
+            "live Massive aggregates" if src == "massive_live" else "cached/synthetic history",
+            *(
+                [f"Valuation leg: {'; '.join(val_notes)} — python-service fundamentals"]
+                if val_notes and fundamentals_weight > 0
+                else []
+            ),
         ]
 
         ranked.append(
             {
                 "symbol": sym,
                 "asset_type": "stock",
-                "score": score,
-                "strategy_factors": {"kind": "momentum_liquidity"},
+                "score": round(blended, 6),
+                "strategy_factors": {
+                    "kind": "momentum_liquidity",
+                    "tape_score_raw": round(tape_score, 6),
+                    "fundamentals_weight": fundamentals_weight,
+                    "valuation_score": val_pts,
+                    "valuation_notes": val_notes,
+                    "enterprise_to_revenue": fu.get("enterpriseToRevenue") if fu else None,
+                    "price_to_sales_ttm": fu.get("priceToSalesTrailing12Months") if fu else None,
+                },
                 "last_close": last_close,
                 "day_change_pct": day_change_pct,
                 "momentum_20d_pct": momentum_pct,
@@ -236,9 +271,9 @@ def _rank_momentum_payload(
                 "why": why,
                 "position_hint": (
                     "high conviction"
-                    if score >= 1.25
+                    if blended >= 1.25
                     else "watch candidate"
-                    if score >= 0.45
+                    if blended >= 0.45
                     else "exploratory only"
                 ),
             }
@@ -250,7 +285,9 @@ def _rank_momentum_payload(
         "strategy": "momentum_liquidity",
         "strategy_label": "Momentum & liquidity (mega/large-cap watchlist universe)",
         "strategy_disclaimer": (
-            "Rules-based momentum/vol/drawdown rank on the default liquid universe — "
+            "Rules-based momentum/vol/drawdown rank on the default liquid universe, with automatic "
+            "yfinance-backed valuation tilt when ``QUANT_AGI_MOMENTUM_FUNDAMENTALS_WEIGHT`` > 0 (python-service). "
+            "Tape still dominant; fundamentals rebalance ordering on EV/Revenue + P/S heuristics — "
             "educational, not investment advice."
         ),
         "market_data_api_url": settings.market_data_api_url,
@@ -258,6 +295,7 @@ def _rank_momentum_payload(
         "synthetic_forced": settings.quant_agi_synthetic_history_only,
         "universe_size": len(DEFAULT_STOCK_UNIVERSE),
         "liquidity_gate": {"min_price": min_px, "min_avg_dollar_vol_20d": min_adv},
+        "fundamentals_blend": {"momentum_weight": float(fundamentals_weight)},
         "accepted_count": len(ranked),
         "excluded_count": sum(excluded_counts.values()),
         "excluded_counts": excluded_counts,
@@ -799,19 +837,21 @@ def create_app() -> FastAPI:
         """
         Rank stock candidates for Quant terminal — multiple preset strategies:
 
-        - ``momentum_liquidity``: default mega/large-cap list (20D momentum, vol, 60D drawdown).
+        - ``momentum_liquidity``: default mega/large-cap list (20D momentum, vol, 60D drawdown) plus automatic
+          fundamentals tilt when ``QUANT_AGI_MOMENTUM_FUNDAMENTALS_WEIGHT`` > 0 (python-service; default ~0.22).
         - ``photonics_chokepoint``: optics/CPO-adjacent curated universe; composite blends merged choke,
           52w asymmetry, volume catalyst, technical band, yfinance-backed **valuation** (EV/Revenue, P/S),
           and optional **SEC filing keyword** leg (disabled by default; ``QUANT_AGI_SEC_FILING_SCAN``).
 
         Per-strategy default liquidity gates apply when query params are omitted.
-        Cache is keyed by strategy + gates + top_n.
+        Cache is keyed by strategy + gates + top_n + momentum fundamentals weight.
         """
         now = time.time()
         ttl_sec = 75.0
         fb = KeepItBasedDataFetcher()
         key = effective_market_api_key(settings.polygon_api_key)
         lim = max(5, min(50, int(top_n)))
+        mom_fw = round(float(settings.quant_agi_momentum_fundamentals_weight), 4)
 
         if strategy == "photonics_chokepoint":
             min_px = max(1.0, float(min_price if min_price is not None else 2.0))
@@ -821,7 +861,7 @@ def create_app() -> FastAPI:
             min_px = max(1.0, float(min_price if min_price is not None else 5.0))
             min_adv = max(100_000.0, float(min_avg_dollar_vol_20d if min_avg_dollar_vol_20d is not None else 8_000_000.0))
 
-        cache_key = f"{strategy}|n{lim}|px{min_px}|adv{min_adv}"
+        cache_key = f"{strategy}|n{lim}|px{min_px}|adv{min_adv}|mfw{mom_fw}"
         if not refresh:
             ent = _rank_cache_entries.get(cache_key)
             if ent is not None and (now - ent[0]) < ttl_sec:
@@ -830,7 +870,7 @@ def create_app() -> FastAPI:
         if strategy == "photonics_chokepoint":
             payload = _rank_photonics_payload(fb, key, lim, min_px, min_adv, now)
         else:
-            payload = _rank_momentum_payload(fb, key, lim, min_px, min_adv, now)
+            payload = _rank_momentum_payload(fb, key, lim, min_px, min_adv, mom_fw, now)
 
         _rank_cache_entries[cache_key] = (now, payload)
         return payload

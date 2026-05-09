@@ -25,6 +25,13 @@ AssetKind = Literal["stock", "crypto"]
 
 
 def polygon_ticker(symbol: str, asset: AssetKind) -> str:
+    """
+    Stocks use the Polygon/Massive v2 aggregates ticker verbatim (uppercase).
+
+    OTC / Pink names (``SIVEF``, etc.) use the **same path** (`/v2/aggs/ticker/{TICKER}/...`) when your
+    plan includes US OTC daily aggregates — there is no extra prefix in typical integrations. Coverage
+    and bar count still depend on entitlement and issuer reporting quality.
+    """
     s = str(symbol or "").strip().upper()
     if asset == "crypto":
         return f"X:{s}USD"
