@@ -19,10 +19,14 @@ from config import settings, resolved_grok_model
 from db import ExperimentRow, engine, init_db
 from keepitbased_integration.data_fetcher import KeepItBasedDataFetcher
 from keepitbased_integration.massive_aggs import effective_market_api_key
+from keepitbased_integration.quant_strategies import (
+    PHOTONICS_CHOKEPOINT_UNIVERSE,
+    photonics_chokepoint_scores,
+)
 from keepitbased_integration.signal_enhancer import EnhancedAlertSignal, SignalEnhancer
 
 _enhancer: SignalEnhancer | None = None
-_rank_cache: dict[str, Any] = {"ts": 0.0, "payload": None}
+_rank_cache_entries: dict[str, tuple[float, dict[str, Any]]] = {}
 _scorecard_cache: dict[str, Any] = {"ts": 0.0, "payload": None}
 
 DEFAULT_STOCK_UNIVERSE = [
@@ -150,6 +154,229 @@ def _avg_dollar_volume_20d(hist: Any) -> Optional[float]:
     except Exception:
         return None
     return val if math.isfinite(val) and val > 0 else None
+
+
+RankStrategyId = Literal["momentum_liquidity", "photonics_chokepoint"]
+
+
+def _rank_momentum_payload(
+    fb: KeepItBasedDataFetcher,
+    key: Optional[str],
+    lim: int,
+    min_px: float,
+    min_adv: float,
+    now: float,
+) -> dict[str, Any]:
+    ranked: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    excluded_counts: dict[str, int] = {
+        "price_below_min": 0,
+        "liquidity_below_min": 0,
+        "insufficient_history": 0,
+    }
+    for sym in DEFAULT_STOCK_UNIVERSE:
+        hist = fb.load_history(sym, refresh=False, asset_type="stock")
+        src = fb.last_history_source
+        if ("volume" not in hist.columns or hist.volume.dropna().empty) and key:
+            hist = fb.load_history(sym, refresh=True, asset_type="stock")
+            src = fb.last_history_source
+        if len(hist.index) < 20:
+            excluded_counts["insufficient_history"] += 1
+            rejected.append({"symbol": sym, "reason": "insufficient_history"})
+            continue
+
+        score, momentum_pct, vol_pct, drawdown_pct = _rank_symbol(hist)
+        last_close = float(hist.close.iloc[-1]) if len(hist.index) else None
+        prev_close = float(hist.close.iloc[-2]) if len(hist.index) > 1 else None
+        adv20 = _avg_dollar_volume_20d(hist)
+        if last_close is None or last_close < min_px:
+            excluded_counts["price_below_min"] += 1
+            rejected.append(
+                {"symbol": sym, "reason": "price_below_min", "last_close": last_close, "avg_dollar_vol_20d": adv20}
+            )
+            continue
+        if adv20 is None or adv20 < min_adv:
+            excluded_counts["liquidity_below_min"] += 1
+            rejected.append(
+                {"symbol": sym, "reason": "liquidity_below_min", "last_close": last_close, "avg_dollar_vol_20d": adv20}
+            )
+            continue
+        day_change_pct = (
+            round((last_close - prev_close) / abs(prev_close) * 100.0, 4)
+            if last_close is not None and prev_close not in (None, 0.0)
+            else None
+        )
+
+        why = [
+            f"Momentum-tier rank (20D momentum {momentum_pct:+.2f}%)",
+            f"20D realized vol {vol_pct:.2f}%",
+            f"60D drawdown {drawdown_pct:.2f}%",
+            "live market feed" if src == "massive_live" else "fallback/synthetic feed",
+        ]
+
+        ranked.append(
+            {
+                "symbol": sym,
+                "asset_type": "stock",
+                "score": score,
+                "strategy_factors": {"kind": "momentum_liquidity"},
+                "last_close": last_close,
+                "day_change_pct": day_change_pct,
+                "momentum_20d_pct": momentum_pct,
+                "vol_20d_pct": vol_pct,
+                "drawdown_60d_pct": drawdown_pct,
+                "avg_dollar_vol_20d": round(adv20, 2) if adv20 is not None else None,
+                "history_source": src,
+                "is_live_massive": src == "massive_live",
+                "as_of": str(hist.index[-1])[:10] if len(hist.index) else None,
+                "why": why,
+                "position_hint": (
+                    "high conviction"
+                    if score >= 1.25
+                    else "watch candidate"
+                    if score >= 0.45
+                    else "exploratory only"
+                ),
+            }
+        )
+
+    ranked.sort(key=lambda r: float(r.get("score", 0.0)), reverse=True)
+    return {
+        "ok": True,
+        "strategy": "momentum_liquidity",
+        "strategy_label": "Momentum & liquidity (mega/large-cap watchlist universe)",
+        "strategy_disclaimer": (
+            "Rules-based momentum/vol/drawdown rank on the default liquid universe — "
+            "educational, not investment advice."
+        ),
+        "market_data_api_url": settings.market_data_api_url,
+        "api_key_present": bool(key),
+        "synthetic_forced": settings.quant_agi_synthetic_history_only,
+        "universe_size": len(DEFAULT_STOCK_UNIVERSE),
+        "liquidity_gate": {"min_price": min_px, "min_avg_dollar_vol_20d": min_adv},
+        "accepted_count": len(ranked),
+        "excluded_count": sum(excluded_counts.values()),
+        "excluded_counts": excluded_counts,
+        "excluded_examples": rejected[:12],
+        "returned": lim,
+        "as_of_epoch_ms": int(now * 1000),
+        "positions": ranked[:lim],
+    }
+
+
+def _rank_photonics_payload(
+    fb: KeepItBasedDataFetcher,
+    key: Optional[str],
+    lim: int,
+    min_px: float,
+    min_adv: float,
+    now: float,
+) -> dict[str, Any]:
+    """AI optics / chokepoint hunter — rules v1 (OHLC+V + curated priors; no EDGAR in this cut)."""
+    ranked: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    excluded_counts: dict[str, int] = {
+        "price_below_min": 0,
+        "liquidity_below_min": 0,
+        "insufficient_history": 0,
+    }
+    for sym in PHOTONICS_CHOKEPOINT_UNIVERSE:
+        hist = fb.load_history(sym, refresh=False, asset_type="stock")
+        src = fb.last_history_source
+        if ("volume" not in hist.columns or hist.volume.dropna().empty) and key:
+            hist = fb.load_history(sym, refresh=True, asset_type="stock")
+            src = fb.last_history_source
+        if len(hist.index) < 40:
+            excluded_counts["insufficient_history"] += 1
+            rejected.append({"symbol": sym, "reason": "insufficient_history"})
+            continue
+
+        choke, asym, catalyst, tech, composite = photonics_chokepoint_scores(hist, sym)
+        score_mu, momentum_pct, vol_pct, drawdown_pct = _rank_symbol(hist)
+        last_close = float(hist.close.iloc[-1]) if len(hist.index) else None
+        prev_close = float(hist.close.iloc[-2]) if len(hist.index) > 1 else None
+        adv20 = _avg_dollar_volume_20d(hist)
+
+        if last_close is None or last_close < min_px:
+            excluded_counts["price_below_min"] += 1
+            rejected.append(
+                {"symbol": sym, "reason": "price_below_min", "last_close": last_close, "avg_dollar_vol_20d": adv20}
+            )
+            continue
+        if adv20 is None or adv20 < min_adv:
+            excluded_counts["liquidity_below_min"] += 1
+            rejected.append(
+                {"symbol": sym, "reason": "liquidity_below_min", "last_close": last_close, "avg_dollar_vol_20d": adv20}
+            )
+            continue
+
+        day_change_pct = (
+            round((last_close - prev_close) / abs(prev_close) * 100.0, 4)
+            if last_close is not None and prev_close not in (None, 0.0)
+            else None
+        )
+
+        why = [
+            (
+                f"Composite {composite:.1f}/100 (=0.4×chokepoint {choke:.0f} +0.3×asymmetry(52w) {asym:.0f} "
+                f"+0.2×volume-catalyst {catalyst:.0f} +0.1×technical {tech:.0f})"
+            ),
+            f"Tape context: mom20 {momentum_pct:+.2f}%, DD60 {drawdown_pct:.2f}%",
+            "Rules v1 — add EDGAR/TAM NLP when wired; curated chokepoint priors only today.",
+            "live market feed" if src == "massive_live" else "fallback/synthetic feed",
+        ]
+
+        ranked.append(
+            {
+                "symbol": sym,
+                "asset_type": "stock",
+                "score": composite,
+                "strategy_factors": {
+                    "kind": "photonics_chokepoint",
+                    "chokepoint": round(choke, 2),
+                    "asymmetry": round(asym, 2),
+                    "catalyst_volume": round(catalyst, 2),
+                    "technical_band": round(tech, 2),
+                    "legacy_momentum_tier_score": round(score_mu, 4),
+                },
+                "last_close": last_close,
+                "day_change_pct": day_change_pct,
+                "momentum_20d_pct": momentum_pct,
+                "vol_20d_pct": vol_pct,
+                "drawdown_60d_pct": drawdown_pct,
+                "avg_dollar_vol_20d": round(adv20, 2) if adv20 is not None else None,
+                "history_source": src,
+                "is_live_massive": src == "massive_live",
+                "as_of": str(hist.index[-1])[:10] if len(hist.index) else None,
+                "why": why,
+                "position_hint": (
+                    "chokepoint focus" if composite >= 72.0 else "watch candidate" if composite >= 58.0 else "exploratory only"
+                ),
+            }
+        )
+
+    ranked.sort(key=lambda r: float(r.get("score", 0.0)), reverse=True)
+    return {
+        "ok": True,
+        "strategy": "photonics_chokepoint",
+        "strategy_label": "AI photonics chokepoint hunter (rules v1)",
+        "strategy_disclaimer": (
+            "Heuristic screen for optics/CPO-supply-chain names using OHLCV + curator chokepoint weights. "
+            "No verified market-cap or EV/S math here yet — not investment advice."
+        ),
+        "market_data_api_url": settings.market_data_api_url,
+        "api_key_present": bool(key),
+        "synthetic_forced": settings.quant_agi_synthetic_history_only,
+        "universe_size": len(PHOTONICS_CHOKEPOINT_UNIVERSE),
+        "liquidity_gate": {"min_price": min_px, "min_avg_dollar_vol_20d": min_adv},
+        "accepted_count": len(ranked),
+        "excluded_count": sum(excluded_counts.values()),
+        "excluded_counts": excluded_counts,
+        "excluded_examples": rejected[:12],
+        "returned": lim,
+        "as_of_epoch_ms": int(now * 1000),
+        "positions": ranked[:lim],
+    }
 
 
 class CodingChatIn(BaseModel):
@@ -456,122 +683,48 @@ def create_app() -> FastAPI:
 
     @app.get("/diag/market-universe-rank")
     async def diag_market_universe_rank(
+        strategy: RankStrategyId = "momentum_liquidity",
         top_n: int = 25,
         *,
         refresh: bool = False,
-        min_price: float = 5.0,
-        min_avg_dollar_vol_20d: float = 8_000_000.0,
+        min_price: Optional[float] = None,
+        min_avg_dollar_vol_20d: Optional[float] = None,
     ) -> dict[str, Any]:
         """
-        Rank a broad stock universe into candidate positions for the Quant terminal.
-        Cached to avoid hammering market APIs from frequent frontend polling.
+        Rank stock candidates for Quant terminal — multiple preset strategies:
+
+        - ``momentum_liquidity``: default mega/large-cap list (20D momentum, vol, 60D drawdown).
+        - ``photonics_chokepoint``: optics/CPO-adjacent curated universe; composite 0.4 choke + 0.3
+          52w asymmetry + 0.2 volume catalyst + 0.1 technical (rules v1; extend with EDGAR/NLP later).
+
+        Per-strategy default liquidity gates apply when query params are omitted.
+        Cache is keyed by strategy + gates + top_n.
         """
         now = time.time()
         ttl_sec = 75.0
-        cached = _rank_cache.get("payload")
-        if not refresh and cached is not None and (now - float(_rank_cache.get("ts", 0.0))) < ttl_sec:
-            return cached
-
         fb = KeepItBasedDataFetcher()
         key = effective_market_api_key(settings.polygon_api_key)
         lim = max(5, min(50, int(top_n)))
-        min_px = max(1.0, float(min_price))
-        min_adv = max(100_000.0, float(min_avg_dollar_vol_20d))
 
-        ranked: list[dict[str, Any]] = []
-        rejected: list[dict[str, Any]] = []
-        excluded_counts: dict[str, int] = {
-            "price_below_min": 0,
-            "liquidity_below_min": 0,
-            "insufficient_history": 0,
-        }
-        for sym in DEFAULT_STOCK_UNIVERSE:
-            hist = fb.load_history(sym, refresh=False, asset_type="stock")
-            src = fb.last_history_source
-            if ("volume" not in hist.columns or hist.volume.dropna().empty) and key:
-                # Upgrade legacy cached rows (without volume) so liquidity gates are meaningful.
-                hist = fb.load_history(sym, refresh=True, asset_type="stock")
-                src = fb.last_history_source
-            if len(hist.index) < 20:
-                excluded_counts["insufficient_history"] += 1
-                rejected.append({"symbol": sym, "reason": "insufficient_history"})
-                continue
+        if strategy == "photonics_chokepoint":
+            min_px = max(1.0, float(min_price if min_price is not None else 2.0))
+            min_adv = max(80_000.0, float(min_avg_dollar_vol_20d if min_avg_dollar_vol_20d is not None else 400_000.0))
+        else:
+            min_px = max(1.0, float(min_price if min_price is not None else 5.0))
+            min_adv = max(100_000.0, float(min_avg_dollar_vol_20d if min_avg_dollar_vol_20d is not None else 8_000_000.0))
 
-            score, momentum_pct, vol_pct, drawdown_pct = _rank_symbol(hist)
-            last_close = float(hist.close.iloc[-1]) if len(hist.index) else None
-            prev_close = float(hist.close.iloc[-2]) if len(hist.index) > 1 else None
-            adv20 = _avg_dollar_volume_20d(hist)
-            if last_close is None or last_close < min_px:
-                excluded_counts["price_below_min"] += 1
-                rejected.append(
-                    {"symbol": sym, "reason": "price_below_min", "last_close": last_close, "avg_dollar_vol_20d": adv20}
-                )
-                continue
-            if adv20 is None or adv20 < min_adv:
-                excluded_counts["liquidity_below_min"] += 1
-                rejected.append(
-                    {"symbol": sym, "reason": "liquidity_below_min", "last_close": last_close, "avg_dollar_vol_20d": adv20}
-                )
-                continue
-            day_change_pct = (
-                round((last_close - prev_close) / abs(prev_close) * 100.0, 4)
-                if last_close is not None and prev_close not in (None, 0.0)
-                else None
-            )
+        cache_key = f"{strategy}|n{lim}|px{min_px}|adv{min_adv}"
+        if not refresh:
+            ent = _rank_cache_entries.get(cache_key)
+            if ent is not None and (now - ent[0]) < ttl_sec:
+                return ent[1]
 
-            why = [
-                f"20D momentum {momentum_pct:+.2f}%",
-                f"20D realized vol {vol_pct:.2f}%",
-                f"60D drawdown {drawdown_pct:.2f}%",
-                "live market feed" if src == "massive_live" else "fallback/synthetic feed",
-            ]
+        if strategy == "photonics_chokepoint":
+            payload = _rank_photonics_payload(fb, key, lim, min_px, min_adv, now)
+        else:
+            payload = _rank_momentum_payload(fb, key, lim, min_px, min_adv, now)
 
-            ranked.append(
-                {
-                    "symbol": sym,
-                    "asset_type": "stock",
-                    "score": score,
-                    "last_close": last_close,
-                    "day_change_pct": day_change_pct,
-                    "momentum_20d_pct": momentum_pct,
-                    "vol_20d_pct": vol_pct,
-                    "drawdown_60d_pct": drawdown_pct,
-                    "avg_dollar_vol_20d": round(adv20, 2) if adv20 is not None else None,
-                    "history_source": src,
-                    "is_live_massive": src == "massive_live",
-                    "as_of": str(hist.index[-1])[:10] if len(hist.index) else None,
-                    "why": why,
-                    "position_hint": (
-                        "high conviction"
-                        if score >= 1.25
-                        else "watch candidate"
-                        if score >= 0.45
-                        else "exploratory only"
-                    ),
-                }
-            )
-
-        ranked.sort(key=lambda r: float(r.get("score", 0.0)), reverse=True)
-        payload = {
-            "ok": True,
-            "market_data_api_url": settings.market_data_api_url,
-            "api_key_present": bool(key),
-            "synthetic_forced": settings.quant_agi_synthetic_history_only,
-            "universe_size": len(DEFAULT_STOCK_UNIVERSE),
-            "liquidity_gate": {
-                "min_price": min_px,
-                "min_avg_dollar_vol_20d": min_adv,
-            },
-            "accepted_count": len(ranked),
-            "excluded_count": sum(excluded_counts.values()),
-            "excluded_counts": excluded_counts,
-            "excluded_examples": rejected[:12],
-            "returned": lim,
-            "as_of_epoch_ms": int(now * 1000),
-            "positions": ranked[:lim],
-        }
-        _rank_cache["ts"] = now
-        _rank_cache["payload"] = payload
+        _rank_cache_entries[cache_key] = (now, payload)
         return payload
 
     @app.post("/v1/coding-chat")

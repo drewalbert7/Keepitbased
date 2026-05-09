@@ -47,6 +47,9 @@ export function StreamBootstrap() {
   const setScorecard = useQuantStore((s) => s.setScorecard);
   const setConnected = useQuantStore((s) => s.setConnected);
 
+  const rankStrategyId = useQuantStore((s) => s.rankStrategyId);
+  const setRankStrategyMeta = useQuantStore((s) => s.setRankStrategyMeta);
+
   useEffect(() => {
     hydrateMockData();
     let hasLiveData = false;
@@ -95,11 +98,18 @@ export function StreamBootstrap() {
           setMarket(symbols);
         }
 
-        const rankedRes = await fetch(`${base}/diag/market-universe-rank?top_n=25`, {
-          cache: "no-store"
-        });
+        const rankedRes = await fetch(
+          `${base}/diag/market-universe-rank?strategy=${encodeURIComponent(rankStrategyId)}&top_n=25`,
+          { cache: "no-store" }
+        );
         if (rankedRes.ok) {
           const rankedPayload = await rankedRes.json();
+          const sid = rankedPayload.strategy === "photonics_chokepoint" ? "photonics_chokepoint" : "momentum_liquidity";
+          setRankStrategyMeta({
+            id: sid,
+            label: String(rankedPayload.strategy_label || sid),
+            disclaimer: String(rankedPayload.strategy_disclaimer || "")
+          });
           const positions: QuantSuggestedPosition[] = Array.isArray(rankedPayload.positions)
             ? (rankedPayload.positions as Array<Partial<QuantSuggestedPosition>>).map((row) => ({
                 symbol: String(row.symbol || ""),
@@ -116,7 +126,11 @@ export function StreamBootstrap() {
                 is_live_massive: Boolean(row.is_live_massive),
                 as_of: typeof row.as_of === "string" ? row.as_of : null,
                 why: Array.isArray(row.why) ? row.why.map((x) => String(x)) : [],
-                position_hint: String(row.position_hint || "watch candidate")
+                position_hint: String(row.position_hint || "watch candidate"),
+                strategy_factors:
+                  row.strategy_factors && typeof row.strategy_factors === "object"
+                    ? (row.strategy_factors as Record<string, string | number | undefined>)
+                    : undefined
               }))
             : [];
           setSuggestions(positions);
@@ -193,11 +207,13 @@ export function StreamBootstrap() {
   }, [
     hydrateMockData,
     ingest,
+    rankStrategyId,
     replaceEvents,
     setConnected,
     setLatestPatch,
     setMarket,
     setRankMeta,
+    setRankStrategyMeta,
     setScorecard,
     setSuggestions
   ]);

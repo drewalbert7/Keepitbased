@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQuantStore } from "../lib/store";
+import { type RankStrategyId, useQuantStore } from "../lib/store";
 
 function pctClass(v: number | null) {
   if (v == null) return "text-white/60";
@@ -33,6 +33,9 @@ async function addToWatchlist(symbol: string): Promise<void> {
 export function MarketTape() {
   const suggestions = useQuantStore((s) => s.suggestions);
   const rankMeta = useQuantStore((s) => s.rankMeta);
+  const rankStrategyId = useQuantStore((s) => s.rankStrategyId);
+  const setRankStrategyId = useQuantStore((s) => s.setRankStrategyId);
+  const rankStrategyMeta = useQuantStore((s) => s.rankStrategyMeta);
   const [adding, setAdding] = useState<Record<string, boolean>>({});
   const [added, setAdded] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
@@ -51,14 +54,49 @@ export function MarketTape() {
     }
   };
 
+  const onStrategyChange = (id: RankStrategyId) => setRankStrategyId(id);
+
   return (
     <section className="rounded-2xl border border-white/10 bg-panel/70 p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-white/70">
-          Quant AGI stock suggestions
-        </h2>
-        <p className="text-[11px] text-white/50">Universe-ranked candidate positions</p>
+      <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-white/70">
+            Quant AGI stock suggestions
+          </h2>
+          <p className="mt-1 text-[11px] text-white/50">
+            {rankStrategyMeta?.label || "Preset strategy rank — educational tooling only"}
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-1">
+          <button
+            type="button"
+            onClick={() => onStrategyChange("momentum_liquidity")}
+            className={`rounded-lg border px-2.5 py-1 text-[11px] font-medium transition ${
+              rankStrategyId === "momentum_liquidity"
+                ? "border-cyan-500/70 bg-cyan-500/20 text-cyan-100"
+                : "border-white/15 bg-black/25 text-white/70 hover:bg-white/5"
+            }`}
+          >
+            Momentum / liquidity
+          </button>
+          <button
+            type="button"
+            onClick={() => onStrategyChange("photonics_chokepoint")}
+            className={`rounded-lg border px-2.5 py-1 text-[11px] font-medium transition ${
+              rankStrategyId === "photonics_chokepoint"
+                ? "border-violet-500/70 bg-violet-500/20 text-violet-100"
+                : "border-white/15 bg-black/25 text-white/70 hover:bg-white/5"
+            }`}
+          >
+            AI photonics chokepoint
+          </button>
+        </div>
       </div>
+      {rankStrategyMeta?.disclaimer && (
+        <p className="mb-2 rounded-md border border-white/10 bg-black/30 p-2 text-[10px] leading-relaxed text-white/55">
+          {rankStrategyMeta.disclaimer}
+        </p>
+      )}
       {rankMeta && (
         <div className="mb-2 grid gap-2 rounded-lg border border-white/10 bg-black/20 p-2 text-[11px] text-white/70 sm:grid-cols-2 xl:grid-cols-4">
           <p>

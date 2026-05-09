@@ -38,6 +38,8 @@ export type MarketSymbolSnapshot = {
   is_live_massive: boolean;
 };
 
+export type RankStrategyId = "momentum_liquidity" | "photonics_chokepoint";
+
 export type QuantSuggestedPosition = {
   symbol: string;
   asset_type: "stock" | "crypto";
@@ -53,6 +55,7 @@ export type QuantSuggestedPosition = {
   as_of: string | null;
   why: string[];
   position_hint: string;
+  strategy_factors?: Record<string, string | number | undefined>;
 };
 
 export type RankMeta = {
@@ -65,6 +68,12 @@ export type RankMeta = {
   };
   min_price: number;
   min_avg_dollar_vol_20d: number;
+};
+
+export type RankStrategyMeta = {
+  id: RankStrategyId;
+  label: string;
+  disclaimer: string;
 };
 
 export type QuantScorecard = {
@@ -96,6 +105,10 @@ type QuantState = {
   setRankMeta: (meta: RankMeta | null) => void;
   scorecard: QuantScorecard | null;
   setScorecard: (scorecard: QuantScorecard | null) => void;
+  rankStrategyId: RankStrategyId;
+  setRankStrategyId: (id: RankStrategyId) => void;
+  rankStrategyMeta: RankStrategyMeta | null;
+  setRankStrategyMeta: (meta: RankStrategyMeta | null) => void;
   hydrateMockData: () => void;
 };
 
@@ -143,6 +156,8 @@ export const useQuantStore = create<QuantState>((set) => ({
   suggestions: [],
   rankMeta: null,
   scorecard: null,
+  rankStrategyId: "momentum_liquidity",
+  rankStrategyMeta: null,
   setConnected: (v) => set({ connected: v }),
   setMode: (mode) => set({ mode }),
   toggleKillSwitch: () => set((s) => ({ killSwitch: !s.killSwitch })),
@@ -156,6 +171,8 @@ export const useQuantStore = create<QuantState>((set) => ({
   setSuggestions: (rows) => set({ suggestions: rows }),
   setRankMeta: (rankMeta) => set({ rankMeta }),
   setScorecard: (scorecard) => set({ scorecard }),
+  setRankStrategyId: (rankStrategyId) => set({ rankStrategyId }),
+  setRankStrategyMeta: (rankStrategyMeta) => set({ rankStrategyMeta }),
   hydrateMockData: () => set({ events: sampleEvents })
 }));
 
