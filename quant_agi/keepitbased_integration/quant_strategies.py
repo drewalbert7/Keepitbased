@@ -1,8 +1,9 @@
 """Rules-based scanner presets for `/diag/market-universe-rank`.
 
-`photonics_chokepoint` (Serenity-style chokepoint hunter): Polygon reference data for **market-cap
-band ($100M–$5B)**, issuer **theme / hyperscaler-NLP proxies**, fundamentals-backed **valuation** leg
-(via Python service/yfinance), optional **SEC filing keywords** (`sec_filing_scan`), merged with OHLC priors."""
+`photonics_chokepoint` (Serenity-style chokepoint hunter): Polygon reference **market-cap band (~$50M–$5B
+when known; see constants below)**, issuer **theme / hyperscaler-NLP proxies**, fundamentals-backed **valuation**
+leg (via Python service/yfinance), optional **SEC filing keywords** (`sec_filing_scan`), merged with OHLC priors.
+Liquidity thresholds on the preset are OTC-aware (see API defaults)."""
 from __future__ import annotations
 
 import math
@@ -10,8 +11,11 @@ import re
 from typing import Any, Optional
 
 # Strategy band — Serenity playbook (small-cap asymmetry sweep); tune via API query later.
-SERENITY_MIN_MARKET_CAP = 100_000_000.0  # USD
+SERENITY_MIN_MARKET_CAP = 100_000_000.0  # USD — reference for non-photonics docs / future reuse
 SERENITY_MAX_MARKET_CAP = 5_000_000_000.0
+
+# Photonics preset only: allow smaller niche/OTC optics suppliers when Massive returns a cap (e.g. Sivers-class).
+PHOTONICS_SERENITY_MIN_MARKET_CAP = 50_000_000.0  # USD
 
 
 PHOTONICS_THEME_NEEDLES = (
@@ -321,6 +325,17 @@ def serenity_market_cap_band_ok(mc: Optional[float]) -> tuple[bool, str]:
     if mc is None or not math.isfinite(float(mc)):
         return True, "mc_unknown"
     if mc < SERENITY_MIN_MARKET_CAP:
+        return False, "below_band"
+    if mc > SERENITY_MAX_MARKET_CAP:
+        return False, "above_band"
+    return True, "in_band"
+
+
+def photonics_serenity_market_cap_band_ok(mc: Optional[float]) -> tuple[bool, str]:
+    """Looser floor ($50M) so curated OTC/ADR photonics names are not dropped vs the $100M legacy band."""
+    if mc is None or not math.isfinite(float(mc)):
+        return True, "mc_unknown"
+    if mc < PHOTONICS_SERENITY_MIN_MARKET_CAP:
         return False, "below_band"
     if mc > SERENITY_MAX_MARKET_CAP:
         return False, "above_band"

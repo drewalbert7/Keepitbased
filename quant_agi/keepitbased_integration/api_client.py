@@ -23,7 +23,7 @@ from keepitbased_integration.fundamentals_bridge import fetch_fundamentals_via_p
 from keepitbased_integration.quant_strategies import (
     PHOTONICS_CHOKEPOINT_UNIVERSE,
     photonics_chokepoint_scores,
-    serenity_market_cap_band_ok,
+    photonics_serenity_market_cap_band_ok,
 )
 from keepitbased_integration.sec_filing_scan import fetch_recent_filing_keyword_score
 from keepitbased_integration.signal_enhancer import EnhancedAlertSignal, SignalEnhancer
@@ -299,7 +299,7 @@ def _rank_photonics_payload(
             raw_mc = ref.get("market_cap")
             if isinstance(raw_mc, (int, float)) and math.isfinite(float(raw_mc)):
                 mc = float(raw_mc)
-                ok_band, mc_reason = serenity_market_cap_band_ok(mc)
+                ok_band, mc_reason = photonics_serenity_market_cap_band_ok(mc)
                 if not ok_band:
                     excluded_counts["market_cap_band"] += 1
                     rejected.append({"symbol": sym, "reason": "market_cap_band", "detail": mc_reason, "market_cap": mc})
@@ -436,10 +436,11 @@ def _rank_photonics_payload(
         "strategy": "photonics_chokepoint",
         "strategy_label": "Serenity — AI photonics chokepoint hunter",
         "strategy_disclaimer": (
-            "Rules-based screen: $100M–$5B market cap when reference data has it, issuer-description keyword "
-            "proxies, curated chokepoint priors, OHLCV tape, plus yfinance-linked valuation (EV/Revenue, P/S via "
-            "python-service fundamentals). Optional SEC filing keyword density is off by default "
-            "(QUANT_AGI_SEC_FILING_SCAN + descriptive SEC User-Agent). Not investment advice; educational tooling only."
+            "Rules-based screen ~$50M–$5B market cap when reference data has it (looser vs $100M so niche/OTC optics "
+            "suppliers qualify), issuer keyword proxies, curated chokepoint priors, OHLCV tape, default ~$125k 20D "
+            "ADV (lower than mega-cap scanners — illiquid names slip through easier), plus yfinance valuation. "
+            "Optional SEC filing keyword scan off by default. Tradeoff: thinner liquidity / more volatility vs stricter gates. "
+            "Not investment advice; educational tooling only."
         ),
         "market_data_api_url": settings.market_data_api_url,
         "api_key_present": bool(key),
@@ -814,7 +815,8 @@ def create_app() -> FastAPI:
 
         if strategy == "photonics_chokepoint":
             min_px = max(1.0, float(min_price if min_price is not None else 2.0))
-            min_adv = max(80_000.0, float(min_avg_dollar_vol_20d if min_avg_dollar_vol_20d is not None else 400_000.0))
+            # Default ~$125k ADV20: thin OTC/ADR (e.g. SIVEF) rarely clears $400k; still blocks obvious dust.
+            min_adv = max(80_000.0, float(min_avg_dollar_vol_20d if min_avg_dollar_vol_20d is not None else 125_000.0))
         else:
             min_px = max(1.0, float(min_price if min_price is not None else 5.0))
             min_adv = max(100_000.0, float(min_avg_dollar_vol_20d if min_avg_dollar_vol_20d is not None else 8_000_000.0))
