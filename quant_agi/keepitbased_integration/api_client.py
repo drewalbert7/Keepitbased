@@ -19,11 +19,13 @@ from config import settings, resolved_grok_model
 from db import ExperimentRow, engine, init_db
 from keepitbased_integration.data_fetcher import KeepItBasedDataFetcher
 from keepitbased_integration.massive_aggs import effective_market_api_key
+from keepitbased_integration.fundamentals_bridge import fetch_fundamentals_via_python_service
 from keepitbased_integration.quant_strategies import (
     PHOTONICS_CHOKEPOINT_UNIVERSE,
     photonics_chokepoint_scores,
     serenity_market_cap_band_ok,
 )
+from keepitbased_integration.sec_filing_scan import fetch_recent_filing_keyword_score
 from keepitbased_integration.signal_enhancer import EnhancedAlertSignal, SignalEnhancer
 from keepitbased_integration.ticker_ref import fetch_ticker_reference
 
@@ -313,7 +315,20 @@ def _rank_photonics_payload(
             rejected.append({"symbol": sym, "reason": "insufficient_history"})
             continue
 
-        fac = photonics_chokepoint_scores(hist, sym, ref)
+        fu = fetch_fundamentals_via_python_service(sym, refresh=False)
+        filing_kw = (
+            fetch_recent_filing_keyword_score(sym, refresh=False)
+            if settings.quant_agi_sec_filing_scan
+            else None
+        )
+
+        fac = photonics_chokepoint_scores(
+            hist,
+            sym,
+            ref,
+            fundamentals_data=fu,
+            filing_scan=filing_kw,
+        )
         composite = float(fac["composite"])
         score_mu, momentum_pct, vol_pct, drawdown_pct = _rank_symbol(hist)
         last_close = float(hist.close.iloc[-1]) if len(hist.index) else None
@@ -341,19 +356,32 @@ def _rank_photonics_payload(
 
         th = ", ".join(fac.get("theme_hits") or []) or "none"
         hh = ", ".join(fac.get("hyperscaler_hits") or []) or "none"
+        vn = "; ".join(fac.get("valuation_notes") or []) or "fundamentals muted / offline"
+        fh = ", ".join(fac.get("filing_keyword_hits") or []) or (
+            "(SEC scan off — set QUANT_AGI_SEC_FILING_SCAN=true + SEC User-Agent)"
+            if not settings.quant_agi_sec_filing_scan
+            else "no filing keywords"
+        )
         mc_line = (
             f"Market cap USD {mc:,.0f} ({mc_reason})"
             if isinstance(mc, (int, float)) and math.isfinite(mc)
             else f"Market cap unknown ({mc_reason}) — enable Massive/Polygon key for filing detail"
         )
+        sec_line = f"Filings NLP leg {fac.get('filings_score', 50):.0f}/100"
+        ferr = fac.get("filings_error")
+        if ferr and ferr not in ("sec_scan_disabled", None):
+            sec_line += f" ({ferr})"
         why = [
             (
-                f"Composite {composite:.1f}/100 = "
-                f"0.40×merged choke ({fac['chokepoint_merged']:.1f}; prior {fac['choke_prior']:.0f}+theme+hyperscale NLP) "
-                f"+ 0.30×52w asym {fac['asymmetry']:.0f}"
-                f" + 0.20×vol catalyst {fac['catalyst_volume']:.0f} + 0.10×technical {fac['technical_band']:.0f}"
+                f"Composite {composite:.1f}/100 ≈ "
+                f"0.33×merged choke ({fac['chokepoint_merged']:.1f}; prior {fac['choke_prior']:.0f}+theme+hyperscale NLP) "
+                f"+ 0.24×52w asym {fac['asymmetry']:.0f} + 0.17×vol catalyst {fac['catalyst_volume']:.0f} "
+                f"+ 0.08×technical {fac['technical_band']:.0f} + 0.13×valuation {fac['valuation_score']:.0f} "
+                f"+ 0.05×filings {fac['filings_score']:.0f}"
             ),
             f"Issuer NLP theme hits ({th}); hyperscaler / DC hits ({hh})",
+            f"Valuation leg: {vn}",
+            sec_line + f"; keyword hits ({fh})",
             mc_line,
             f"Tape: mom20 {momentum_pct:+.2f}%, DD60 {drawdown_pct:.2f}% — "
             f"{'live Massive' if src == 'massive_live' else 'cached/synthetic history'}",
@@ -377,6 +405,13 @@ def _rank_photonics_payload(
                     "asymmetry": fac["asymmetry"],
                     "catalyst_volume": fac["catalyst_volume"],
                     "technical_band": fac["technical_band"],
+                    "valuation_score": fac["valuation_score"],
+                    "valuation_notes": fac.get("valuation_notes") or [],
+                    "enterprise_to_revenue": fac.get("fundamentals_ev_to_revenue"),
+                    "price_to_sales_ttm": fac.get("fundamentals_ps_ratio"),
+                    "filings_score": fac["filings_score"],
+                    "filing_keyword_hits": fac.get("filing_keyword_hits") or [],
+                    "filings_error": fac.get("filings_error"),
                     "legacy_momentum_tier_score": round(score_mu, 4),
                 },
                 "last_close": last_close,
@@ -401,9 +436,10 @@ def _rank_photonics_payload(
         "strategy": "photonics_chokepoint",
         "strategy_label": "Serenity — AI photonics chokepoint hunter",
         "strategy_disclaimer": (
-            "Rules-based screen: $100M–$5B market cap (when Polygon reference returns cap), "
-            "issuer description keyword proxies for photonics + hyperscaler exposure, "
-            "curated chokepoint priors, and OHLCV factors. Not EDGAR/13F/patent deep dive yet — educational only."
+            "Rules-based screen: $100M–$5B market cap when reference data has it, issuer-description keyword "
+            "proxies, curated chokepoint priors, OHLCV tape, plus yfinance-linked valuation (EV/Revenue, P/S via "
+            "python-service fundamentals). Optional SEC filing keyword density is off by default "
+            "(QUANT_AGI_SEC_FILING_SCAN + descriptive SEC User-Agent). Not investment advice; educational tooling only."
         ),
         "market_data_api_url": settings.market_data_api_url,
         "api_key_present": bool(key),
@@ -489,6 +525,34 @@ def create_app() -> FastAPI:
     async def diag_keepitbased(base: Optional[str] = None) -> dict[str, Any]:
         fb = KeepItBasedDataFetcher()
         return {"upstream": fb.ping_keepitbased_health_local(base or "http://127.0.0.1:3001")}
+
+    @app.get("/diag/fundamentals-debug")
+    async def diag_fundamentals_debug(
+        symbol: str = "NVDA",
+        *,
+        refresh: bool = False,
+        sec_refresh: bool = False,
+    ) -> dict[str, Any]:
+        """Operator check: Python service fundamentals + optional SEC keyword scan configs."""
+        sym = symbol.strip().upper()
+        fu = fetch_fundamentals_via_python_service(sym, refresh=refresh)
+        sec_on = bool(settings.quant_agi_sec_filing_scan)
+        filing = (
+            fetch_recent_filing_keyword_score(sym, refresh=sec_refresh)
+            if sec_on
+            else {"score": 50.0, "hits": [], "source": "sec_edgar", "error": "sec_scan_disabled"}
+        )
+        return {
+            "symbol": sym,
+            "keepitbased_python_service_url": settings.keepitbased_python_service_url,
+            "fundamentals": fu,
+            "quant_agi_sec_filing_scan": sec_on,
+            "sec_data_user_agent_configured": bool(
+                getattr(settings, "sec_data_user_agent", None)
+                and str(settings.sec_data_user_agent).strip()
+            ),
+            "filing_scan": filing,
+        }
 
     @app.get("/diag/massive-bars")
     async def diag_massive_bars(
@@ -735,8 +799,9 @@ def create_app() -> FastAPI:
         Rank stock candidates for Quant terminal — multiple preset strategies:
 
         - ``momentum_liquidity``: default mega/large-cap list (20D momentum, vol, 60D drawdown).
-        - ``photonics_chokepoint``: optics/CPO-adjacent curated universe; composite 0.4 choke + 0.3
-          52w asymmetry + 0.2 volume catalyst + 0.1 technical (rules v1; extend with EDGAR/NLP later).
+        - ``photonics_chokepoint``: optics/CPO-adjacent curated universe; composite blends merged choke,
+          52w asymmetry, volume catalyst, technical band, yfinance-backed **valuation** (EV/Revenue, P/S),
+          and optional **SEC filing keyword** leg (disabled by default; ``QUANT_AGI_SEC_FILING_SCAN``).
 
         Per-strategy default liquidity gates apply when query params are omitted.
         Cache is keyed by strategy + gates + top_n.

@@ -26,6 +26,8 @@ import { ResizablePair } from '../components/ResizablePair';
 import { WatchlistStockSearchInput } from '../components/WatchlistStockSearchInput';
 import { WatchlistCryptoSearchInput } from '../components/WatchlistCryptoSearchInput';
 import { Watchlist52WeekRange } from '../components/Watchlist52WeekRange';
+import { StockFundamentalsModal } from '../components/StockFundamentalsModal';
+import { secIssuerBrowseUrl } from '../services/fundamentalsApi';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 
 const seedMessages: AgentMessage[] = [
@@ -81,6 +83,9 @@ export const AIAgentPage: React.FC = () => {
   });
 
   /** Matches backend `assistantIntent`: scan vs Q&A vs heuristic routing. */
+  /** Watchlist row → fundamentals + SEC filings (stocks only) */
+  const [wlFundamentalsSymbol, setWlFundamentalsSymbol] = useState<string | null>(null);
+
   const [assistantMode, setAssistantMode] = useState<AssistantIntentMode>('smart');
   /** Progressive character reveal after the full reply arrives (not live token streaming). */
   const [streamReplyDisplay, setStreamReplyDisplay] = useState(true);
@@ -752,6 +757,28 @@ export const AIAgentPage: React.FC = () => {
                                   {!row.active && (
                                     <span className="text-[10px] uppercase tracking-wide text-amber-500">paused</span>
                                   )}
+                                  {row.assetType === 'stock' && (
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pt-1">
+                                      <button
+                                        type="button"
+                                        className="text-[10px] font-medium uppercase tracking-wide text-kib-cyber/95 hover:text-kib-cyber hover:underline"
+                                        title="Consensus-style fundamentals snapshot"
+                                        onClick={() => setWlFundamentalsSymbol(row.symbol.toUpperCase())}
+                                      >
+                                        Financials
+                                      </button>
+                                      <span className="text-[10px] text-kib-muted">·</span>
+                                      <a
+                                        href={secIssuerBrowseUrl(row.symbol)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-[10px] font-medium uppercase tracking-wide text-kib-muted hover:text-kib-cyber"
+                                        title="SEC.gov issuer filings (new tab)"
+                                      >
+                                        SEC ↗
+                                      </a>
+                                    </div>
+                                  )}
                                 </div>
                               </td>
                               <td className="px-2 py-2 text-right tabular-nums align-top lg:px-3 lg:py-2.5">
@@ -1041,6 +1068,12 @@ export const AIAgentPage: React.FC = () => {
         </div>
 
       </div>
+
+      <StockFundamentalsModal
+        open={wlFundamentalsSymbol !== null}
+        symbol={wlFundamentalsSymbol}
+        onClose={() => setWlFundamentalsSymbol(null)}
+      />
     </div>
   );
 };

@@ -1,8 +1,8 @@
 """Rules-based scanner presets for `/diag/market-universe-rank`.
 
 `photonics_chokepoint` (Serenity-style chokepoint hunter): Polygon reference data for **market-cap
-band ($100M–$5B)** and **theme / hyperscaler-NLP proxies** from issuer description merge with OHLC
-priors. EDGAR full-text, patents, explicit TAM models — optional extensions later."""
+band ($100M–$5B)**, issuer **theme / hyperscaler-NLP proxies**, fundamentals-backed **valuation** leg
+(via Python service/yfinance), optional **SEC filing keywords** (`sec_filing_scan`), merged with OHLC priors."""
 from __future__ import annotations
 
 import math
@@ -192,8 +192,61 @@ def _technical_prebreakout_score(hist: Any) -> float:
     return max(0.0, min(100.0, band_score - vol_penalty + 15.0))
 
 
-def photonics_chokepoint_scores(hist: Any, symbol: str, ref: Optional[dict[str, Any]] = None) -> dict[str, Any]:
-    """Full Serenity-rules v2 — returns scalar factors + composite (composite 0–100)."""
+def _valuation_score_from_fundamentals(fu: Optional[dict[str, Any]]) -> tuple[float, list[str]]:
+    """
+    Rough 0–100 from EV/Revenue and P/S — missing fields → neutral 50.
+    Favors mid-range multiples (not deep value trap, not obvious bubble).
+    """
+    notes: list[str] = []
+    parts: list[float] = []
+
+    def _band_ev_rev(x: float) -> float:
+        if x <= 0 or not math.isfinite(x):
+            return 50.0
+        notes.append(f"EV/Revenue {x:.1f}×")
+        if x < 1.5:
+            return 52.0
+        if x < 22.0:
+            return 62.0 + 18.0 * math.exp(-abs(math.log(max(x, 1e-6) / 6.5)) ** 2)
+        return max(28.0, 88.0 - (x - 22.0) * 2.6)
+
+    def _band_ps(x: float) -> float:
+        if x <= 0 or not math.isfinite(x):
+            return 50.0
+        notes.append(f"P/S {x:.1f}×")
+        if x < 0.8:
+            return 54.0
+        if x < 18.0:
+            return 60.0 + 16.0 * math.exp(-abs(math.log(max(x, 1e-6) / 3.8)) ** 2)
+        return max(30.0, 86.0 - (x - 18.0) * 3.1)
+
+    if not fu:
+        return 50.0, []
+
+    evr = fu.get("enterpriseToRevenue")
+    if isinstance(evr, (int, float)) and math.isfinite(float(evr)):
+        parts.append(_band_ev_rev(float(evr)))
+
+    ps = fu.get("priceToSalesTrailing12Months")
+    if isinstance(ps, (int, float)) and math.isfinite(float(ps)):
+        parts.append(_band_ps(float(ps)))
+
+    if not parts:
+        return 50.0, notes
+
+    blended = sum(parts) / float(len(parts))
+    return round(max(0.0, min(100.0, blended)), 2), notes[:4]
+
+
+def photonics_chokepoint_scores(
+    hist: Any,
+    symbol: str,
+    ref: Optional[dict[str, Any]] = None,
+    *,
+    fundamentals_data: Optional[dict[str, Any]] = None,
+    filing_scan: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """Full Serenity-rules v3 — choke + tape + optional fundamentals + EDGAR keyword leg."""
     choke_prior = PHOTONICS_CHOKEPOINT_PRIORS.get(symbol.upper(), 58.0)
     theme_nlp, hypo_nlp, theme_tags, hypo_tags = serenity_theme_nlp_scores(ref)
 
@@ -208,11 +261,30 @@ def photonics_chokepoint_scores(hist: Any, symbol: str, ref: Optional[dict[str, 
     catalyst = _volume_surge_score_20d(hist)
     technical = _technical_prebreakout_score(hist)
 
+    valuation_score, valuation_notes = _valuation_score_from_fundamentals(fundamentals_data)
+
+    filings_score = 50.0
+    filing_hits: list[str] = []
+    filings_error = None
+    if filing_scan and isinstance(filing_scan, dict):
+        try:
+            filings_score = float(filing_scan.get("score", 50.0))
+        except (TypeError, ValueError):
+            filings_score = 50.0
+        raw_hits = filing_scan.get("hits")
+        if isinstance(raw_hits, list):
+            filing_hits = [str(h) for h in raw_hits[:20]]
+        filings_error = filing_scan.get("error")
+
+    filings_score = max(0.0, min(100.0, filings_score))
+
     composite = (
-        0.40 * merged_choke
-        + 0.30 * asymmetry
-        + 0.20 * catalyst
-        + 0.10 * technical
+        0.33 * merged_choke
+        + 0.24 * asymmetry
+        + 0.17 * catalyst
+        + 0.08 * technical
+        + 0.13 * valuation_score
+        + 0.05 * filings_score
     )
     composite = round(max(0.0, min(100.0, composite)), 4)
 
@@ -226,6 +298,17 @@ def photonics_chokepoint_scores(hist: Any, symbol: str, ref: Optional[dict[str, 
         "asymmetry": round(asymmetry, 2),
         "catalyst_volume": round(catalyst, 2),
         "technical_band": round(technical, 2),
+        "valuation_score": valuation_score,
+        "valuation_notes": valuation_notes,
+        "fundamentals_ev_to_revenue": fundamentals_data.get("enterpriseToRevenue")
+        if fundamentals_data
+        else None,
+        "fundamentals_ps_ratio": fundamentals_data.get("priceToSalesTrailing12Months")
+        if fundamentals_data
+        else None,
+        "filings_score": round(filings_score, 2),
+        "filing_keyword_hits": filing_hits,
+        "filings_error": filings_error,
         "composite": composite,
     }
 

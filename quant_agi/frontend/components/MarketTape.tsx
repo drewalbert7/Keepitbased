@@ -132,7 +132,7 @@ export function MarketTape() {
                   : `${row.day_change_pct >= 0 ? "+" : ""}${row.day_change_pct.toFixed(2)}%`}
               </p>
               <ul className="mt-2 space-y-1">
-                {row.why.slice(0, 2).map((reason) => (
+                {row.why.slice(0, 4).map((reason) => (
                   <li key={reason} className="text-[11px] leading-relaxed text-white/70">
                     {reason}
                   </li>

@@ -39,6 +39,7 @@ const watchlistRoutes = require('./routes/watchlist');
 const internalResearchRoutes = require('./routes/internalResearch');
 const adminSignupInviteRoutes = require('./routes/adminSignupInvite');
 const chatRoutes = require('./routes/chat');
+const fundamentalsRoutes = require('./routes/fundamentals');
 
 const jwt = require('jsonwebtoken');
 const PriceMonitor = require('./services/priceMonitor');
@@ -142,6 +143,7 @@ app.use('/api/watchlist', watchlistRoutes);
 app.use('/api/internal/research', internalResearchRoutes);
 app.use('/api/admin', adminSignupInviteRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/fundamentals', fundamentalsRoutes);
 
 // Serve static files from React build
 app.use(express.static(path.join(__dirname, '../frontend/build')));

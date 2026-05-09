@@ -121,6 +121,28 @@ class Settings(BaseSettings):
         description="Comma-separated origins for FastAPI CORS (browser hits /diag/*). Leave empty '' to disable.",
     )
 
+    keepitbased_python_service_url: str = Field(
+        default="http://127.0.0.1:5001",
+        validation_alias=AliasChoices(
+            "KEEPITBASED_PYTHON_SERVICE_URL",
+            "PYTHON_SERVICE_URL",
+        ),
+        description="yfinance Flask service (quotes, fundamentals) — same origin as charts agent.",
+    )
+    quant_agi_sec_filing_scan: bool = Field(
+        default=False,
+        description="If true, Serenity preset may scrape SEC EDGAR for keyword density (slow; cache per ticker).",
+    )
+    sec_data_user_agent: Optional[str] = Field(
+        default=None,
+        description="Required descriptive User-Agent host part for SEC data.sec.gov; include contact email.",
+    )
+
+    @field_validator("keepitbased_python_service_url", mode="after")
+    @staticmethod
+    def _strip_python_svc(url: str) -> str:
+        return str(url).strip().rstrip("/")
+
 
 settings = Settings()
 

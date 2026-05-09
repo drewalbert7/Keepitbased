@@ -10,9 +10,30 @@ from datetime import datetime, timedelta, timezone
 import logging
 import uuid
 import time
+import math as math_mod
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+def _json_safe_scalar(val):
+    """Strip NaN / inf and coerce numpy-ish scalars for JSON."""
+    if val is None:
+        return None
+    try:
+        if isinstance(val, (bool, str)):
+            return val
+        x = float(val.item()) if hasattr(val, "item") else float(val)
+        if not math_mod.isfinite(x):
+            return None
+        # Prefer int where exact
+        if abs(x - round(x)) < 1e-9:
+            xi = int(round(x))
+            if abs(xi) < 9e17:
+                return xi
+        return round(x, 8)
+    except (TypeError, ValueError, OverflowError, AttributeError):
+        return None
 
 app = Flask(__name__)
 CORS(app)
@@ -206,6 +227,59 @@ def get_stock_info(symbol):
     except Exception as e:
         logger.error(f"Error getting info for {symbol}: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/stock/<symbol>/fundamentals", methods=["GET"])
+def get_stock_fundamentals(symbol):
+    """Normalized yfinance fundamentals for valuation / dashboards (hourly Redis cache)."""
+    try:
+        sym = str(symbol).strip().upper()
+        cache_key_name = f"fundamentals:{sym}"
+        cached = get_cached_data(cache_key_name)
+        if cached:
+            return jsonify(cached)
+
+        ticker = yf.Ticker(sym)
+        info = ticker.info or {}
+
+        fundamentals = {
+            "symbol": sym,
+            "companyName": info.get("longName") or info.get("shortName") or "",
+            "currency": info.get("currency"),
+            "marketCap": _json_safe_scalar(info.get("marketCap")),
+            "enterpriseValue": _json_safe_scalar(info.get("enterpriseValue")),
+            "enterpriseToRevenue": _json_safe_scalar(info.get("enterpriseToRevenue")),
+            "enterpriseToEbitda": _json_safe_scalar(info.get("enterpriseToEbitda")),
+            "trailingPE": _json_safe_scalar(info.get("trailingPE")),
+            "forwardPE": _json_safe_scalar(info.get("forwardPE")),
+            "priceToSalesTrailing12Months": _json_safe_scalar(
+                info.get("priceToSalesTrailing12Months")
+            ),
+            "priceToBook": _json_safe_scalar(info.get("priceToBook")),
+            "grossMargins": _json_safe_scalar(info.get("grossMargins")),
+            "operatingMargins": _json_safe_scalar(info.get("operatingMargins")),
+            "profitMargins": _json_safe_scalar(info.get("profitMargins")),
+            "revenueGrowth": _json_safe_scalar(info.get("revenueGrowth")),
+            "earningsGrowth": _json_safe_scalar(info.get("earningsGrowth")),
+            "returnOnEquity": _json_safe_scalar(info.get("returnOnEquity")),
+            "debtToEquity": _json_safe_scalar(info.get("debtToEquity")),
+            "totalRevenue": _json_safe_scalar(info.get("totalRevenue")),
+            "totalCash": _json_safe_scalar(info.get("totalCash")),
+            "totalDebt": _json_safe_scalar(info.get("totalDebt")),
+            "freeCashflow": _json_safe_scalar(info.get("freeCashflow")),
+            "ebitda": _json_safe_scalar(info.get("ebitda")),
+            "sector": info.get("sector"),
+            "industry": info.get("industry"),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+        # Cache ~1 hour; fundamentals are stale-tolerant vs quotes.
+        set_cached_data(cache_key_name, fundamentals, 3600)
+        return jsonify(fundamentals)
+    except Exception as e:
+        logger.error(f"Error getting fundamentals for {symbol}: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route('/search', methods=['GET'])
 def search_stocks():
