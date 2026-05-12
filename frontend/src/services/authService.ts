@@ -2,6 +2,18 @@ import axios from 'axios';
 import { User } from '../types';
 import { getApiBaseUrl } from '../config/apiBase';
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** One retry after deploy blips / nginx upstream gaps (502/503/504) or brief network loss. */
+function isAuthTransientError(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false;
+  if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') return true;
+  const s = error.response?.status;
+  return s === 502 || s === 503 || s === 504;
+}
+
 interface LoginResponse {
   message: string;
   token: string;
@@ -65,11 +77,15 @@ class AuthService {
   }
 
   async login(email: string, password: string): Promise<LoginResponse> {
-    const response = await axios.post<LoginResponse>('/auth/login', {
-      email,
-      password
-    });
-    return response.data;
+    const post = () =>
+      axios.post<LoginResponse>('/auth/login', { email, password }).then((r) => r.data);
+    try {
+      return await post();
+    } catch (e) {
+      if (!isAuthTransientError(e)) throw e;
+      await sleep(1000);
+      return await post();
+    }
   }
 
   async register(
@@ -78,18 +94,27 @@ class AuthService {
     password: string,
     inviteCode: string
   ): Promise<RegisterResponse> {
-    const response = await axios.post<RegisterResponse>('/auth/register', {
-      username,
-      email,
-      password,
-      inviteCode
-    });
-    return response.data;
+    const body = { username, email, password, inviteCode };
+    const post = () =>
+      axios.post<RegisterResponse>('/auth/register', body).then((r) => r.data);
+    try {
+      return await post();
+    } catch (e) {
+      if (!isAuthTransientError(e)) throw e;
+      await sleep(1000);
+      return await post();
+    }
   }
 
   async getCurrentUser(): Promise<User> {
-    const response = await axios.get<User>('/auth/me');
-    return response.data;
+    const get = () => axios.get<User>('/auth/me').then((r) => r.data);
+    try {
+      return await get();
+    } catch (e) {
+      if (!isAuthTransientError(e)) throw e;
+      await sleep(1000);
+      return await get();
+    }
   }
 
   async updateProfile(userData: {
@@ -102,6 +127,20 @@ class AuthService {
 
   async getSignupPasscodeStatus(): Promise<{ active: boolean }> {
     const { data } = await axios.get<{ active: boolean }>('/users/profile/signup-passcode');
+    return data;
+  }
+
+  /** Host-only flags (JWT). Not returned from public GET /api/health/config. */
+  async getHostNotificationFlags(): Promise<{
+    smtpConfigured: boolean;
+    dailyWatchlistDigestEnabled: boolean;
+    dailyWatchlistDigestCron?: string;
+  }> {
+    const { data } = await axios.get<{
+      smtpConfigured: boolean;
+      dailyWatchlistDigestEnabled: boolean;
+      dailyWatchlistDigestCron?: string;
+    }>('/users/profile/host-notification-flags');
     return data;
   }
 

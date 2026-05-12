@@ -73,39 +73,45 @@ const registrationRateLimit = rateLimit({
 });
 
 /**
- * Password reset rate limiting (very strict to prevent abuse)
+ * Shared cap for any unauthenticated route that triggers outbound email (SES).
+ * One limiter instance so bots cannot split traffic across /recover-password and /recover-username.
  */
-const passwordResetRateLimit = rateLimit({
+const recoveryEmailRateLimit = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 2, // 2 password reset requests per hour per IP
+  // Per client IP + target email: stops inbox flooding to one victim from one host (and caps SES noise).
+  max: 3,
   message: {
-    error: 'Too many password reset attempts',
-    message: 'Too many password reset attempts. Please try again in 1 hour.',
+    error: 'Too many recovery attempts',
+    message: 'Too many account recovery attempts. Please try again in 1 hour.',
     retryAfter: 3600
   },
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => {
-    return req.ip;
+    const e = (req.body?.email && String(req.body.email).toLowerCase().trim()) || '';
+    return e ? `recovery-email:${req.ip}:${e}` : `recovery-email:${req.ip}`;
   },
   handler: (req, res) => {
-    logger.warn(`Password reset rate limit exceeded for IP: ${req.ip}`);
-    
-    cryptoSecurity.createAuditLog('password_reset_rate_limit_exceeded', req.ip, {
+    logger.warn(`Recovery email rate limit exceeded for IP: ${req.ip} path=${req.path}`);
+
+    cryptoSecurity.createAuditLog('recovery_email_rate_limit_exceeded', req.ip, {
       endpoint: req.path,
       method: req.method,
       ip: req.ip,
       userAgent: req.get('User-Agent'),
-      email: req.body.email // Log reset attempt (email is not sensitive)
+      email: req.body?.email
     });
-    
+
     res.status(429).json({
       error: 'Rate limit exceeded',
-      message: 'Too many password reset attempts. Please try again in 1 hour.',
+      message: 'Too many account recovery attempts. Please try again in 1 hour.',
       retryAfter: 3600
     });
   }
 });
+
+/** @deprecated Use recoveryEmailRateLimit; kept as alias for same middleware (shared store). */
+const passwordResetRateLimit = recoveryEmailRateLimit;
 
 /**
  * Admin-only: PUT /api/admin/signup-invite — per authenticated user id
@@ -137,6 +143,7 @@ const adminSignupInvitePutLimit = rateLimit({
 module.exports = {
   authRateLimit,
   registrationRateLimit,
+  recoveryEmailRateLimit,
   passwordResetRateLimit,
   adminSignupInvitePutLimit
 };

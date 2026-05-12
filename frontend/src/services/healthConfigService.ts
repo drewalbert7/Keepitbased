@@ -19,9 +19,6 @@ export type PublicHealthConfig = {
   opportunityShortTrendFilterEnabled?: boolean;
   opportunityShortTrendSmaDays?: number;
   opportunityAtrMinPctOfPrice?: number;
-  dailyWatchlistDigestEnabled?: boolean;
-  dailyWatchlistDigestCron?: string;
-  smtpConfigured?: boolean;
   marketDataKeyPresent?: boolean;
 };
 

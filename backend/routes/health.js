@@ -3,7 +3,6 @@ const router = express.Router();
 const config = require('../config');
 const db = require('../models/database');
 const logger = require('../utils/logger');
-const emailService = require('../services/emailService');
 
 // Basic health check
 router.get('/', (req, res) => {
@@ -53,13 +52,13 @@ router.get('/detailed', async (req, res) => {
     health.services.pythonService = {
       status: 'ok',
       responseTime: Date.now() - start + 'ms',
-      url: config.PYTHON_SERVICE_URL
+      ...(config.NODE_ENV === 'production' ? {} : { url: config.PYTHON_SERVICE_URL })
     };
   } catch (error) {
     health.services.pythonService = {
       status: 'error',
       error: error.message,
-      url: config.PYTHON_SERVICE_URL
+      ...(config.NODE_ENV === 'production' ? {} : { url: config.PYTHON_SERVICE_URL })
     };
     health.status = 'degraded';
   }
@@ -69,14 +68,21 @@ router.get('/detailed', async (req, res) => {
       const openbbClient = require('../services/openbbClient');
       const ob = await openbbClient.probeStatus();
       health.services.openbb = ob.ok
-        ? { status: 'ok', url: ob.url || config.OPENBB_API_URL }
-        : { status: 'error', error: ob.error || 'unreachable', url: config.OPENBB_API_URL };
+        ? {
+            status: 'ok',
+            ...(config.NODE_ENV === 'production' ? {} : { url: ob.url || config.OPENBB_API_URL })
+          }
+        : {
+            status: 'error',
+            error: ob.error || 'unreachable',
+            ...(config.NODE_ENV === 'production' ? {} : { url: config.OPENBB_API_URL })
+          };
       if (!ob.ok) health.status = 'degraded';
     } catch (e) {
       health.services.openbb = {
         status: 'error',
         error: e.message,
-        url: config.OPENBB_API_URL
+        ...(config.NODE_ENV === 'production' ? {} : { url: config.OPENBB_API_URL })
       };
       health.status = 'degraded';
     }
@@ -109,8 +115,9 @@ router.get('/detailed', async (req, res) => {
   res.status(statusCode).json(health);
 });
 
-// Configuration check (non-sensitive info only)
+// Configuration check (non-sensitive info only — never SMTP secrets)
 router.get('/config', (req, res) => {
+  const prod = config.NODE_ENV === 'production';
   const safeConfig = {
     NODE_ENV: config.NODE_ENV,
     PORT: config.PORT,
@@ -119,7 +126,8 @@ router.get('/config', (req, res) => {
     JWT_EXPIRES_IN: config.JWT_EXPIRES_IN,
     RATE_LIMIT_WINDOW_MS: config.RATE_LIMIT_WINDOW_MS,
     RATE_LIMIT_MAX_REQUESTS: config.RATE_LIMIT_MAX_REQUESTS,
-    PYTHON_SERVICE_URL: config.PYTHON_SERVICE_URL,
+    // Internal service URLs are reconnaissance aids; omit on public internet in prod.
+    ...(prod ? {} : { PYTHON_SERVICE_URL: config.PYTHON_SERVICE_URL }),
     OPENBB_ENABLED: !!config.OPENBB_ENABLED,
     OPENBB_EXCLUSIVE_ALL: !!config.OPENBB_EXCLUSIVE_ALL,
     OPENBB_STOCK_QUOTE_EXCLUSIVE: !!config.OPENBB_STOCK_QUOTE_EXCLUSIVE,
@@ -127,11 +135,10 @@ router.get('/config', (req, res) => {
     OPENBB_CRYPTO_EXCLUSIVE: !!config.OPENBB_CRYPTO_EXCLUSIVE,
     OPENBB_EQUITY_PROVIDER: config.OPENBB_EQUITY_PROVIDER || '',
     OPENBB_CRYPTO_PROVIDER: config.OPENBB_CRYPTO_PROVIDER || '',
-    OPENBB_API_URL: config.OPENBB_API_URL || '',
+    ...(prod ? {} : { OPENBB_API_URL: config.OPENBB_API_URL || '' }),
     hasJwtSecret: !!config.JWT_SECRET,
     hasDatabaseUrl: !!config.DATABASE_URL,
     hasRedisUrl: !!config.REDIS_URL,
-    smtpConfigured: emailService.isConfigured(),
     dipInsightGloballyEnabled:
       !!config.ENABLE_DIP_INSIGHT_EMAIL && !config.DISABLE_DIP_INSIGHT_EMAIL,
     researchIngestionEnabled: !!config.ENABLE_RESEARCH_INGESTION,
@@ -156,10 +163,7 @@ router.get('/config', (req, res) => {
     opportunityCapitulationDedupeTtlSec: config.OPPORTUNITY_CAPITULATION_DEDUPE_TTL_SEC,
     opportunityShortTrendFilterEnabled: !!config.OPPORTUNITY_SHORT_TREND_FILTER_ENABLED,
     opportunityShortTrendSmaDays: config.OPPORTUNITY_SHORT_TREND_SMA_DAYS,
-    opportunityAtrMinPctOfPrice: config.OPPORTUNITY_ATR_MIN_PCT_OF_PRICE,
-    dailyWatchlistDigestEnabled:
-      !!config.ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL && !config.DISABLE_DAILY_WATCHLIST_DIGEST_EMAIL,
-    dailyWatchlistDigestCron: config.DAILY_WATCHLIST_DIGEST_CRON
+    opportunityAtrMinPctOfPrice: config.OPPORTUNITY_ATR_MIN_PCT_OF_PRICE
   };
 
   res.json({

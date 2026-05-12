@@ -6,6 +6,8 @@ const db = require('../models/database');
 const logger = require('../utils/logger');
 const { mergeNotificationPreferences } = require('../utils/notificationPreferences');
 const userSignupPasscodeService = require('../services/userSignupPasscodeService');
+const emailService = require('../services/emailService');
+const appConfig = require('../config');
 
 const USERNAME_RE = /^[a-zA-Z0-9_]{3,32}$/;
 
@@ -42,6 +44,22 @@ router.get('/profile/signup-passcode', auth, async (req, res) => {
   } catch (err) {
     logger.error('GET signup-passcode:', err);
     res.status(500).json({ message: 'Failed to load passcode status' });
+  }
+});
+
+/** Logged-in only: host mail + digest flags (not exposed on public GET /api/health/config). */
+router.get('/profile/host-notification-flags', auth, (req, res) => {
+  try {
+    res.json({
+      smtpConfigured: emailService.isConfigured(),
+      dailyWatchlistDigestEnabled:
+        !!appConfig.ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL &&
+        !appConfig.DISABLE_DAILY_WATCHLIST_DIGEST_EMAIL,
+      dailyWatchlistDigestCron: appConfig.DAILY_WATCHLIST_DIGEST_CRON
+    });
+  } catch (err) {
+    logger.error('GET host-notification-flags:', err);
+    res.status(500).json({ message: 'Failed to load host notification flags' });
   }
 });
 

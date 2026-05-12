@@ -9,6 +9,13 @@ import type { User } from '../types';
 type OpportunityToastTier = 'all' | 'overreaction_only';
 type OpportunityEmailTier = 'all' | 'overreaction_only' | 'capitulation_only';
 
+/** Public /health/config plus authenticated host mail/digest flags */
+type ProfileHostHealth = PublicHealthConfig & {
+  smtpConfigured?: boolean;
+  dailyWatchlistDigestEnabled?: boolean;
+  dailyWatchlistDigestCron?: string;
+};
+
 const ProfilePage: React.FC = () => {
   const { user, updateUser } = useAuth();
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -35,7 +42,7 @@ const ProfilePage: React.FC = () => {
   });
   const [notifSaving, setNotifSaving] = useState(false);
 
-  const [hostNotifCfg, setHostNotifCfg] = useState<PublicHealthConfig | null>(null);
+  const [hostNotifCfg, setHostNotifCfg] = useState<ProfileHostHealth | null>(null);
 
   const [username, setUsername] = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
@@ -66,15 +73,29 @@ const ProfilePage: React.FC = () => {
   }, [user?.id]);
 
   useEffect(() => {
+    if (!user) return;
     let cancelled = false;
     (async () => {
-      const c = await fetchPublicHealthConfig();
-      if (!cancelled) setHostNotifCfg(c);
+      try {
+        const [pub, flags] = await Promise.all([
+          fetchPublicHealthConfig(),
+          authService.getHostNotificationFlags()
+        ]);
+        if (cancelled) return;
+        setHostNotifCfg(pub ? { ...pub, ...flags } : { ...flags });
+      } catch {
+        try {
+          const pub = await fetchPublicHealthConfig();
+          if (!cancelled) setHostNotifCfg(pub);
+        } catch {
+          if (!cancelled) setHostNotifCfg(null);
+        }
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user) return;
@@ -248,6 +269,18 @@ const ProfilePage: React.FC = () => {
       setPasswordLoading(false);
     }
   };
+
+  const hostMailFlagsLoaded =
+    hostNotifCfg != null &&
+    typeof hostNotifCfg.smtpConfigured === 'boolean' &&
+    typeof hostNotifCfg.dailyWatchlistDigestEnabled === 'boolean';
+
+  const showHostDigestSmtpWarning =
+    hostMailFlagsLoaded &&
+    hostNotifCfg != null &&
+    (!hostNotifCfg.dailyWatchlistDigestEnabled || hostNotifCfg.smtpConfigured === false) &&
+    notifPrefs.email &&
+    notifPrefs.dailyWatchlistDigestEmail;
 
   return (
     <div className="mx-auto max-w-[1360px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
@@ -537,10 +570,7 @@ const ProfilePage: React.FC = () => {
                     Daily market briefing (watchlist overview and ideas; host must schedule it)
                   </span>
                 </label>
-                {hostNotifCfg &&
-                  (!hostNotifCfg.dailyWatchlistDigestEnabled || hostNotifCfg.smtpConfigured === false) &&
-                  notifPrefs.email &&
-                  notifPrefs.dailyWatchlistDigestEmail && (
+                {showHostDigestSmtpWarning && hostNotifCfg && (
                     <div className="rounded-lg border border-amber-500/35 bg-amber-950/25 px-3 py-2 text-xs leading-relaxed text-amber-100/95">
                       {!hostNotifCfg.dailyWatchlistDigestEnabled && (
                         <p className="m-0">

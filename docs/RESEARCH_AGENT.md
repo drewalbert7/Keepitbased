@@ -95,7 +95,7 @@ Future (§11): `DISABLE_RESEARCH_EMAILS` for broader research/fusion sends when 
 ## Health checks
 
 - **Node:** `GET /api/health` (includes Python URL metadata where configured).
-- **Node config (non-secret flags):** `GET /api/health/config` — includes **`smtpConfigured`** and **`dipInsightGloballyEnabled`**.
+- **Node config (non-secret flags):** `GET /api/health/config` — includes **`dipInsightGloballyEnabled`** (and similar host flags). **`smtpConfigured`** and daily digest host toggles are only on **`GET /api/users/profile/host-notification-flags`** (JWT), not on the public health endpoint.
 - **Python:** `GET /health` on the Flask service — confirms process up; agent subgraph flags may be listed.
 
 ## Smoke tests

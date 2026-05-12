@@ -5,7 +5,12 @@ const { body, validationResult } = require('express-validator');
 const router = express.Router();
 const db = require('../models/database');
 const auth = require('../middleware/auth');
-const { authRateLimit, registrationRateLimit, passwordResetRateLimit } = require('../middleware/authRateLimit');
+const {
+  authRateLimit,
+  registrationRateLimit,
+  passwordResetRateLimit,
+  recoveryEmailRateLimit
+} = require('../middleware/authRateLimit');
 const { sanitizeInput, validateEmail, validatePassword, handleValidationErrors } = require('../middleware/inputValidation');
 const logger = require('../utils/logger');
 const config = require('../config');
@@ -294,16 +299,15 @@ router.post('/change-password', [
   }
 });
 
-// Recover username
-router.post('/recover-username', [
-  body('email').isEmail().withMessage('Valid email is required')
-], async (req, res) => {
+// Recover username (sends email — same SES abuse cap as password recovery)
+router.post(
+  '/recover-username',
+  sanitizeInput,
+  [body('email').isEmail().withMessage('Valid email is required')],
+  handleValidationErrors,
+  recoveryEmailRateLimit,
+  async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
     const { email } = req.body;
 
     // Find user by email
@@ -332,15 +336,13 @@ router.post('/recover-username', [
 });
 
 // Recover password (reset password)
-router.post('/recover-password', passwordResetRateLimit, [
-  body('email').isEmail().withMessage('Valid email is required')
-], async (req, res) => {
+router.post(
+  '/recover-password',
+  [body('email').isEmail().withMessage('Valid email is required')],
+  handleValidationErrors,
+  passwordResetRateLimit,
+  async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
     const { email } = req.body;
 
     // Find user by email
