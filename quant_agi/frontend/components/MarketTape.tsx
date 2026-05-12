@@ -1,7 +1,33 @@
 "use client";
 
 import { useState } from "react";
-import { type RankStrategyId, useQuantStore } from "../lib/store";
+import { type RankStrategyId, type RuleBreakerBreakdownRow, useQuantStore } from "../lib/store";
+
+function ruleBreakerBreakdown(factors: Record<string, unknown> | undefined): RuleBreakerBreakdownRow[] {
+  if (!factors || factors.kind !== "rule_breaker_gardner") return [];
+  const raw = factors.breakdown;
+  if (!Array.isArray(raw)) return [];
+  const out: RuleBreakerBreakdownRow[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const element_key = String(o.element_key ?? "");
+    const book_criterion = String(o.book_criterion ?? "");
+    const score_0_100 = typeof o.score_0_100 === "number" ? o.score_0_100 : Number(o.score_0_100);
+    const weight = typeof o.weight === "number" ? o.weight : Number(o.weight);
+    const weighted_contribution =
+      typeof o.weighted_contribution === "number" ? o.weighted_contribution : Number(o.weighted_contribution);
+    if (!element_key || !Number.isFinite(score_0_100)) continue;
+    out.push({
+      element_key,
+      book_criterion,
+      score_0_100,
+      weight: Number.isFinite(weight) ? weight : 0,
+      weighted_contribution: Number.isFinite(weighted_contribution) ? weighted_contribution : 0
+    });
+  }
+  return out;
+}
 
 function pctClass(v: number | null) {
   if (v == null) return "text-white/60";
@@ -90,6 +116,17 @@ export function MarketTape() {
           >
             AI photonics chokepoint
           </button>
+          <button
+            type="button"
+            onClick={() => onStrategyChange("rule_breaker_gardner")}
+            className={`rounded-lg border px-2.5 py-1 text-[11px] font-medium transition ${
+              rankStrategyId === "rule_breaker_gardner"
+                ? "border-amber-500/70 bg-amber-500/15 text-amber-100"
+                : "border-white/15 bg-black/25 text-white/70 hover:bg-white/5"
+            }`}
+          >
+            Rule Breaker (Gardner)
+          </button>
         </div>
       </div>
       {rankStrategyMeta?.disclaimer && (
@@ -119,8 +156,10 @@ export function MarketTape() {
         {suggestions.length === 0 ? (
           <p className="text-xs text-white/60">Scanning broad stock universe and ranking candidates...</p>
         ) : (
-          suggestions.slice(0, 9).map((row) => (
-            <article key={row.symbol} className="rounded-lg border border-white/10 bg-panelAlt/80 px-3 py-2">
+          suggestions.slice(0, 9).map((row) => {
+            const rbLegs = ruleBreakerBreakdown(row.strategy_factors);
+            return (
+              <article key={row.symbol} className="rounded-lg border border-white/10 bg-panelAlt/80 px-3 py-2">
               <div className="mb-1 flex items-center justify-between">
                 <p className="text-sm font-semibold text-white">{row.symbol}</p>
                 <span className="text-[11px] text-cyan-300/90">Score {row.score.toFixed(2)}</span>
@@ -141,6 +180,26 @@ export function MarketTape() {
               <p className="mt-1 text-[11px] text-cyan-200/70">
                 ADV20 ${Math.round(row.avg_dollar_vol_20d ?? 0).toLocaleString()}
               </p>
+              {rbLegs.length > 0 && (
+                <ul className="mt-2 space-y-1.5 border-t border-white/10 pt-2">
+                  <li className="text-[10px] font-semibold uppercase tracking-wide text-amber-200/85">
+                    Gardner checklist — leg scores (0–100) × weight
+                  </li>
+                  {rbLegs.map((leg) => (
+                    <li key={leg.element_key} className="text-[10px] leading-snug text-white/65">
+                      <span className="font-medium text-white/80">
+                        {leg.element_key.replace(/_/g, " ")}
+                      </span>{" "}
+                      <span className="text-cyan-200/90">{leg.score_0_100.toFixed(0)}</span>
+                      <span className="text-white/40"> ×{(leg.weight * 100).toFixed(0)}% → </span>
+                      <span className="text-mint/90">{leg.weighted_contribution.toFixed(2)}</span>
+                      {leg.book_criterion ? (
+                        <span className="mt-0.5 block pl-0 text-[9px] text-white/45">{leg.book_criterion}</span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
               <div className="mt-3 flex items-center justify-between">
                 <span className="text-[11px] text-white/45">{row.position_hint}</span>
                 <button
@@ -155,8 +214,9 @@ export function MarketTape() {
               <div className="mt-2 border-t border-white/10 pt-2 text-[11px] leading-relaxed text-white/65">
                 Why Quant suggests this: {row.why[0] || "Composite rank from momentum, volatility, and drawdown."}
               </div>
-            </article>
-          ))
+              </article>
+            );
+          })
         )}
       </div>
     </section>

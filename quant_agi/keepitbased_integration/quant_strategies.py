@@ -3,12 +3,16 @@
 `photonics_chokepoint` (Serenity-style chokepoint hunter): Polygon reference **market-cap band (~$50M–$5B
 when known; see constants below)**, issuer **theme / hyperscaler-NLP proxies**, fundamentals-backed **valuation**
 leg (via Python service/yfinance), optional **SEC filing keywords** (`sec_filing_scan`), merged with OHLC priors.
-Liquidity thresholds on the preset are OTC-aware (see API defaults)."""
+Liquidity thresholds on the preset are OTC-aware (see API defaults).
+
+`rule_breaker_gardner`: six **0–100** score legs that quantitatively proxy the classic **Rule Breakers** checklist
+attributed to **David Gardner & Tom Gardner** (growth + quality + tape + balance sheet + growth-vs-multiple harmony).
+Not affiliated with Motley Fool; fundamentals via python-service/yfinance; educational only."""
 from __future__ import annotations
 
 import math
 import re
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
 
 # Strategy band — Serenity playbook (small-cap asymmetry sweep); tune via API query later.
 SERENITY_MIN_MARKET_CAP = 100_000_000.0  # USD — reference for non-photonics docs / future reuse
@@ -318,6 +322,217 @@ def photonics_chokepoint_scores(
         "filing_keyword_hits": filing_hits,
         "filings_error": filings_error,
         "composite": composite,
+    }
+
+
+def _rb_safe_float(x: Any) -> Optional[float]:
+    if isinstance(x, (int, float)) and math.isfinite(float(x)):
+        return float(x)
+    return None
+
+
+def _rb_hist_return_pct(closes: Any, n_days: int) -> Optional[float]:
+    """Trailing n_days return % using daily closes (last vs n_days ago)."""
+    try:
+        if closes is None or len(closes.index) < n_days + 1:
+            return None
+        last = float(closes.iloc[-1])
+        past = float(closes.iloc[-(n_days + 1)])
+        if past == 0.0 or not math.isfinite(last) or not math.isfinite(past):
+            return None
+        return (last - past) / abs(past) * 100.0
+    except (TypeError, ValueError, IndexError, AttributeError):
+        return None
+
+
+def _rb_return_to_0_100(pct: Optional[float]) -> float:
+    if pct is None or not math.isfinite(pct):
+        return 44.0
+    return max(0.0, min(100.0, 50.0 + 50.0 * math.tanh(float(pct) / 28.0)))
+
+
+def _rb_revenue_growth_score(rev: Optional[float]) -> float:
+    if rev is None or not math.isfinite(rev):
+        return 44.0
+    if rev < -0.08:
+        return max(0.0, 28.0 + rev * 120.0)
+    if rev < 0.06:
+        return 42.0 + rev * 220.0
+    return max(0.0, min(100.0, 48.0 + rev * 105.0))
+
+
+def _rb_margin_quality_score(m: Optional[float]) -> float:
+    if m is None or not math.isfinite(m):
+        return 44.0
+    pct = m * 100.0 if abs(m) <= 1.75 else m
+    return max(0.0, min(100.0, 28.0 + pct * 1.05))
+
+
+def _rb_roe_score(roe: Optional[float]) -> float:
+    if roe is None or not math.isfinite(roe):
+        return 42.0
+    rp = roe * 100.0 if abs(roe) <= 2.5 else roe
+    return max(0.0, min(100.0, 46.0 + 48.0 * math.tanh(rp / 32.0)))
+
+
+def _rb_earnings_growth_score(eg: Optional[float]) -> float:
+    if eg is None or not math.isfinite(eg):
+        return 42.0
+    return max(0.0, min(100.0, 49.0 + 46.0 * math.tanh(eg / 0.38)))
+
+
+def _rb_debt_to_equity_score(de: Optional[float]) -> float:
+    if de is None or not math.isfinite(de):
+        return 46.0
+    if de <= 0.0:
+        return 76.0
+    if de < 35.0:
+        return max(35.0, 86.0 - de * 0.95)
+    if de < 110.0:
+        return max(22.0, 72.0 - (de - 35.0) * 0.32)
+    return max(8.0, 48.0 - (de - 110.0) * 0.07)
+
+
+def _rb_growth_vs_ps_score(rev: Optional[float], ps: Optional[float]) -> float:
+    """
+    Higher when revenue is growing and P/S is not wildly disconnected from that growth (rough 'sanity' leg).
+    """
+    if ps is None or not math.isfinite(ps) or ps <= 0.0:
+        return 44.0
+    if rev is None or not math.isfinite(rev):
+        return max(18.0, min(82.0, 74.0 - math.log(max(ps, 0.12)) * 9.0))
+    g_pct = max(rev * 100.0, 0.08)
+    ratio = ps / max(g_pct, 0.25)
+    s = 84.0 - max(0.0, ratio - 2.8) * 5.2 - max(0.0, ratio - 9.5) * 2.4
+    if rev < 0.0:
+        s -= 20.0
+    return max(0.0, min(100.0, s))
+
+
+RULE_BREAKER_GARDNER_WEIGHTS: Dict[str, float] = {
+    "top_dog_first_mover": 0.20,
+    "sustainable_advantage": 0.18,
+    "price_appreciation": 0.22,
+    "execution_and_culture": 0.12,
+    "financial_fortitude": 0.16,
+    "growth_valuation_harmony": 0.12,
+}
+
+RULE_BREAKER_GARDNER_LABELS: Dict[str, str] = {
+    "top_dog_first_mover": (
+        "Top dog & first mover — revenue growth + medium-term price trend (proxies emerging leadership)"
+    ),
+    "sustainable_advantage": (
+        "Sustainable competitive advantage — gross & operating margins (business quality / 'moat' proxy)"
+    ),
+    "price_appreciation": (
+        "Strong past price appreciation — 20D + ~1Y return (multi-horizon momentum)"
+    ),
+    "execution_and_culture": (
+        "Good management & execution — ROE + earnings growth (weak quantitative proxy vs. qualitative diligence)"
+    ),
+    "financial_fortitude": (
+        "Strong financial direction — debt/equity, free cash flow sign, cash vs. debt"
+    ),
+    "growth_valuation_harmony": (
+        "Growth vs. valuation harmony — revenue growth vs. P/S (avoid extreme disconnection)"
+    ),
+}
+
+
+def rule_breaker_gardner_scores(
+    hist: Any,
+    fundamentals_data: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """
+    Six 0–100 legs + composite (0–100) aligned to the published **Rule Breakers** checklist
+    (David Gardner & Tom Gardner). Each leg is a transparent numeric proxy; composite is the weighted sum.
+
+    This is not the book's qualitative process and is **not** affiliated with Motley Fool.
+    """
+    closes = hist.close
+    fu = fundamentals_data or {}
+
+    rev = _rb_safe_float(fu.get("revenueGrowth"))
+    gm = _rb_safe_float(fu.get("grossMargins"))
+    om = _rb_safe_float(fu.get("operatingMargins"))
+    roe = _rb_safe_float(fu.get("returnOnEquity"))
+    eg = _rb_safe_float(fu.get("earningsGrowth"))
+    de = _rb_safe_float(fu.get("debtToEquity"))
+    fcf = _rb_safe_float(fu.get("freeCashflow"))
+    tcash = _rb_safe_float(fu.get("totalCash"))
+    tdebt = _rb_safe_float(fu.get("totalDebt"))
+    ps = _rb_safe_float(fu.get("priceToSalesTrailing12Months"))
+
+    r20 = _rb_hist_return_pct(closes, 20)
+    r126 = _rb_hist_return_pct(closes, 126) or _rb_hist_return_pct(closes, 84)
+    r252 = _rb_hist_return_pct(closes, 252) or _rb_hist_return_pct(closes, 200) or r126
+
+    rev_s = _rb_revenue_growth_score(rev)
+    tape_med = _rb_return_to_0_100(r126)
+    if rev is None:
+        top_dog = 0.38 * _rb_return_to_0_100(r20) + 0.62 * tape_med
+    else:
+        top_dog = 0.52 * rev_s + 0.48 * tape_med
+
+    sustainable = 0.56 * _rb_margin_quality_score(gm) + 0.44 * _rb_margin_quality_score(om)
+
+    price_app = 0.34 * _rb_return_to_0_100(r20) + 0.66 * _rb_return_to_0_100(r252)
+
+    execution = 0.52 * _rb_roe_score(roe) + 0.48 * _rb_earnings_growth_score(eg)
+
+    fcf_leg = 58.0 if fcf is None else (72.0 if fcf > 0 else 34.0)
+    cash_debt_leg = 46.0
+    if tcash is not None and tdebt is not None and tdebt > 0 and math.isfinite(tcash):
+        cash_debt_leg = max(0.0, min(100.0, 44.0 + 38.0 * math.tanh((tcash / tdebt - 0.15) / 0.95)))
+    financial = 0.48 * _rb_debt_to_equity_score(de) + 0.30 * fcf_leg + 0.22 * cash_debt_leg
+
+    growth_val = _rb_growth_vs_ps_score(rev, ps)
+
+    legs: Dict[str, float] = {
+        "top_dog_first_mover": top_dog,
+        "sustainable_advantage": sustainable,
+        "price_appreciation": price_app,
+        "execution_and_culture": execution,
+        "financial_fortitude": financial,
+        "growth_valuation_harmony": growth_val,
+    }
+
+    composite = sum(legs[k] * RULE_BREAKER_GARDNER_WEIGHTS[k] for k in RULE_BREAKER_GARDNER_WEIGHTS)
+    composite = round(max(0.0, min(100.0, composite)), 4)
+
+    breakdown: List[dict[str, Any]] = []
+    for key, w in RULE_BREAKER_GARDNER_WEIGHTS.items():
+        sc = round(max(0.0, min(100.0, legs[key])), 2)
+        breakdown.append(
+            {
+                "element_key": key,
+                "book_criterion": RULE_BREAKER_GARDNER_LABELS[key],
+                "score_0_100": sc,
+                "weight": w,
+                "weighted_contribution": round(sc * w, 3),
+            }
+        )
+
+    return {
+        "composite": composite,
+        "breakdown": breakdown,
+        "inputs": {
+            "revenueGrowth": rev,
+            "return_20d_pct": round(r20, 4) if r20 is not None else None,
+            "return_126d_pct": round(r126, 4) if r126 is not None else None,
+            "return_252d_pct": round(r252, 4) if r252 is not None else None,
+            "grossMargins": gm,
+            "operatingMargins": om,
+            "returnOnEquity": roe,
+            "earningsGrowth": eg,
+            "debtToEquity": de,
+            "freeCashflow": fcf,
+            "totalCash": tcash,
+            "totalDebt": tdebt,
+            "priceToSalesTrailing12Months": ps,
+        },
+        **{k: round(v, 2) for k, v in legs.items()},
     }
 
 

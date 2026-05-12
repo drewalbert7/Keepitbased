@@ -9,6 +9,7 @@ import {
   QuantScorecard,
   QuantSuggestedPosition,
   RankMeta,
+  type RankStrategyId,
   useQuantStore
 } from "../lib/store";
 
@@ -104,7 +105,9 @@ export function StreamBootstrap() {
         );
         if (rankedRes.ok) {
           const rankedPayload = await rankedRes.json();
-          const sid = rankedPayload.strategy === "photonics_chokepoint" ? "photonics_chokepoint" : "momentum_liquidity";
+          const rawStrat = String(rankedPayload.strategy || "");
+          const sid: RankStrategyId =
+            rawStrat === "photonics_chokepoint" || rawStrat === "rule_breaker_gardner" ? rawStrat : "momentum_liquidity";
           setRankStrategyMeta({
             id: sid,
             label: String(rankedPayload.strategy_label || sid),
@@ -129,7 +132,7 @@ export function StreamBootstrap() {
                 position_hint: String(row.position_hint || "watch candidate"),
                 strategy_factors:
                   row.strategy_factors && typeof row.strategy_factors === "object"
-                    ? (row.strategy_factors as Record<string, string | number | undefined>)
+                    ? (row.strategy_factors as Record<string, unknown>)
                     : undefined
               }))
             : [];

@@ -38,7 +38,15 @@ export type MarketSymbolSnapshot = {
   is_live_massive: boolean;
 };
 
-export type RankStrategyId = "momentum_liquidity" | "photonics_chokepoint";
+export type RankStrategyId = "momentum_liquidity" | "photonics_chokepoint" | "rule_breaker_gardner";
+
+export type RuleBreakerBreakdownRow = {
+  element_key: string;
+  book_criterion: string;
+  score_0_100: number;
+  weight: number;
+  weighted_contribution: number;
+};
 
 export type QuantSuggestedPosition = {
   symbol: string;
@@ -55,7 +63,7 @@ export type QuantSuggestedPosition = {
   as_of: string | null;
   why: string[];
   position_hint: string;
-  strategy_factors?: Record<string, string | number | undefined>;
+  strategy_factors?: Record<string, unknown>;
 };
 
 export type RankMeta = {

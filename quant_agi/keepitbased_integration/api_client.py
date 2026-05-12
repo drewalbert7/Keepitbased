@@ -24,6 +24,7 @@ from keepitbased_integration.quant_strategies import (
     PHOTONICS_CHOKEPOINT_UNIVERSE,
     photonics_chokepoint_scores,
     photonics_serenity_market_cap_band_ok,
+    rule_breaker_gardner_scores,
     _valuation_score_from_fundamentals,
 )
 from keepitbased_integration.sec_filing_scan import fetch_recent_filing_keyword_score
@@ -161,7 +162,7 @@ def _avg_dollar_volume_20d(hist: Any) -> Optional[float]:
     return val if math.isfinite(val) and val > 0 else None
 
 
-RankStrategyId = Literal["momentum_liquidity", "photonics_chokepoint"]
+RankStrategyId = Literal["momentum_liquidity", "photonics_chokepoint", "rule_breaker_gardner"]
 
 
 def _blend_momentum_with_valuation(tape_score: float, fundamentals_weight: float, valuation_pts: float) -> float:
@@ -296,6 +297,144 @@ def _rank_momentum_payload(
         "universe_size": len(DEFAULT_STOCK_UNIVERSE),
         "liquidity_gate": {"min_price": min_px, "min_avg_dollar_vol_20d": min_adv},
         "fundamentals_blend": {"momentum_weight": float(fundamentals_weight)},
+        "accepted_count": len(ranked),
+        "excluded_count": sum(excluded_counts.values()),
+        "excluded_counts": excluded_counts,
+        "excluded_examples": rejected[:12],
+        "returned": lim,
+        "as_of_epoch_ms": int(now * 1000),
+        "positions": ranked[:lim],
+    }
+
+
+def _rank_rule_breaker_payload(
+    fb: KeepItBasedDataFetcher,
+    key: Optional[str],
+    lim: int,
+    min_px: float,
+    min_adv: float,
+    now: float,
+) -> dict[str, Any]:
+    """
+    Rule Breakers-style six-leg screen on the default liquid mega/large-cap universe (same list as momentum).
+    """
+    ranked: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    excluded_counts: dict[str, int] = {
+        "price_below_min": 0,
+        "liquidity_below_min": 0,
+        "insufficient_history": 0,
+    }
+    for sym in DEFAULT_STOCK_UNIVERSE:
+        hist = fb.load_history(sym, refresh=False, asset_type="stock")
+        src = fb.last_history_source
+        if ("volume" not in hist.columns or hist.volume.dropna().empty) and key:
+            hist = fb.load_history(sym, refresh=True, asset_type="stock")
+            src = fb.last_history_source
+        if len(hist.index) < 40:
+            excluded_counts["insufficient_history"] += 1
+            rejected.append({"symbol": sym, "reason": "insufficient_history"})
+            continue
+
+        fu = fetch_fundamentals_via_python_service(sym, refresh=False)
+        rb = rule_breaker_gardner_scores(hist, fu)
+        composite = float(rb["composite"])
+        tape_score, momentum_pct, vol_pct, drawdown_pct = _rank_symbol(hist)
+
+        last_close = float(hist.close.iloc[-1]) if len(hist.index) else None
+        prev_close = float(hist.close.iloc[-2]) if len(hist.index) > 1 else None
+        adv20 = _avg_dollar_volume_20d(hist)
+        if last_close is None or last_close < min_px:
+            excluded_counts["price_below_min"] += 1
+            rejected.append(
+                {"symbol": sym, "reason": "price_below_min", "last_close": last_close, "avg_dollar_vol_20d": adv20}
+            )
+            continue
+        if adv20 is None or adv20 < min_adv:
+            excluded_counts["liquidity_below_min"] += 1
+            rejected.append(
+                {"symbol": sym, "reason": "liquidity_below_min", "last_close": last_close, "avg_dollar_vol_20d": adv20}
+            )
+            continue
+
+        day_change_pct = (
+            round((last_close - prev_close) / abs(prev_close) * 100.0, 4)
+            if last_close is not None and prev_close not in (None, 0.0)
+            else None
+        )
+
+        bd = rb.get("breakdown") or []
+        bd_line = "; ".join(
+            f"{item.get('element_key')}={float(item.get('score_0_100', 0)):.0f}"
+            for item in bd
+            if isinstance(item, dict)
+        )
+        if len(bd_line) > 420:
+            bd_line = bd_line[:417] + "…"
+        why = [
+            (
+                f"Rule Breaker composite {composite:.1f}/100 — weighted blend of six Gardner-checklist legs "
+                f"(quant proxies; not affiliated with Motley Fool)."
+            ),
+            f"Tape context: mom20 {momentum_pct:+.2f}%, vol20 {vol_pct:.2f}%, DD60 {drawdown_pct:.2f}% "
+            f"(tier score {tape_score:.3f} for context only).",
+            f"Leg scores (0–100 × weight): {bd_line}" if bd_line else "Leg breakdown unavailable.",
+            "live Massive aggregates" if src == "massive_live" else "cached/synthetic history",
+        ]
+
+        inp = rb.get("inputs") if isinstance(rb.get("inputs"), dict) else {}
+        ranked.append(
+            {
+                "symbol": sym,
+                "asset_type": "stock",
+                "score": composite,
+                "strategy_factors": {
+                    "kind": "rule_breaker_gardner",
+                    "composite": composite,
+                    "breakdown": rb.get("breakdown"),
+                    "tape_context": {
+                        "tape_score_raw": round(tape_score, 4),
+                        "momentum_20d_pct": momentum_pct,
+                        "vol_20d_pct": vol_pct,
+                        "drawdown_60d_pct": drawdown_pct,
+                    },
+                    "fundamentals_inputs": inp,
+                    "enterpriseToRevenue": fu.get("enterpriseToRevenue") if fu else None,
+                    "companyName": fu.get("companyName") if fu else None,
+                },
+                "last_close": last_close,
+                "day_change_pct": day_change_pct,
+                "momentum_20d_pct": momentum_pct,
+                "vol_20d_pct": vol_pct,
+                "drawdown_60d_pct": drawdown_pct,
+                "avg_dollar_vol_20d": round(adv20, 2) if adv20 is not None else None,
+                "history_source": src,
+                "is_live_massive": src == "massive_live",
+                "as_of": str(hist.index[-1])[:10] if len(hist.index) else None,
+                "why": why,
+                "position_hint": (
+                    "rule breaker focus" if composite >= 72.0 else "watch candidate" if composite >= 58.0 else "exploratory only"
+                ),
+            }
+        )
+
+    ranked.sort(key=lambda r: float(r.get("score", 0.0)), reverse=True)
+    return {
+        "ok": True,
+        "strategy": "rule_breaker_gardner",
+        "strategy_label": "Rule Breaker (Gardner checklist — six scored legs)",
+        "strategy_disclaimer": (
+            "Educational rules engine inspired by the **Rule Breakers** framework associated with **David Gardner "
+            "& Tom Gardner**. Six transparent 0–100 legs (growth, margins, multi-horizon tape, ROE/earnings growth, "
+            "balance sheet / FCF, revenue growth vs. P/S) are **quantitative proxies**, not a substitute for reading "
+            "the book, knowing the business, or doing your own diligence. **Not affiliated with Motley Fool.** "
+            "Not investment advice."
+        ),
+        "market_data_api_url": settings.market_data_api_url,
+        "api_key_present": bool(key),
+        "synthetic_forced": settings.quant_agi_synthetic_history_only,
+        "universe_size": len(DEFAULT_STOCK_UNIVERSE),
+        "liquidity_gate": {"min_price": min_px, "min_avg_dollar_vol_20d": min_adv},
         "accepted_count": len(ranked),
         "excluded_count": sum(excluded_counts.values()),
         "excluded_counts": excluded_counts,
@@ -839,9 +978,8 @@ def create_app() -> FastAPI:
 
         - ``momentum_liquidity``: default mega/large-cap list (20D momentum, vol, 60D drawdown) plus automatic
           fundamentals tilt when ``QUANT_AGI_MOMENTUM_FUNDAMENTALS_WEIGHT`` > 0 (python-service; default ~0.22).
-        - ``photonics_chokepoint``: optics/CPO-adjacent curated universe; composite blends merged choke,
-          52w asymmetry, volume catalyst, technical band, yfinance-backed **valuation** (EV/Revenue, P/S),
-          and optional **SEC filing keyword** leg (disabled by default; ``QUANT_AGI_SEC_FILING_SCAN``).
+        - ``rule_breaker_gardner``: same default universe as momentum; **six 0–100 legs** (Gardner Rule Breaker
+          themes as quantitative proxies) + composite; always uses python-service fundamentals when available.
 
         Per-strategy default liquidity gates apply when query params are omitted.
         Cache is keyed by strategy + gates + top_n + momentum fundamentals weight.
@@ -869,6 +1007,8 @@ def create_app() -> FastAPI:
 
         if strategy == "photonics_chokepoint":
             payload = _rank_photonics_payload(fb, key, lim, min_px, min_adv, now)
+        elif strategy == "rule_breaker_gardner":
+            payload = _rank_rule_breaker_payload(fb, key, lim, min_px, min_adv, now)
         else:
             payload = _rank_momentum_payload(fb, key, lim, min_px, min_adv, mom_fw, now)
 
