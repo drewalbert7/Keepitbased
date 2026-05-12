@@ -133,6 +133,10 @@ export function StreamBootstrap() {
                     : undefined
               }))
             : [];
+          positions.sort(
+            (a, b) =>
+              (b.score ?? 0) - (a.score ?? 0) || String(a.symbol).localeCompare(String(b.symbol))
+          );
           setSuggestions(positions);
 
           const meta: RankMeta = {

@@ -88,7 +88,8 @@ class LlmClient:
                     "role": "system",
                     "content": (
                         "You are a trading assistant. Return concise JSON with keys "
-                        "'whyNow' and 'confidenceExplain'."
+                        "'whyNow' and 'confidenceExplain'. "
+                        "The Score is authoritative for cross-symbol ranking; do not contradict it."
                     )
                 },
                 {
@@ -121,7 +122,11 @@ class LlmClient:
         *,
         news_context: str = "",
     ) -> Dict[str, Any]:
-        system_prompt = "Return compact JSON with keys whyNow and confidenceExplain."
+        system_prompt = (
+            "Return compact JSON with keys whyNow and confidenceExplain. "
+            "The numeric Score is authoritative for ranking this symbol vs others in the same scan; "
+            "do not contradict it or imply a different relative rank."
+        )
         user_prompt = (
             f"Symbol: {symbol}\n"
             f"Score: {score}\n"
@@ -990,6 +995,8 @@ class LlmClient:
             "Write a concise Markdown reply that answers their question in plain English.\n"
             "Rules:\n"
             "- Use ONLY numbers, symbols, scores, and flags present in SCAN_PACKET JSON. Do not invent data.\n"
+            "- When discussing multiple candidates, preserve the exact order of topCandidates in SCAN_PACKET "
+            "(already sorted best-first by server score); never reorder symbols by your own preference.\n"
             "- Summarize tradeoffs (momentum vs event risk, etc.) when relevant.\n"
             "- If SCAN_PACKET has zero candidates, explain possible reasons (filters, confidence floor) without blaming the user.\n"
             "- No buy/sell instructions; educational framing only.\n"

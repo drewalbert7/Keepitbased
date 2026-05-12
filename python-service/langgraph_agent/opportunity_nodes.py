@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import logging
+import math
 import os
 import re
 from typing import Any, Dict, List, Optional, Set
@@ -517,7 +518,8 @@ def opportunity_scout(state: OpportunityState) -> OpportunityState:
     rc = state.get("research_context") or {}
 
     candidates = []
-    for idx, symbol in enumerate(state.get("symbols", [])):
+    # Scores must not depend on watchlist iteration order — only quotes, research, and symbol-agnostic gates.
+    for symbol in state.get("symbols", []):
         sig = _research_signals_for_symbol(symbol, rc)
         snap = snapshots.get(symbol) or {}
         quote = snap.get("quote") if isinstance(snap, dict) else None
@@ -525,12 +527,16 @@ def opportunity_scout(state: OpportunityState) -> OpportunityState:
         if quote and isinstance(quote.get("changePercent"), (int, float)):
             live_boost = max(-0.08, min(0.08, float(quote["changePercent"]) / 500.0))
 
-        momentum = max(0.35, 0.78 - idx * 0.04 + live_boost)
-        trend = max(0.35, 0.72 - idx * 0.03 + live_boost * 0.5)
+        news_ct = int(sig["count"])
+        neg_hint = bool(sig.get("negative_headline_hint"))
+        neg_pen = 0.14 if neg_hint else 0.0
+        news_lift = min(0.12, news_ct * 0.014)
+        momentum = max(0.35, min(0.95, 0.62 + live_boost + news_lift - neg_pen * 0.45))
+        trend = max(0.35, min(0.92, 0.58 + live_boost * 0.48 + news_lift * 0.65))
         liquidity = 0.75 if symbol in ("AAPL", "MSFT", "NVDA") else 0.62
-        base_event = min(0.5, 0.12 + idx * 0.04)
-        news_bump = min(0.15, float(sig["count"]) * 0.045)
-        if sig["negative_headline_hint"]:
+        base_event = min(0.5, 0.16 + min(0.22, news_ct * 0.034) + neg_pen)
+        news_bump = min(0.15, float(news_ct) * 0.045)
+        if neg_hint:
             news_bump += 0.1
         event_risk = min(0.5, base_event + news_bump)
 
@@ -543,6 +549,22 @@ def opportunity_scout(state: OpportunityState) -> OpportunityState:
         llm_summary = LLM_CLIENT.summarize_candidate(
             symbol, score, risk_flags, news_context=news_ctx
         )
+        px = None
+        if quote and isinstance(quote.get("price"), (int, float)):
+            px = float(quote["price"])
+        if px and math.isfinite(px) and px > 0:
+            span = max(0.005, min(0.04, 0.018 + (1.0 - score) * 0.02))
+            lo = round(px * (1.0 - span), 4)
+            hi = round(px * (1.0 - span * 0.45), 4)
+            band = {"min": min(lo, hi), "max": max(lo, hi)}
+        else:
+            mid = 100.0
+            span = 0.022 + max(0.0, min(0.04, (1.0 - score) * 0.05))
+            band = {
+                "min": round(mid * (1.0 - span), 2),
+                "max": round(mid * (1.0 - span * 0.55), 2),
+            }
+
         row = {
             "symbol": symbol,
             "score": round(score, 3),
@@ -550,10 +572,7 @@ def opportunity_scout(state: OpportunityState) -> OpportunityState:
             "whyNow": llm_summary.get("whyNow") or f"{symbol} has favorable multi-factor alignment.",
             "riskFlags": risk_flags,
             "researchHeadlinesInWindow": int(sig["count"]),
-            "suggestedLimitBand": {
-                "min": round(100 * (1 - 0.03 - idx * 0.002), 2),
-                "max": round(100 * (1 - 0.015 - idx * 0.002), 2),
-            },
+            "suggestedLimitBand": band,
         }
         if sig["negative_headline_hint"]:
             row["researchNegativeKeywordHint"] = True
@@ -566,7 +585,10 @@ def opportunity_scout(state: OpportunityState) -> OpportunityState:
         candidates.append(row)
 
     candidates = [c for c in candidates if c["confidence"] >= confidence_floor]
-    candidates = sorted(candidates, key=lambda c: c["score"], reverse=True)[: max(1, min(top_n, 10))]
+    candidates = sorted(
+        candidates,
+        key=lambda c: (-(c["score"] or 0.0), -(c["confidence"] or 0.0), str(c.get("symbol") or "")),
+    )[: max(1, min(top_n, 10))]
     return {"candidates": candidates}
 
 
