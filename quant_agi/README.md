@@ -49,6 +49,37 @@ Use **`QUANT_AGI_LLM_PROVIDER`** (`grok`|`none`|…) if you already set **`LLM_P
 
 Pydantic reads `SWARM_DEFAULT_AGENTS` as `swarm_default_agents`, etc. (see `config.py`).
 
+## Nightly autoresearch (automatic “brain” loop)
+
+The **FastAPI** process (`main.py serve`) does **not** run the improvement loop; it only serves HTTP + reads SQLite. To have autoresearch run **every night** (or on any schedule), invoke the CLI on a timer.
+
+**What actually improves (automatically):**
+
+- **SQLite** experiment rows and aggregate metrics in the synthetic harness.
+- **Sandbox git** under `models/autoresearch_git/` (branches + commits; optional `grok_artifacts/` sketches).
+- The **in-process champion** hyperparameters during a single `run-loop` invocation (`loop.py`).
+
+**What does *not* auto-merge:** KeepItBased application code on `main` — that stays a **human / PR** decision so a bad LLM night cannot rewrite production.
+
+**Recommended: cron on the API host**
+
+```bash
+chmod +x /path/to/keepitbased/scripts/run-quant-autoresearch-nightly.sh
+crontab -e
+# e.g. 03:15 UTC once per night, 3 iterations (tune QUANT_AUTORESEARCH_NIGHTS)
+15 3 * * * QUANT_AUTORESEARCH_NIGHTS=3 /path/to/keepitbased/scripts/run-quant-autoresearch-nightly.sh
+```
+
+Or from repo root after `chmod`:
+
+```bash
+npm run quant:autoresearch-nightly
+```
+
+Logs default to `quant_agi/logs/autoresearch-nightly.log`. A **flock** lock prevents overlapping runs if one night exceeds the cron interval. Tune cost vs depth with `QUANT_AUTORESEARCH_NIGHTS`, `EXPERIMENT_MAX_RUNTIME_SEC`, `AUTORESEARCH_EVAL_AGENTS` / `AUTORESEARCH_EVAL_ROUNDS` (see `config.py`), and `LLM_PROVIDER` (`grok` vs `none` for heuristic-only nights).
+
+**systemd** alternative: use `OnCalendar=*-*-* 03:15:00` with `Type=oneshot` and `ExecStart=` pointing at the same script.
+
 ## CLI
 
 ```bash
