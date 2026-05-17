@@ -1,4 +1,5 @@
 const logger = require('../utils/logger');
+const config = require('../config');
 const db = require('../models/database');
 const emailService = require('./emailService');
 const { getRedisClient } = require('../utils/redis');
@@ -145,7 +146,10 @@ class AlertService {
 
       const notificationPrefs = mergeNotificationPreferences(alert.notification_preferences);
 
-      if (notificationPrefs.email !== false) {
+      const legacyEmailEnabled =
+        config.ENABLE_LEGACY_THRESHOLD_ALERT_EMAILS && notificationPrefs.thresholdAlertEmail === true;
+
+      if (legacyEmailEnabled && notificationPrefs.email !== false) {
         const legacyBlocked = await isLegacyAlertBlocked(
           this.redis,
           alert.user_id,

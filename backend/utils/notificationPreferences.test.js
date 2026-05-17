@@ -9,7 +9,10 @@ describe('mergeNotificationPreferences', () => {
   it('defaults opportunity email tier to overreaction_only', () => {
     const p = mergeNotificationPreferences({});
     assert.equal(p.opportunityEmailNotifyLevel, 'overreaction_only');
-    assert.equal(p.opportunityMaxEmailsPerDay, 10);
+    assert.equal(p.opportunityMaxEmailsPerDay, 5);
+    assert.equal(p.thresholdAlertEmail, false);
+    assert.equal(p.dailyWatchlistDigestEmail, false);
+    assert.equal(p.opportunityNotifyLevel, 'overreaction_only');
     assert.equal(p.timezone, 'America/New_York');
     assert.equal(p.quietHoursStart, '22:00');
     assert.equal(p.quietHoursEnd, '08:00');

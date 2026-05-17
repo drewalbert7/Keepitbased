@@ -42,9 +42,9 @@ const ProfilePage: React.FC = () => {
     opportunityRespectQuietHours: true,
     opportunityEmailDeliveryMode: 'instant' as OpportunityEmailDeliveryMode,
     opportunityStockMarketHoursOnly: true,
-    dipInsightEmail: true,
+    dipInsightEmail: false,
     researchDigestEmail: true,
-    dailyWatchlistDigestEmail: true,
+    dailyWatchlistDigestEmail: false,
     agentMaxPositionSizePct: 10
   });
   const [notifSaving, setNotifSaving] = useState(false);
@@ -128,7 +128,7 @@ const ProfilePage: React.FC = () => {
       opportunityMaxEmailsPerDay:
         typeof n.opportunityMaxEmailsPerDay === 'number' && Number.isFinite(n.opportunityMaxEmailsPerDay)
           ? Math.min(50, Math.max(1, Math.round(n.opportunityMaxEmailsPerDay)))
-          : 10,
+          : 5,
       timezone:
         typeof n.timezone === 'string' && n.timezone.trim().length > 0
           ? n.timezone.trim()
@@ -145,9 +145,9 @@ const ProfilePage: React.FC = () => {
       opportunityEmailDeliveryMode:
         n.opportunityEmailDeliveryMode === 'hourly_digest' ? 'hourly_digest' : 'instant',
       opportunityStockMarketHoursOnly: n.opportunityStockMarketHoursOnly !== false,
-      dipInsightEmail: n.dipInsightEmail !== false,
+      dipInsightEmail: n.dipInsightEmail === true,
       researchDigestEmail: n.researchDigestEmail !== false,
-      dailyWatchlistDigestEmail: n.dailyWatchlistDigestEmail !== false,
+      dailyWatchlistDigestEmail: n.dailyWatchlistDigestEmail === true,
       agentMaxPositionSizePct: pct
     });
   }, [user]);

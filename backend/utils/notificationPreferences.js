@@ -24,12 +24,17 @@ function mergeNotificationPreferences(raw) {
     researchMaxEmailsPerDay: clampInt(p.researchMaxEmailsPerDay, 1, 20, 5),
     /** Max Grok dip-insight emails per UTC day (rich briefing); plain opportunity mail uses opportunityMaxEmailsPerDay. */
     dipInsightMaxEmailsPerDay: clampInt(p.dipInsightMaxEmailsPerDay, 1, 20, 3),
-    /** Grok dip briefing email when ENABLE_DIP_INSIGHT_EMAIL=true; default on under flag. */
-    dipInsightEmail: enableDipInsight ? p.dipInsightEmail !== false : false,
+    /** Grok dip briefing email when ENABLE_DIP_INSIGHT_EMAIL=true; opt-in (plain opportunity email is default). */
+    dipInsightEmail: enableDipInsight ? p.dipInsightEmail === true : false,
     /** Matches dashboard agent slider default; used to cap suggestedTranchePct server-side. */
     agentMaxPositionSizePct: clampInt(p.agentMaxPositionSizePct, 1, 50, 10),
 
-    /** Opportunity signal emails (dip notifications); independent gate from generic marketing email. Default on. */
+    /**
+     * Legacy 5/10/15% threshold emails (small/medium/large). Opt-in only; opportunity emails are the default path.
+     */
+    thresholdAlertEmail: p.thresholdAlertEmail === true,
+
+    /** Critical watchlist dip emails (overreaction/capitulation per tier). Default on. */
     opportunityEmail: p.opportunityEmail !== false,
 
     /**
@@ -38,7 +43,7 @@ function mergeNotificationPreferences(raw) {
      */
     opportunityNotifyLevel: ['all', 'overreaction_only'].includes(p.opportunityNotifyLevel)
       ? p.opportunityNotifyLevel
-      : 'all',
+      : 'overreaction_only',
 
     /**
      * Opportunity **email** tier (plain + dip-insight). Default `overreaction_only` for new/unspecified rows.
@@ -51,7 +56,7 @@ function mergeNotificationPreferences(raw) {
       : 'overreaction_only',
 
     /** Max opportunity (plain + dip-insight) emails per user per UTC day. */
-    opportunityMaxEmailsPerDay: clampInt(p.opportunityMaxEmailsPerDay, 1, 50, 10),
+    opportunityMaxEmailsPerDay: clampInt(p.opportunityMaxEmailsPerDay, 1, 50, 5),
 
     /** IANA timezone for quiet hours (e.g. America/New_York). */
     timezone:
@@ -84,8 +89,8 @@ function mergeNotificationPreferences(raw) {
      */
     opportunityStockMarketHoursOnly: p.opportunityStockMarketHoursOnly !== false,
 
-    /** Daily summary email — opt-out; unset defaults to on (host ENABLE_* + cron still required to send). */
-    dailyWatchlistDigestEmail: p.dailyWatchlistDigestEmail !== false
+    /** Daily Grok watchlist briefing — opt-in (host ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL + cron required). */
+    dailyWatchlistDigestEmail: p.dailyWatchlistDigestEmail === true
   };
 }
 

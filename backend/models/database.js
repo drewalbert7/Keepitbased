@@ -34,21 +34,22 @@ async function runInitializeDatabase() {
   const defaultNotificationPrefsJson = JSON.stringify({
     email: true,
     push: true,
+    thresholdAlertEmail: false,
     opportunityToasts: true,
     opportunityEmail: true,
-    opportunityNotifyLevel: 'all',
+    opportunityNotifyLevel: 'overreaction_only',
     opportunityEmailNotifyLevel: 'overreaction_only',
-    opportunityMaxEmailsPerDay: 10,
+    opportunityMaxEmailsPerDay: 5,
     timezone: 'America/New_York',
     quietHoursStart: '22:00',
     quietHoursEnd: '08:00',
     opportunityRespectQuietHours: true,
     opportunityEmailDeliveryMode: 'instant',
     opportunityStockMarketHoursOnly: true,
-    dipInsightEmail: true,
-    dipInsightMaxEmailsPerDay: 3,
+    dipInsightEmail: false,
+    dipInsightMaxEmailsPerDay: 2,
     researchDigestEmail: true,
-    dailyWatchlistDigestEmail: true,
+    dailyWatchlistDigestEmail: false,
     agentMaxPositionSizePct: 10
   });
 

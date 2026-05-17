@@ -168,6 +168,14 @@ const config = {
   // Features
   PRICE_CHECK_INTERVAL_MS: parseInt(process.env.PRICE_CHECK_INTERVAL_MS) || 60000,
   MAX_ALERTS_PER_USER: parseInt(process.env.MAX_ALERTS_PER_USER) || 50,
+
+  /**
+   * Legacy 5/10/15% threshold "BUY SIGNAL" emails (alertService). Default off — use opportunity
+   * emails (overreaction/capitulation) for watchlist dip alerts instead; saves SES quota.
+   */
+  ENABLE_LEGACY_THRESHOLD_ALERT_EMAILS:
+    process.env.ENABLE_LEGACY_THRESHOLD_ALERT_EMAILS === 'true',
+
   /** When true, optional Grok dip briefing email replaces plain opportunity email (see notification_preferences.dipInsightEmail). */
   ENABLE_DIP_INSIGHT_EMAIL: process.env.ENABLE_DIP_INSIGHT_EMAIL === 'true',
   /** Emergency kill switch: when true, never send Grok dip briefing emails (plain opportunity email still allowed). */
@@ -207,15 +215,10 @@ const config = {
   })(),
 
   /**
-   * Scheduled daily email: Grok analysis of Main watchlist + suggested tickers (Python service + GROK_*).
-   * Users opt out via Profile `dailyWatchlistDigestEmail`. **Default on** for self-hosted installs;
-   * set `ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL=false` to skip scheduling, or `DISABLE_DAILY_WATCHLIST_DIGEST_EMAIL=true` as a kill switch.
+   * Scheduled daily Grok watchlist briefing (separate from critical dip opportunity emails).
+   * Default off — set ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL=true to schedule; users also opt in via Profile.
    */
-  ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL: (() => {
-    const v = (process.env.ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL || '').trim().toLowerCase();
-    if (v === 'false' || v === '0' || v === 'no' || v === 'off') return false;
-    return true;
-  })(),
+  ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL: process.env.ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL === 'true',
   DISABLE_DAILY_WATCHLIST_DIGEST_EMAIL: process.env.DISABLE_DAILY_WATCHLIST_DIGEST_EMAIL === 'true',
   /** Cron for digest send (default 07:00 UTC daily). */
   DAILY_WATCHLIST_DIGEST_CRON: process.env.DAILY_WATCHLIST_DIGEST_CRON || '0 7 * * *',
