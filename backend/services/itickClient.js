@@ -1,7 +1,7 @@
 const axios = require('axios');
 const config = require('../config');
 const logger = require('../utils/logger');
-const { TW_ENGLISH_ALIASES } = require('../utils/stockMarketIdentity');
+const { findTwAliasMatches } = require('../utils/stockMarketIdentity');
 
 const TW_SYMBOL_CACHE_MS = 60 * 60 * 1000;
 let twSymbolCache = { loadedAt: 0, rows: [] };
@@ -156,13 +156,12 @@ async function searchTaiwanSymbols(query, limit = 25) {
     out.push({ ...row, ...meta });
   };
 
-  const aliasCode = TW_ENGLISH_ALIASES[upper];
-  if (aliasCode) {
+  for (const { alias, code: aliasCode } of findTwAliasMatches(q)) {
     const exact = await searchSymbolList('TW', aliasCode);
     if (exact[0]) {
-      push(exact[0], { matchedAlias: upper });
+      push(exact[0], { matchedAlias: alias });
     } else {
-      push({ code: aliasCode, name: '', exchange: 'TW' }, { matchedAlias: upper });
+      push({ code: aliasCode, name: '', exchange: 'TWSE' }, { matchedAlias: alias });
     }
   }
 

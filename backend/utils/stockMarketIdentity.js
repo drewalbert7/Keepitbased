@@ -8,27 +8,82 @@
  * Alert / Redis symbol keys use `TW:2330` for Taiwan listings.
  */
 
+const fs = require('fs');
+const path = require('path');
+
 const STOCK_PREFIX = 'STOCK';
 const CRYPTO_PREFIX = 'CRYPTO';
 const TW_REGION = 'TW';
 
 const TW_CODE_RE = /^\d{4,6}$/;
 
+const TW_ALIASES_PATH = path.join(__dirname, '../data/twEnglishAliases.json');
+let twEnglishAliasesCache = null;
+
 /**
- * Common English / broker tickers → TWSE/TPEX numeric code (iTick names are often Chinese only).
- * Extend as users report gaps.
+ * English / acronym aliases → numeric TWSE/TPEX code.
+ * Built via `node scripts/buildTwEnglishAliases.js` (~1.9k entries).
  */
-const TW_ENGLISH_ALIASES = Object.freeze({
-  FOCI: '3363',
-  TSM: '2330',
-  TSMC: '2330',
-  UMC: '2303',
-  MTK: '2454',
-  MEDIATEK: '2454',
-  HON: '2317',
-  HONHAI: '2317',
-  FOXCONN: '2317'
-});
+function getTwEnglishAliases() {
+  if (twEnglishAliasesCache) return twEnglishAliasesCache;
+  const raw = JSON.parse(fs.readFileSync(TW_ALIASES_PATH, 'utf8'));
+  twEnglishAliasesCache = Object.freeze(raw.aliases || raw);
+  return twEnglishAliasesCache;
+}
+
+/** @deprecated use getTwEnglishAliases() */
+const TW_ENGLISH_ALIASES = new Proxy(
+  {},
+  {
+    get(_t, prop) {
+      if (prop === Symbol.toStringTag) return 'Object';
+      return getTwEnglishAliases()[prop];
+    },
+    ownKeys() {
+      return Reflect.ownKeys(getTwEnglishAliases());
+    },
+    getOwnPropertyDescriptor(_t, prop) {
+      const v = getTwEnglishAliases()[prop];
+      if (v === undefined) return undefined;
+      return { configurable: true, enumerable: true, value: v, writable: false };
+    }
+  }
+);
+
+/**
+ * Exact or prefix matches on English alias keys (min 3 chars).
+ * @param {string} raw
+ * @returns {Array<{ alias: string, code: string }>}
+ */
+function findTwAliasMatches(raw) {
+  const upper = String(raw || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+  if (upper.length < 3) return [];
+
+  const aliases = getTwEnglishAliases();
+  const byCode = new Map();
+  const consider = (alias, code) => {
+    if (!code || byCode.has(code)) return;
+    byCode.set(code, { alias, code });
+  };
+
+  if (aliases[upper]) {
+    consider(upper, aliases[upper]);
+  }
+
+  let prefixHits = 0;
+  for (const [alias, code] of Object.entries(aliases)) {
+    if (alias === upper) continue;
+    if (alias.startsWith(upper) || (upper.length >= 4 && upper.startsWith(alias))) {
+      consider(alias, code);
+      prefixHits += 1;
+      if (prefixHits >= 40) break;
+    }
+  }
+
+  return [...byCode.values()];
+}
 
 function normalizeTwCode(raw) {
   const digits = String(raw || '').replace(/\D/g, '');
@@ -54,9 +109,10 @@ function resolveTwSymbolInput(raw) {
   if (upper.startsWith('TW:')) {
     return normalizeTwCode(upper.slice(3));
   }
-  const aliasCode = TW_ENGLISH_ALIASES[upper.replace(/[^A-Z0-9]/g, '')];
+  const aliasKey = upper.replace(/[^A-Z0-9]/g, '');
+  const aliasCode = getTwEnglishAliases()[aliasKey];
   if (aliasCode) {
-    return { ok: true, code: aliasCode, matchedAlias: upper };
+    return { ok: true, code: aliasCode, matchedAlias: aliasKey };
   }
   return normalizeTwCode(trimmed);
 }
@@ -147,6 +203,8 @@ module.exports = {
   CRYPTO_PREFIX,
   TW_REGION,
   TW_ENGLISH_ALIASES,
+  getTwEnglishAliases,
+  findTwAliasMatches,
   normalizeTwCode,
   resolveTwSymbolInput,
   twAlertSymbol,

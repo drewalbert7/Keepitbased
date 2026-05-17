@@ -12,7 +12,8 @@
     "email:verify-smtp": "node scripts/verifySesSmtp.js",
     "digest:run-once": "node scripts/runDailyWatchlistDigestOnce.js",
     "migrate:supabase-chat": "node scripts/applySupabaseChatMigration.js",
-    "setup:supabase-chat": "node scripts/setupSupabaseChat.js"
+    "setup:supabase-chat": "node scripts/setupSupabaseChat.js",
+    "build:tw-aliases": "node scripts/buildTwEnglishAliases.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.1",

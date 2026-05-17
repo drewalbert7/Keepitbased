@@ -33,3 +33,9 @@ test('resolveTwSymbolInput English alias FOCI', () => {
   assert.equal(v.ok, true);
   assert.equal(v.code, '3363');
 });
+
+test('findTwAliasMatches Shunsin', () => {
+  const { findTwAliasMatches } = require('./stockMarketIdentity');
+  assert.deepEqual(findTwAliasMatches('SHUNSIN'), [{ alias: 'SHUNSIN', code: '6451' }]);
+  assert.ok(findTwAliasMatches('SHUN').some((m) => m.code === '6451'));
+});
