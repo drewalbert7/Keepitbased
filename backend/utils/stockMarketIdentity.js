@@ -19,6 +19,8 @@ const TW_CODE_RE = /^\d{4,6}$/;
 
 const TW_ALIASES_PATH = path.join(__dirname, '../data/twEnglishAliases.json');
 let twEnglishAliasesCache = null;
+/** @type {Map<string, string>|null} */
+let twCodeToPrimaryAliasCache = null;
 
 /**
  * English / acronym aliases → numeric TWSE/TPEX code.
@@ -28,7 +30,84 @@ function getTwEnglishAliases() {
   if (twEnglishAliasesCache) return twEnglishAliasesCache;
   const raw = JSON.parse(fs.readFileSync(TW_ALIASES_PATH, 'utf8'));
   twEnglishAliasesCache = Object.freeze(raw.aliases || raw);
+  twCodeToPrimaryAliasCache = null;
   return twEnglishAliasesCache;
+}
+
+/**
+ * Score alias keys for watchlist display (prefer short English tickers over numeric codes).
+ * @param {string} alias
+ * @param {string} code
+ */
+function scoreTwDisplayAlias(alias, code) {
+  if (!alias || alias === code) return -1;
+  if (/^\d+$/.test(alias)) return -1;
+  if (!/^[A-Z0-9]+$/.test(alias)) return -1;
+
+  let score = 0;
+  if (/^[A-Z]+$/.test(alias)) score += 30;
+  if (alias.length >= 3 && alias.length <= 6) score += 20;
+  else if (alias.length <= 12) score += 8;
+  else score -= 15;
+  return score;
+}
+
+/**
+ * Best English alias for a TWSE/TPEX numeric code (e.g. 2330 → TSMC, 3363 → FOCI).
+ * @param {string} code — 4–6 digit code
+ * @returns {string|null}
+ */
+function getTwPrimaryEnglishAlias(code) {
+  const digits = String(code || '').replace(/\D/g, '');
+  if (!TW_CODE_RE.test(digits)) return null;
+
+  if (!twCodeToPrimaryAliasCache) {
+    const aliases = getTwEnglishAliases();
+    const byCode = new Map();
+    for (const [alias, mappedCode] of Object.entries(aliases)) {
+      const score = scoreTwDisplayAlias(alias, mappedCode);
+      if (score < 0) continue;
+      const prev = byCode.get(mappedCode);
+      let pick = false;
+      if (!prev) {
+        pick = true;
+      } else if (score > prev.score) {
+        pick = true;
+      } else if (score === prev.score) {
+        const shortA = alias.length <= 6;
+        const shortB = prev.alias.length <= 6;
+        if (shortA && shortB) {
+          pick = alias.length > prev.alias.length;
+        } else {
+          pick = alias.length < prev.alias.length;
+        }
+      }
+      if (pick) {
+        byCode.set(mappedCode, { alias, score });
+      }
+    }
+    twCodeToPrimaryAliasCache = new Map(
+      [...byCode.entries()].map(([c, { alias }]) => [c, alias])
+    );
+  }
+
+  return twCodeToPrimaryAliasCache.get(digits) || null;
+}
+
+/**
+ * @param {string} alertSymbol — TW:2330
+ * @returns {{ alertSymbol: string, code: string, englishAlias: string|null }}
+ */
+function twWatchlistDisplay(alertSymbol) {
+  const tw = parseTwAlertSymbol(alertSymbol);
+  if (!tw) {
+    return { alertSymbol: String(alertSymbol || ''), code: '', englishAlias: null };
+  }
+  return {
+    alertSymbol: tw.alertSymbol,
+    code: tw.code,
+    englishAlias: getTwPrimaryEnglishAlias(tw.code)
+  };
 }
 
 /** @deprecated use getTwEnglishAliases() */
@@ -214,5 +293,7 @@ module.exports = {
   tokenForTwStock,
   parseWatchlistToken,
   alertKey,
-  isTwStockAlertSymbol
+  isTwStockAlertSymbol,
+  getTwPrimaryEnglishAlias,
+  twWatchlistDisplay
 };

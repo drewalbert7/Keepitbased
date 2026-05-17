@@ -5,7 +5,9 @@ const {
   tokenForTwStock,
   twAlertSymbol,
   parseStockAlertSymbol,
-  resolveTwSymbolInput
+  resolveTwSymbolInput,
+  getTwPrimaryEnglishAlias,
+  twWatchlistDisplay
 } = require('./stockMarketIdentity');
 
 test('parseWatchlistToken US stock', () => {
@@ -38,4 +40,16 @@ test('findTwAliasMatches Shunsin', () => {
   const { findTwAliasMatches } = require('./stockMarketIdentity');
   assert.deepEqual(findTwAliasMatches('SHUNSIN'), [{ alias: 'SHUNSIN', code: '6451' }]);
   assert.ok(findTwAliasMatches('SHUN').some((m) => m.code === '6451'));
+});
+
+test('getTwPrimaryEnglishAlias for known listings', () => {
+  assert.equal(getTwPrimaryEnglishAlias('2330'), 'TSMC');
+  assert.equal(getTwPrimaryEnglishAlias('3363'), 'FOCI');
+  assert.equal(getTwPrimaryEnglishAlias('6451'), 'SHUNSIN');
+});
+
+test('twWatchlistDisplay', () => {
+  const d = twWatchlistDisplay('TW:2330');
+  assert.equal(d.englishAlias, 'TSMC');
+  assert.equal(d.alertSymbol, 'TW:2330');
 });

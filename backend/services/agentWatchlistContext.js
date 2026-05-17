@@ -3,6 +3,7 @@ const logger = require('../utils/logger');
 const { watchlistService } = require('./watchlistService');
 const PriceMonitor = require('./priceMonitor');
 const { getOpportunityTechnicalBundle } = require('./dailyAtrService');
+const { parseTwAlertSymbol, getTwPrimaryEnglishAlias } = require('../utils/stockMarketIdentity');
 
 /**
  * Enrich user alerts with cached prices and staged buy-sizing hints vs dip thresholds.
@@ -290,6 +291,16 @@ async function buildAgentWatchlistContext({ alertService, userId, maxPositionPct
     if (bidPrice != null) itemPayload.bidPrice = bidPrice;
     if (askPrice != null) itemPayload.askPrice = askPrice;
     if (quoteSourceUsed) itemPayload.quoteSourceUsed = quoteSourceUsed;
+
+    const tw = parseTwAlertSymbol(symbol);
+    if (tw) {
+      const englishAlias = getTwPrimaryEnglishAlias(tw.code);
+      if (englishAlias) {
+        itemPayload.englishAlias = englishAlias;
+        itemPayload.stockMarket = 'TW';
+      }
+    }
+
     items.push(itemPayload);
   }
 

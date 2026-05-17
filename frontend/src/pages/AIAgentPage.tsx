@@ -763,10 +763,21 @@ export const AIAgentPage: React.FC = () => {
                                   {row.assetType === 'stock' ? (
                                     isTwStockSymbol(row.symbol) ? (
                                       <span
-                                        className="font-semibold font-mono text-kib-fg w-fit"
-                                        title="Taiwan (TWSE) — charts via iTick coming soon"
+                                        className="flex flex-col gap-0.5 w-fit"
+                                        title={
+                                          row.englishAlias
+                                            ? `${row.englishAlias} · ${row.symbol} (TWSE)`
+                                            : 'Taiwan (TWSE) — charts via iTick coming soon'
+                                        }
                                       >
-                                        {row.symbol}
+                                        <span className="font-semibold text-kib-fg tracking-tight">
+                                          {row.englishAlias || row.symbol}
+                                        </span>
+                                        {row.englishAlias && (
+                                          <span className="text-[10px] font-mono text-kib-muted">
+                                            {row.symbol}
+                                          </span>
+                                        )}
                                       </span>
                                     ) : (
                                       <Link

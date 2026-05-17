@@ -273,6 +273,9 @@ export interface WatchlistContextItem {
   askPrice?: number | null;
   /** Redis quote payload source tag (`polygon_snapshot`, `binance_24h`, …) */
   quoteSourceUsed?: string | null;
+  /** Taiwan listing: English ticker alias (e.g. TSMC for TW:2330) */
+  englishAlias?: string | null;
+  stockMarket?: 'TW' | 'US' | null;
 }
 
 export interface WatchlistContextResponse {
