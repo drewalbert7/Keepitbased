@@ -271,6 +271,30 @@ const config = {
     return Number.isFinite(n) && n > 0 ? Math.min(n, 7 * 24 * 3600) : 3600;
   })(),
 
+  /** Phase 2 — require N qualifying minute polls before opportunity email (toasts unaffected). */
+  OPPORTUNITY_EMAIL_CONFIRM_ENABLED: process.env.OPPORTUNITY_EMAIL_CONFIRM_ENABLED !== 'false',
+  OPPORTUNITY_EMAIL_CONFIRM_HITS: (() => {
+    const n = parseInt(process.env.OPPORTUNITY_EMAIL_CONFIRM_HITS, 10);
+    return Number.isFinite(n) && n >= 1 && n <= 5 ? n : 2;
+  })(),
+  OPPORTUNITY_EMAIL_CONFIRM_POLLS: (() => {
+    const n = parseInt(process.env.OPPORTUNITY_EMAIL_CONFIRM_POLLS, 10);
+    return Number.isFinite(n) && n >= 2 && n <= 10 ? n : 3;
+  })(),
+  /** Capitulation-tier emails skip 2-of-3 confirmation (major moves). */
+  OPPORTUNITY_EMAIL_CONFIRM_SKIP_CAPITULATION:
+    process.env.OPPORTUNITY_EMAIL_CONFIRM_SKIP_CAPITULATION !== 'false',
+
+  /** US stocks: poll every N minutes outside RTH (crypto always every minute). */
+  OPPORTUNITY_STOCK_OFFHOURS_POLL_MIN: (() => {
+    const n = parseInt(process.env.OPPORTUNITY_STOCK_OFFHOURS_POLL_MIN, 10);
+    return Number.isFinite(n) && n >= 1 && n <= 60 ? n : 5;
+  })(),
+
+  /** Queue stock opportunity emails outside RTH; flush once at session open. */
+  OPPORTUNITY_EMAIL_MORNING_BATCH_ENABLED:
+    process.env.OPPORTUNITY_EMAIL_MORNING_BATCH_ENABLED !== 'false',
+
   /** Long-term “Major Capitulation” tier — parallel to short/medium ATR tiers */
   OPPORTUNITY_CAPITULATION_ATR14_MULT: (() => {
     const n = parseFloat(process.env.OPPORTUNITY_CAPITULATION_ATR14_MULT);

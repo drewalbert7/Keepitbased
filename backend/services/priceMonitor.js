@@ -18,6 +18,17 @@ const {
   recordOpportunityEmailSent,
   markLegacyAlertBlocked
 } = require('../utils/opportunityEmailPolicy');
+const {
+  registerOpportunityEmailConfirmationPoll,
+  isOpportunityEmailSentThisHour,
+  markOpportunityEmailSentThisHour
+} = require('../utils/opportunityEmailConfirmation');
+const {
+  enqueuePendingOpportunityEmail,
+  listPendingOpportunityUserIds,
+  drainPendingOpportunityEmails
+} = require('../utils/opportunityEmailPending');
+const { shouldPollStockSymbolThisCycle } = require('../utils/opportunityPollCadence');
 const { isUsStockRegularTradingHours } = require('../utils/researchAlertGates');
 const {
   recordOpportunitySignal,
@@ -301,7 +312,13 @@ class PriceMonitor {
 
   async checkAllPrices() {
     logger.info('Starting price check cycle...');
-    
+
+    try {
+      await this.flushPendingOpportunityEmails();
+    } catch (flushErr) {
+      logger.warn(`Pending opportunity email flush skipped: ${flushErr.message}`);
+    }
+
     try {
       // Get user watchlists from database
       const watchlists = await this.getUserWatchlists();
@@ -330,7 +347,14 @@ class PriceMonitor {
         if (t === 'CRYPTO') {
           pricePromises.push(this.getCryptoPrice(symbol));
         } else if (t === 'STOCK') {
-          pricePromises.push(this.getStockPrice(symbol));
+          if (
+            shouldPollStockSymbolThisCycle(
+              new Date(),
+              config.OPPORTUNITY_STOCK_OFFHOURS_POLL_MIN
+            )
+          ) {
+            pricePromises.push(this.getStockPrice(symbol));
+          }
         } else {
           this.logWithCooldown(
             `unknown-watchlist-token-${symbolWithType}`,
@@ -470,6 +494,24 @@ class PriceMonitor {
 
       if (!fullEval.evaluated || !fullEval.flags.length) continue;
 
+      const prefs = mergeNotificationPreferences(row.notification_preferences);
+      const passesEmailTierEarly = passesOpportunityEmailTierFilter(
+        fullEval.flags,
+        prefs.opportunityEmailNotifyLevel
+      );
+      const emailChannelReady =
+        prefs.email !== false &&
+        prefs.opportunityEmail !== false &&
+        row.email &&
+        emailService.isConfigured();
+
+      if (passesEmailTierEarly && emailChannelReady && config.OPPORTUNITY_EMAIL_CONFIRM_ENABLED) {
+        await registerOpportunityEmailConfirmationPoll(this.redis, row.user_id, assetType, symbol, {
+          requiredHits: config.OPPORTUNITY_EMAIL_CONFIRM_HITS,
+          windowPolls: config.OPPORTUNITY_EMAIL_CONFIRM_POLLS
+        });
+      }
+
       const hasCap = fullEval.flags.includes('capitulation');
       const hasShort =
         fullEval.flags.includes('on_sale') || fullEval.flags.includes('overreaction');
@@ -550,7 +592,6 @@ class PriceMonitor {
         ...(quantAgiEnrichment ? { quantAgi: quantAgiEnrichment } : {})
       };
 
-      const prefs = mergeNotificationPreferences(row.notification_preferences);
       const notifyLevel = prefs.opportunityNotifyLevel === 'overreaction_only' ? 'overreaction_only' : 'all';
       const passesNotifyFilters =
         notifyLevel === 'all' ||
@@ -582,52 +623,53 @@ class PriceMonitor {
         row.email &&
         emailService.isConfigured();
 
-      if (wantOppEmail) {
-        const suppressReason = await this.getOpportunityEmailSuppressReason(
-          row.user_id,
-          prefs
-        );
-        if (suppressReason) {
+      const morningBatchEligible =
+        stockOutsideRth &&
+        config.OPPORTUNITY_EMAIL_MORNING_BATCH_ENABLED &&
+        passesEmailTier &&
+        emailChannelReady;
+
+      if (morningBatchEligible) {
+        const queued = await enqueuePendingOpportunityEmail(this.redis, row.user_id, {
+          userId: row.user_id,
+          symbol,
+          assetType,
+          email: row.email,
+          notification_preferences: row.notification_preferences,
+          payload,
+          evalResult,
+          dayChangePct: Number.isFinite(dayChangePct) ? dayChangePct : null,
+          signalId,
+          tech,
+          priceData,
+          queuedAt: new Date().toISOString()
+        });
+        if (queued) {
           logOpportunityEmailEvent({
             action: 'suppressed',
-            reason: suppressReason,
-            userId: row.user_id,
-            symbol,
-            assetType,
-            flags: evalResult.flags
-          });
-        } else {
-          await this.deliverOpportunityEmail({
-            row,
-            email: row.email,
-            payload,
-            prefs,
-            priceData,
-            evalResult,
-            dayChangePct,
-            assetType,
-            symbol,
-            signalId,
-            tech
-          });
-          await recordOpportunityEmailSent(this.redis, row.user_id);
-          await markLegacyAlertBlocked(this.redis, row.user_id, assetType, symbol);
-          logOpportunityEmailEvent({
-            action: 'sent',
+            reason: 'morning_batch_queued',
             userId: row.user_id,
             symbol,
             assetType,
             flags: evalResult.flags
           });
         }
-      } else if (
-        passesEmailTier &&
-        prefs.email !== false &&
-        prefs.opportunityEmail !== false &&
-        row.email &&
-        emailService.isConfigured() &&
-        stockOutsideRth
-      ) {
+      } else if (wantOppEmail) {
+        await this.trySendOpportunityEmail({
+          row,
+          email: row.email,
+          payload,
+          prefs,
+          priceData,
+          evalResult,
+          dayChangePct,
+          assetType,
+          symbol,
+          signalId,
+          tech,
+          skipConfirmation: false
+        });
+      } else if (passesEmailTier && emailChannelReady && stockOutsideRth && !morningBatchEligible) {
         logOpportunityEmailEvent({
           action: 'suppressed',
           reason: 'stock_outside_rth',
@@ -645,6 +687,160 @@ class PriceMonitor {
           (passesEmailTier ? '' : ' (email tier filtered)') +
           (stockOutsideRth ? ' (stock outside RTH)' : '')
       );
+    }
+  }
+
+  /**
+   * @param {object} ctx
+   * @param {boolean} [ctx.skipConfirmation]
+   */
+  async trySendOpportunityEmail(ctx) {
+    const {
+      row,
+      email,
+      payload,
+      prefs,
+      priceData,
+      evalResult,
+      dayChangePct,
+      assetType,
+      symbol,
+      signalId,
+      tech,
+      skipConfirmation = false
+    } = ctx;
+
+    const skipConfirmTier =
+      config.OPPORTUNITY_EMAIL_CONFIRM_SKIP_CAPITULATION &&
+      Array.isArray(evalResult.flags) &&
+      evalResult.flags.includes('capitulation');
+
+    if (
+      !skipConfirmation &&
+      config.OPPORTUNITY_EMAIL_CONFIRM_ENABLED &&
+      !skipConfirmTier
+    ) {
+      const confirmation = await registerOpportunityEmailConfirmationPoll(
+        this.redis,
+        row.user_id,
+        assetType,
+        symbol,
+        {
+          requiredHits: config.OPPORTUNITY_EMAIL_CONFIRM_HITS,
+          windowPolls: config.OPPORTUNITY_EMAIL_CONFIRM_POLLS
+        }
+      );
+      if (!confirmation.confirmed) {
+        logOpportunityEmailEvent({
+          action: 'suppressed',
+          reason: 'awaiting_confirmation',
+          userId: row.user_id,
+          symbol,
+          assetType,
+          flags: evalResult.flags,
+          hits: confirmation.hits,
+          required: confirmation.required
+        });
+        return;
+      }
+    }
+
+    if (await isOpportunityEmailSentThisHour(this.redis, row.user_id, assetType, symbol)) {
+      logOpportunityEmailEvent({
+        action: 'suppressed',
+        reason: 'email_already_sent_this_hour',
+        userId: row.user_id,
+        symbol,
+        assetType,
+        flags: evalResult.flags
+      });
+      return;
+    }
+
+    const suppressReason = await this.getOpportunityEmailSuppressReason(row.user_id, prefs);
+    if (suppressReason) {
+      logOpportunityEmailEvent({
+        action: 'suppressed',
+        reason: suppressReason,
+        userId: row.user_id,
+        symbol,
+        assetType,
+        flags: evalResult.flags
+      });
+      return;
+    }
+
+    await this.deliverOpportunityEmail({
+      row,
+      email,
+      payload,
+      prefs,
+      priceData,
+      evalResult,
+      dayChangePct,
+      assetType,
+      symbol,
+      signalId,
+      tech
+    });
+    await markOpportunityEmailSentThisHour(
+      this.redis,
+      row.user_id,
+      assetType,
+      symbol,
+      config.OPPORTUNITY_DEDUPE_TTL_SEC
+    );
+    await recordOpportunityEmailSent(this.redis, row.user_id);
+    await markLegacyAlertBlocked(this.redis, row.user_id, assetType, symbol);
+    logOpportunityEmailEvent({
+      action: 'sent',
+      userId: row.user_id,
+      symbol,
+      assetType,
+      flags: evalResult.flags
+    });
+  }
+
+  /**
+   * Send queued stock opportunity emails at US RTH open (morning batch).
+   */
+  async flushPendingOpportunityEmails() {
+    if (!config.OPPORTUNITY_EMAIL_MORNING_BATCH_ENABLED) return;
+    if (!isUsStockRegularTradingHours(new Date())) return;
+
+    const userIds = await listPendingOpportunityUserIds(this.redis);
+    if (!userIds.length) return;
+
+    logger.info(`Flushing pending opportunity emails for ${userIds.length} user(s)`);
+
+    for (const userId of userIds) {
+      const items = await drainPendingOpportunityEmails(this.redis, userId);
+      for (const item of items) {
+        if (!item?.email || !item?.payload || !item?.evalResult) continue;
+        const prefs = mergeNotificationPreferences(item.notification_preferences);
+        if (
+          !passesOpportunityEmailTierFilter(
+            item.evalResult.flags,
+            prefs.opportunityEmailNotifyLevel
+          )
+        ) {
+          continue;
+        }
+        await this.trySendOpportunityEmail({
+          row: { user_id: userId, notification_preferences: item.notification_preferences },
+          email: item.email,
+          payload: item.payload,
+          prefs,
+          priceData: item.priceData,
+          evalResult: item.evalResult,
+          dayChangePct: item.dayChangePct,
+          assetType: item.assetType,
+          symbol: item.symbol,
+          signalId: item.signalId,
+          tech: item.tech || {},
+          skipConfirmation: true
+        });
+      }
     }
   }
 

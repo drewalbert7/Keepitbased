@@ -128,11 +128,12 @@ npm run email:test-opportunity
 - [x] **Profile** — quiet hours + max emails/day + baseline copy; persist new pref keys
 - [x] **Tests** — `backend/utils/notificationPreferences.test.js`, `opportunityEmailPolicy.test.js` (`node --test utils/*.test.js`)
 
-### Phase 2 — Smarter timing (queued)
+### Phase 2 — Smarter timing (shipped 2026-05-17)
 
-- [ ] Confirmation: 2-of-3 polls below threshold before email
-- [ ] RTH **pending queue** → single morning batch (ET)
-- [ ] Stock poll cadence: RTH 1m / off-hours less frequent
+- [x] Confirmation: 2-of-3 polls (`opportunityEmailConfirmation.js`; capitulation can skip)
+- [x] RTH **pending queue** → morning flush at session open (`opportunityEmailPending.js`)
+- [x] Stock poll cadence: 1m RTH / `OPPORTUNITY_STOCK_OFFHOURS_POLL_MIN` (default 5) off-hours
+- [x] Separate **email-sent** dedupe per hour (`oppmail:sent:*`) so poll 2 can mail after poll 1 toasts
 
 ### Phase 3 — Outbox & batching (queued)
 
@@ -158,7 +159,7 @@ npm run email:test-opportunity
 
 **Email / AWS:** SMTP works in **us-east-1**. Finish **SES production access** form; merge **SPF** + add **DMARC**; verify **DKIM** for `keepitbased.com`. In sandbox, verify each test recipient email in SES before expecting delivery.
 
-**Opportunity emails:** Phase 1 shipped in code (see § Opportunity signal emails — efficiency & timing). Verify in prod: fewer `on_sale` emails, legacy alert suppressed when opportunity mail sent, quiet hours respected. Then Phase 2 (confirmation + morning batch).
+**Opportunity emails:** Phase 1–2 shipped. Verify: `awaiting_confirmation`, `morning_batch_queued`, `email_already_sent_this_hour` in `opportunity_email_event` logs. Next: Phase 3 outbox.
 
 **Product (unchanged next):** Wire **`/diag/market-universe-rank`** (all three strategies) + fundamentals/macro/news/X into **`buildAgentWatchlistContext`** — § [Quant AGI — unified stock selection](#quant-agi--unified-stock-selection-for-dashboard-langgraph).
 
