@@ -7,6 +7,7 @@ const logger = require('../utils/logger');
 const { getRedisClient } = require('./redis');
 
 const SES_PAUSED_KEY = 'emailbudget:ses_paused';
+const DIGEST_KIND = 'daily_watchlist_digest';
 
 function utcDateKey(d = new Date()) {
   return d.toISOString().slice(0, 10);
@@ -71,7 +72,63 @@ async function noteSesThrottleError(err) {
  * @param {number} [params.userId]
  * @returns {Promise<{ ok: boolean, reason?: string, dayCount?: number, hourCount?: number }>}
  */
+/**
+ * Daily Grok briefing — own day pool; no hourly or per-recipient gap (cron is staggered).
+ * Does not increment `opportunityMaxEmailsPerDay` (worker never calls recordOpportunityEmailSent).
+ */
+async function tryReserveDigestSendSlot({ kind, userId }) {
+  const dailyCap = config.SES_DIGEST_DAILY_EMAIL_CAP;
+  if (dailyCap <= 0) {
+    return { ok: true, reason: 'digest_budget_disabled' };
+  }
+
+  const redis = getRedisClient();
+  if (!redis?.isOpen) {
+    return { ok: true, reason: 'no_redis' };
+  }
+  if (await isSesSendPaused()) {
+    return { ok: false, reason: 'ses_paused' };
+  }
+
+  const dayKey = `emailbudget:digest:day:${utcDateKey()}`;
+  let dayCount = 0;
+  try {
+    dayCount = await redis.incr(dayKey);
+    if (dayCount === 1) await redis.expire(dayKey, 48 * 3600);
+  } catch (e) {
+    logger.warn(`emailSendBudget digest incr failed: ${e.message}`);
+    return { ok: true, reason: 'redis_incr_failed_allow' };
+  }
+
+  if (dayCount > dailyCap) {
+    await redis.decr(dayKey).catch(() => {});
+    logBudgetEvent({
+      action: 'denied',
+      reason: 'digest_daily_cap',
+      kind,
+      userId,
+      dayCount,
+      dailyCap
+    });
+    return { ok: false, reason: 'digest_daily_cap', dayCount };
+  }
+
+  logBudgetEvent({
+    action: 'reserved',
+    pool: 'digest',
+    kind,
+    userId,
+    dayCount,
+    dailyCap
+  });
+  return { ok: true, dayCount };
+}
+
 async function tryReserveSendSlot({ kind, toEmail, userId }) {
+  if (kind === DIGEST_KIND) {
+    return tryReserveDigestSendSlot({ kind, userId });
+  }
+
   const dailyCap = config.SES_GLOBAL_DAILY_EMAIL_CAP;
   const hourlyCap = config.SES_GLOBAL_HOURLY_EMAIL_CAP;
   const gapSec = config.EMAIL_MIN_INTERVAL_PER_RECIPIENT_SEC;
@@ -175,26 +232,46 @@ async function getEmailBudgetStatus() {
   const redis = getRedisClient();
   const dailyCap = config.SES_GLOBAL_DAILY_EMAIL_CAP;
   const hourlyCap = config.SES_GLOBAL_HOURLY_EMAIL_CAP;
+  const digestDailyCap = config.SES_DIGEST_DAILY_EMAIL_CAP;
   const paused = await isSesSendPaused();
 
   if (!redis?.isOpen) {
-    return { paused, dayCount: null, hourCount: null, dailyCap, hourlyCap };
+    return {
+      paused,
+      dayCount: null,
+      hourCount: null,
+      dailyCap,
+      hourlyCap,
+      digestDayCount: null,
+      digestDailyCap
+    };
   }
 
   try {
-    const [dayRaw, hourRaw] = await Promise.all([
+    const [dayRaw, hourRaw, digestRaw] = await Promise.all([
       redis.get(`emailbudget:global:day:${utcDateKey()}`),
-      redis.get(`emailbudget:global:hour:${utcHourKey()}`)
+      redis.get(`emailbudget:global:hour:${utcHourKey()}`),
+      redis.get(`emailbudget:digest:day:${utcDateKey()}`)
     ]);
     return {
       paused,
       dayCount: dayRaw != null ? parseInt(dayRaw, 10) : 0,
       hourCount: hourRaw != null ? parseInt(hourRaw, 10) : 0,
       dailyCap,
-      hourlyCap
+      hourlyCap,
+      digestDayCount: digestRaw != null ? parseInt(digestRaw, 10) : 0,
+      digestDailyCap
     };
   } catch {
-    return { paused, dayCount: null, hourCount: null, dailyCap, hourlyCap };
+    return {
+      paused,
+      dayCount: null,
+      hourCount: null,
+      dailyCap,
+      hourlyCap,
+      digestDayCount: null,
+      digestDailyCap
+    };
   }
 }
 

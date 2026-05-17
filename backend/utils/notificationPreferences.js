@@ -89,8 +89,11 @@ function mergeNotificationPreferences(raw) {
      */
     opportunityStockMarketHoursOnly: p.opportunityStockMarketHoursOnly !== false,
 
-    /** Daily Grok watchlist briefing — opt-in (host ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL + cron required). */
-    dailyWatchlistDigestEmail: p.dailyWatchlistDigestEmail === true
+    /**
+     * Daily Grok watchlist briefing (macro + holdings). Opt-out default; does not use
+     * `opportunityMaxEmailsPerDay` (see dailyWatchlistDigestWorker + emailSendBudget digest pool).
+     */
+    dailyWatchlistDigestEmail: p.dailyWatchlistDigestEmail !== false
   };
 }
 

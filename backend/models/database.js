@@ -49,7 +49,7 @@ async function runInitializeDatabase() {
     dipInsightEmail: false,
     dipInsightMaxEmailsPerDay: 2,
     researchDigestEmail: true,
-    dailyWatchlistDigestEmail: false,
+    dailyWatchlistDigestEmail: true,
     agentMaxPositionSizePct: 10
   });
 

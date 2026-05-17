@@ -45,7 +45,7 @@ async function runDailyWatchlistDigestTick(alertService) {
 
     for (const row of rows) {
       const prefs = mergeNotificationPreferences(row.notification_preferences);
-      // mergeNotificationPreferences uses opt-out semantics (undefined → on)
+      // Daily briefing is opt-out; never increments opportunityMaxEmailsPerDay.
       if (prefs.email === false) {
         skipped += 1;
         continue;
@@ -156,7 +156,7 @@ async function runDailyWatchlistDigestTick(alertService) {
 function scheduleDailyWatchlistDigest(alertService, scheduleExpr) {
   if (!config.ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL) {
     logger.info(
-      'Daily watchlist digest cron not scheduled (ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL=false or off)'
+      'Daily watchlist digest cron not scheduled (ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL=false)'
     );
     return;
   }

@@ -12,7 +12,8 @@ describe('mergeNotificationPreferences', () => {
     assert.equal(p.opportunityMaxEmailsPerDay, 3);
     assert.equal(p.opportunityEmailDeliveryMode, 'hourly_digest');
     assert.equal(p.thresholdAlertEmail, false);
-    assert.equal(p.dailyWatchlistDigestEmail, false);
+    assert.equal(p.dailyWatchlistDigestEmail, true);
+    assert.equal(mergeNotificationPreferences({ dailyWatchlistDigestEmail: false }).dailyWatchlistDigestEmail, false);
     assert.equal(p.opportunityNotifyLevel, 'overreaction_only');
     assert.equal(p.timezone, 'America/New_York');
     assert.equal(p.quietHoursStart, '22:00');

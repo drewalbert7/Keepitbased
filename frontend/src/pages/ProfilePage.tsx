@@ -44,7 +44,7 @@ const ProfilePage: React.FC = () => {
     opportunityStockMarketHoursOnly: true,
     dipInsightEmail: false,
     researchDigestEmail: true,
-    dailyWatchlistDigestEmail: false,
+    dailyWatchlistDigestEmail: true,
     agentMaxPositionSizePct: 10
   });
   const [notifSaving, setNotifSaving] = useState(false);
@@ -147,7 +147,7 @@ const ProfilePage: React.FC = () => {
       opportunityStockMarketHoursOnly: n.opportunityStockMarketHoursOnly !== false,
       dipInsightEmail: n.dipInsightEmail === true,
       researchDigestEmail: n.researchDigestEmail !== false,
-      dailyWatchlistDigestEmail: n.dailyWatchlistDigestEmail === true,
+      dailyWatchlistDigestEmail: n.dailyWatchlistDigestEmail !== false,
       agentMaxPositionSizePct: pct
     });
   }, [user]);
@@ -601,7 +601,9 @@ const ProfilePage: React.FC = () => {
                     }}
                     className="input-field max-w-xs w-full text-sm disabled:opacity-50"
                   />
-                  <p className="mt-1 text-[11px] text-kib-muted">UTC day; counts plain and Grok dip emails.</p>
+                  <p className="mt-1 text-[11px] text-kib-muted">
+                    UTC day; counts critical dip alerts only (not the daily Grok watchlist briefing).
+                  </p>
                 </div>
 
                 <div className="rounded-lg border border-kib-line/80 bg-kib-raise/40 px-3 py-3 space-y-3 max-w-2xl">
@@ -735,7 +737,7 @@ const ProfilePage: React.FC = () => {
                     disabled={!notifPrefs.email}
                   />
                   <span className={`text-sm ${!notifPrefs.email ? 'text-kib-muted' : 'text-kib-fg'}`}>
-                    Daily market briefing (watchlist overview and ideas; host must schedule it)
+                    Daily Grok watchlist briefing (macro + your holdings; on by default, separate from dip-alert cap)
                   </span>
                 </label>
                 {showHostDigestSmtpWarning && hostNotifCfg && (

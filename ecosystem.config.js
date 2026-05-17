@@ -10,14 +10,14 @@ module.exports = {
         PORT: 3001,
         PYTHON_SERVICE_URL: 'http://127.0.0.1:5001',
         // PM2 vars are applied before backend/.env; dotenv does not overwrite existing keys.
-        // Critical dip emails use opportunity pipeline only; daily digest is opt-in (Profile + env).
-        ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL: 'false'
+        // Critical dip emails are capped per user; daily Grok briefing is separate (digest budget).
+        ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL: 'true'
       },
       env_production: {
         NODE_ENV: 'production',
         PORT: 3001,
         PYTHON_SERVICE_URL: 'http://127.0.0.1:5001',
-        ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL: 'false'
+        ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL: 'true'
       },
       error_file: './logs/api-err.log',
       out_file: './logs/api-out.log',

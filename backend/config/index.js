@@ -188,6 +188,14 @@ const config = {
     const n = parseInt(process.env.SES_GLOBAL_HOURLY_EMAIL_CAP, 10);
     return Number.isFinite(n) && n >= 0 ? Math.min(n, 5000) : 12;
   })(),
+  /**
+   * Daily Grok watchlist briefing pool — separate from dip/opportunity caps so one digest/user/day
+   * does not compete with `opportunityMaxEmailsPerDay` or the tight opportunity global budget.
+   */
+  SES_DIGEST_DAILY_EMAIL_CAP: (() => {
+    const n = parseInt(process.env.SES_DIGEST_DAILY_EMAIL_CAP, 10);
+    return Number.isFinite(n) && n >= 0 ? Math.min(n, 50_000) : 150;
+  })(),
   /** Min seconds between any two marketing emails to the same address. */
   EMAIL_MIN_INTERVAL_PER_RECIPIENT_SEC: (() => {
     const n = parseInt(process.env.EMAIL_MIN_INTERVAL_PER_RECIPIENT_SEC, 10);
@@ -239,9 +247,9 @@ const config = {
 
   /**
    * Scheduled daily Grok watchlist briefing (separate from critical dip opportunity emails).
-   * Default off — set ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL=true to schedule; users also opt in via Profile.
+   * Default on; set ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL=false to disable cron.
    */
-  ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL: process.env.ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL === 'true',
+  ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL: process.env.ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL !== 'false',
   DISABLE_DAILY_WATCHLIST_DIGEST_EMAIL: process.env.DISABLE_DAILY_WATCHLIST_DIGEST_EMAIL === 'true',
   /** Cron for digest send (default 07:00 UTC daily). */
   DAILY_WATCHLIST_DIGEST_CRON: process.env.DAILY_WATCHLIST_DIGEST_CRON || '0 7 * * *',
