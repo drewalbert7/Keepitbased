@@ -43,6 +43,7 @@ async function runInitializeDatabase() {
     quietHoursStart: '22:00',
     quietHoursEnd: '08:00',
     opportunityRespectQuietHours: true,
+    opportunityEmailDeliveryMode: 'instant',
     opportunityStockMarketHoursOnly: true,
     dipInsightEmail: true,
     researchDigestEmail: true,
@@ -279,6 +280,37 @@ async function runInitializeDatabase() {
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_research_artifacts_source
       ON research_artifacts(source);
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS email_outbox (
+        id BIGSERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        to_email VARCHAR(255) NOT NULL,
+        message_type VARCHAR(64) NOT NULL,
+        payload JSONB NOT NULL DEFAULT '{}',
+        batch_key VARCHAR(128),
+        status VARCHAR(20) NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'processing', 'sent', 'failed', 'cancelled')),
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        scheduled_for TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        sent_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_email_outbox_pending_instant
+      ON email_outbox (scheduled_for ASC)
+      WHERE status = 'pending' AND batch_key IS NULL;
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_email_outbox_pending_digest
+      ON email_outbox (batch_key, scheduled_for ASC)
+      WHERE status = 'pending' AND batch_key IS NOT NULL;
     `);
 
     await client.query(`

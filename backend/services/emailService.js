@@ -535,6 +535,101 @@ class EmailService {
   }
 
   /**
+   * Hourly batched opportunity digest (Phase 3 outbox).
+   * @param {string} toAddress
+   * @param {object[]} items — opportunity signal payloads
+   */
+  async sendOpportunityHourlyDigestEmail(toAddress, items) {
+    if (!this.isConfigured()) {
+      logger.warn('Opportunity digest email skipped: SMTP not configured');
+      return false;
+    }
+    const skipM = await emailDeliveryEligibility.shouldSkipOptionalMarketingEmail(
+      toAddress,
+      'opportunity_digest'
+    );
+    if (skipM.skip) return false;
+
+    const list = Array.isArray(items) ? items.filter(Boolean) : [];
+    if (!list.length) return false;
+
+    try {
+      const rowsHtml = list
+        .map((p) => {
+          const sym = escapeHtml(String(p.symbol || '').toUpperCase());
+          const at = escapeHtml(String(p.assetType || '').toUpperCase());
+          const flags = Array.isArray(p.flags) ? p.flags.join(', ') : '';
+          const vs =
+            p.vsBaselinePct != null && Number.isFinite(Number(p.vsBaselinePct))
+              ? `${Number(p.vsBaselinePct).toFixed(2)}%`
+              : '—';
+          const px =
+            p.price != null && Number.isFinite(Number(p.price))
+              ? Number(p.price).toFixed(2)
+              : '—';
+          return `<tr>
+            <td style="padding:8px;border-bottom:1px solid #e2e8f0;"><strong>${at} ${sym}</strong></td>
+            <td style="padding:8px;border-bottom:1px solid #e2e8f0;">$${px}</td>
+            <td style="padding:8px;border-bottom:1px solid #e2e8f0;">${escapeHtml(vs)}</td>
+            <td style="padding:8px;border-bottom:1px solid #e2e8f0;">${escapeHtml(flags)}</td>
+          </tr>`;
+        })
+        .join('');
+
+      const html = `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 640px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #0f766e 0%, #115e59 100%); padding: 22px; text-align: center; border-radius: 10px 10px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 20px;">KeepItBased — Hourly dip digest</h1>
+          </div>
+          <div style="background: white; padding: 24px; border-radius: 0 0 10px 10px;">
+            <p style="font-size: 13px; color: #475569;">${complianceOptInSentence()}</p>
+            <p style="font-size: 15px;">${list.length} opportunity signal${list.length === 1 ? '' : 's'} this hour:</p>
+            <table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:12px;">
+              <thead><tr style="text-align:left;color:#64748b;">
+                <th style="padding:8px;">Symbol</th>
+                <th style="padding:8px;">Price</th>
+                <th style="padding:8px;">Vs baseline</th>
+                <th style="padding:8px;">Flags</th>
+              </tr></thead>
+              <tbody>${rowsHtml}</tbody>
+            </table>
+            <p style="text-align:center;margin-top:20px;">
+              <a href="${appBaseUrl()}/opportunity-signals" style="background:#0f766e;color:#fff;padding:10px 18px;text-decoration:none;border-radius:8px;font-weight:600;">View signals inbox</a>
+            </p>
+            <p style="font-size:12px;color:#94a3b8;text-align:center;margin-top:16px;">
+              <a href="${profilePreferencesUrl()}" style="color:#0f766e;">Email preferences</a>
+            </p>
+          </div>
+        </div>
+      `;
+
+      const plain = [
+        `KeepItBased hourly dip digest (${list.length} signals)`,
+        ...list.map(
+          (p) =>
+            `${String(p.assetType || '').toUpperCase()} ${String(p.symbol || '').toUpperCase()} — ${Array.isArray(p.flags) ? p.flags.join(',') : ''}`
+        ),
+        `${complianceOptInSentence()}`,
+        `Signals: ${appBaseUrl()}/opportunity-signals`
+      ].join('\n');
+
+      await this.transporter.sendMail({
+        from: smtpFromHeader(),
+        to: toAddress,
+        subject: `KeepItBased — Hourly dip digest (${list.length} signal${list.length === 1 ? '' : 's'})`,
+        text: plain,
+        html,
+        headers: mergeMailHeaders()
+      });
+      logger.info(`Opportunity hourly digest sent to ${toAddress} (${list.length} signals)`);
+      return true;
+    } catch (error) {
+      logger.error('Error sending opportunity hourly digest:', error);
+      return false;
+    }
+  }
+
+  /**
    * Scheduled daily briefing: Grok macro + holdings + headlines + optional X citations + top 2 off-list names.
    * @param {string} toAddress
    * @param {{ digest: Record<string, unknown>, runMetadata?: object }} payload

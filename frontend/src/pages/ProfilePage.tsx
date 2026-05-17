@@ -8,6 +8,7 @@ import type { User } from '../types';
 
 type OpportunityToastTier = 'all' | 'overreaction_only';
 type OpportunityEmailTier = 'all' | 'overreaction_only' | 'capitulation_only';
+type OpportunityEmailDeliveryMode = 'instant' | 'hourly_digest';
 
 /** Public /health/config plus authenticated host mail/digest flags */
 type ProfileHostHealth = PublicHealthConfig & {
@@ -39,6 +40,7 @@ const ProfilePage: React.FC = () => {
     quietHoursStart: '22:00',
     quietHoursEnd: '08:00',
     opportunityRespectQuietHours: true,
+    opportunityEmailDeliveryMode: 'instant' as OpportunityEmailDeliveryMode,
     opportunityStockMarketHoursOnly: true,
     dipInsightEmail: true,
     researchDigestEmail: true,
@@ -140,6 +142,8 @@ const ProfilePage: React.FC = () => {
           ? n.quietHoursEnd.trim()
           : '08:00',
       opportunityRespectQuietHours: n.opportunityRespectQuietHours !== false,
+      opportunityEmailDeliveryMode:
+        n.opportunityEmailDeliveryMode === 'hourly_digest' ? 'hourly_digest' : 'instant',
       opportunityStockMarketHoursOnly: n.opportunityStockMarketHoursOnly !== false,
       dipInsightEmail: n.dipInsightEmail !== false,
       researchDigestEmail: n.researchDigestEmail !== false,
@@ -243,6 +247,7 @@ const ProfilePage: React.FC = () => {
           quietHoursStart: notifPrefs.quietHoursStart.trim() || '22:00',
           quietHoursEnd: notifPrefs.quietHoursEnd.trim() || '08:00',
           opportunityRespectQuietHours: notifPrefs.opportunityRespectQuietHours,
+          opportunityEmailDeliveryMode: notifPrefs.opportunityEmailDeliveryMode,
           opportunityStockMarketHoursOnly: notifPrefs.opportunityStockMarketHoursOnly,
           dipInsightEmail: notifPrefs.dipInsightEmail,
           researchDigestEmail: notifPrefs.researchDigestEmail,
@@ -549,6 +554,30 @@ const ProfilePage: React.FC = () => {
                     US stocks: only notify during regular session (Mon–Fri 9:30–16:00 ET). Crypto unaffected.
                   </span>
                 </label>
+
+                <div>
+                  <label htmlFor="prof-opp-delivery" className="mb-1 block text-xs font-medium text-slate-300">
+                    Dip email delivery
+                  </label>
+                  <select
+                    id="prof-opp-delivery"
+                    value={notifPrefs.opportunityEmailDeliveryMode}
+                    disabled={!notifPrefs.email || !notifPrefs.opportunityEmail}
+                    onChange={(e) =>
+                      setNotifPrefs((p) => ({
+                        ...p,
+                        opportunityEmailDeliveryMode: e.target.value as OpportunityEmailDeliveryMode
+                      }))
+                    }
+                    className="input-field max-w-md w-full text-sm disabled:opacity-50"
+                  >
+                    <option value="instant">Send soon (usually within a minute)</option>
+                    <option value="hourly_digest">Hourly digest (one combined email per hour)</option>
+                  </select>
+                  <p className="mt-1 text-[11px] text-kib-muted">
+                    Hourly mode batches multiple symbols into one email at the top of each UTC hour.
+                  </p>
+                </div>
 
                 <div>
                   <label htmlFor="prof-opp-max-day" className="mb-1 block text-xs font-medium text-slate-300">

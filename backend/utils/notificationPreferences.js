@@ -71,6 +71,12 @@ function mergeNotificationPreferences(raw) {
     opportunityRespectQuietHours: p.opportunityRespectQuietHours !== false,
 
     /**
+     * Opportunity email delivery: `instant` (outbox worker, ~1 min) or `hourly_digest` (batched table email).
+     */
+    opportunityEmailDeliveryMode:
+      p.opportunityEmailDeliveryMode === 'hourly_digest' ? 'hourly_digest' : 'instant',
+
+    /**
      * When true (default), stock opportunity toasts/emails only during US regular session (not crypto).
      * Set false to allow stock notifications 24/7.
      */

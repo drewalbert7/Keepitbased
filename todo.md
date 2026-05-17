@@ -135,9 +135,11 @@ npm run email:test-opportunity
 - [x] Stock poll cadence: 1m RTH / `OPPORTUNITY_STOCK_OFFHOURS_POLL_MIN` (default 5) off-hours
 - [x] Separate **email-sent** dedupe per hour (`oppmail:sent:*`) so poll 2 can mail after poll 1 toasts
 
-### Phase 3 — Outbox & batching (queued)
+### Phase 3 — Outbox & batching (shipped 2026-05-17)
 
-- [ ] `email_outbox` table + worker; hourly digest mode in Profile
+- [x] `email_outbox` table + `emailOutboxWorker` (cron, retries, instant + digest batches)
+- [x] Profile `opportunityEmailDeliveryMode`: instant \| hourly_digest
+- [x] `sendOpportunityHourlyDigestEmail` combined template
 
 ### Phase 4 — Grok discipline (queued)
 
@@ -159,7 +161,7 @@ npm run email:test-opportunity
 
 **Email / AWS:** SMTP works in **us-east-1**. Finish **SES production access** form; merge **SPF** + add **DMARC**; verify **DKIM** for `keepitbased.com`. In sandbox, verify each test recipient email in SES before expecting delivery.
 
-**Opportunity emails:** Phase 1–2 shipped. Verify: `awaiting_confirmation`, `morning_batch_queued`, `email_already_sent_this_hour` in `opportunity_email_event` logs. Next: Phase 3 outbox.
+**Opportunity emails:** Phase 1–3 shipped. Verify: `queued` / `sent` with `via: outbox` in logs; hourly digest in Profile. Next: Phase 4 Grok discipline.
 
 **Product (unchanged next):** Wire **`/diag/market-universe-rank`** (all three strategies) + fundamentals/macro/news/X into **`buildAgentWatchlistContext`** — § [Quant AGI — unified stock selection](#quant-agi--unified-stock-selection-for-dashboard-langgraph).
 

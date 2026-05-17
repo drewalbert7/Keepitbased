@@ -47,6 +47,7 @@ const PriceMonitor = require('./services/priceMonitor');
 const AlertService = require('./services/alertService');
 const { scheduleResearchIngestion } = require('./services/researchIngestionWorker');
 const { scheduleDailyWatchlistDigest } = require('./services/dailyWatchlistDigestWorker');
+const { scheduleEmailOutboxWorker } = require('./services/emailOutboxWorker');
 const logger = require('./utils/logger');
 
 const app = express();
@@ -189,6 +190,7 @@ scheduleResearchIngestion();
 
 // Daily Grok watchlist digest (Profile opt-out per user; ENABLE_* defaults on, see config)
 scheduleDailyWatchlistDigest(alertService);
+scheduleEmailOutboxWorker(priceMonitor);
 
 // Error handling
 app.use((err, req, res, next) => {

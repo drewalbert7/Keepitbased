@@ -41,6 +41,9 @@ export interface User {
     /** When true (default), no opportunity emails during quiet hours. */
     opportunityRespectQuietHours?: boolean;
 
+    /** `instant` = send soon via outbox; `hourly_digest` = one combined email per UTC hour. */
+    opportunityEmailDeliveryMode?: 'instant' | 'hourly_digest';
+
     /** Daily batched Grok email (server flag + Python Grok). Default on unless opted out. */
     dailyWatchlistDigestEmail?: boolean;
     /**

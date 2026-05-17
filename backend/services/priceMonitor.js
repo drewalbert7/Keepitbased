@@ -29,6 +29,10 @@ const {
   drainPendingOpportunityEmails
 } = require('../utils/opportunityEmailPending');
 const { shouldPollStockSymbolThisCycle } = require('../utils/opportunityPollCadence');
+const {
+  enqueueEmail,
+  buildOpportunityOutboxSchedule
+} = require('./emailOutboxService');
 const { isUsStockRegularTradingHours } = require('../utils/researchAlertGates');
 const {
   recordOpportunitySignal,
@@ -766,6 +770,45 @@ class PriceMonitor {
         symbol,
         assetType,
         flags: evalResult.flags
+      });
+      return;
+    }
+
+    const deliveryMode =
+      prefs.opportunityEmailDeliveryMode === 'hourly_digest' ? 'hourly_digest' : 'instant';
+    const schedule = buildOpportunityOutboxSchedule(deliveryMode, row.user_id);
+
+    if (config.ENABLE_EMAIL_OUTBOX) {
+      const q = await enqueueEmail({
+        userId: row.user_id,
+        toEmail: email,
+        messageType: 'opportunity_signal',
+        payload: {
+          opportunity: payload,
+          deliverCtx: {
+            notification_preferences: row.notification_preferences,
+            prefs,
+            priceData,
+            evalResult,
+            dayChangePct,
+            assetType,
+            symbol,
+            signalId,
+            tech,
+            payload
+          }
+        },
+        batchKey: schedule.batchKey,
+        scheduledFor: schedule.scheduledFor
+      });
+      logOpportunityEmailEvent({
+        action: q.enqueued ? 'queued' : 'queue_failed',
+        userId: row.user_id,
+        symbol,
+        assetType,
+        flags: evalResult.flags,
+        deliveryMode,
+        outboxId: q.id
       });
       return;
     }

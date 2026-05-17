@@ -295,6 +295,18 @@ const config = {
   OPPORTUNITY_EMAIL_MORNING_BATCH_ENABLED:
     process.env.OPPORTUNITY_EMAIL_MORNING_BATCH_ENABLED !== 'false',
 
+  /** Phase 3 — durable outbox + worker (instant queue or hourly digest batches). */
+  ENABLE_EMAIL_OUTBOX: process.env.ENABLE_EMAIL_OUTBOX !== 'false',
+  EMAIL_OUTBOX_CRON: process.env.EMAIL_OUTBOX_CRON || '*/1 * * * *',
+  EMAIL_OUTBOX_BATCH_SIZE: (() => {
+    const n = parseInt(process.env.EMAIL_OUTBOX_BATCH_SIZE, 10);
+    return Number.isFinite(n) && n >= 1 && n <= 100 ? n : 20;
+  })(),
+  EMAIL_OUTBOX_MAX_ATTEMPTS: (() => {
+    const n = parseInt(process.env.EMAIL_OUTBOX_MAX_ATTEMPTS, 10);
+    return Number.isFinite(n) && n >= 1 && n <= 20 ? n : 5;
+  })(),
+
   /** Long-term “Major Capitulation” tier — parallel to short/medium ATR tiers */
   OPPORTUNITY_CAPITULATION_ATR14_MULT: (() => {
     const n = parseFloat(process.env.OPPORTUNITY_CAPITULATION_ATR14_MULT);
