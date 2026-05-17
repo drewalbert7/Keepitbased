@@ -141,9 +141,11 @@ npm run email:test-opportunity
 - [x] Profile `opportunityEmailDeliveryMode`: instant \| hourly_digest
 - [x] `sendOpportunityHourlyDigestEmail` combined template
 
-### Phase 4 — Grok discipline (queued)
+### Phase 4 — Grok discipline (shipped 2026-05-17)
 
-- [ ] Dip insight only for `overreaction` / `capitulation`; daily cap; async send
+- [x] Dip insight only for `overreaction` / `capitulation` (`DIP_INSIGHT_REQUIRE_OVERREACTION_TIER`)
+- [x] Per-user `dipInsightMaxEmailsPerDay` (default 3, Redis counter)
+- [x] Async Grok via `opportunity_dip_insight` outbox (`DIP_INSIGHT_ASYNC_VIA_OUTBOX`, max 2/tick)
 
 **Do not change in Phase 1:** ATR tier math (`watchlistOpportunityEvaluator`), opportunity DB logging, test script behavior beyond new gates.
 
@@ -161,7 +163,7 @@ npm run email:test-opportunity
 
 **Email / AWS:** SMTP works in **us-east-1**. Finish **SES production access** form; merge **SPF** + add **DMARC**; verify **DKIM** for `keepitbased.com`. In sandbox, verify each test recipient email in SES before expecting delivery.
 
-**Opportunity emails:** Phase 1–3 shipped. Verify: `queued` / `sent` with `via: outbox` in logs; hourly digest in Profile. Next: Phase 4 Grok discipline.
+**Opportunity emails:** Phases 1–4 shipped. Verify: `dip_insight_async` queue, `via: outbox_dip_insight`, tier skips for `on_sale`-only.
 
 **Product (unchanged next):** Wire **`/diag/market-universe-rank`** (all three strategies) + fundamentals/macro/news/X into **`buildAgentWatchlistContext`** — § [Quant AGI — unified stock selection](#quant-agi--unified-stock-selection-for-dashboard-langgraph).
 

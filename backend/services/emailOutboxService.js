@@ -88,23 +88,38 @@ async function enqueueEmail(input) {
 
 /**
  * @param {number} limit
+ * @param {string|null} [messageType] — when set, only claim that type
  */
-async function claimInstantPending(limit = 20) {
+async function claimInstantPending(limit = 20, messageType = null) {
   const cap = Math.min(Math.max(1, limit), 50);
   const r = await db.query(
-    `UPDATE email_outbox
-     SET status = 'processing', attempts = attempts + 1, updated_at = NOW()
-     WHERE id IN (
-       SELECT id FROM email_outbox
-       WHERE status = 'pending'
-         AND batch_key IS NULL
-         AND scheduled_for <= NOW()
-       ORDER BY scheduled_for ASC
-       LIMIT $1
-       FOR UPDATE SKIP LOCKED
-     )
-     RETURNING *`,
-    [cap]
+    messageType
+      ? `UPDATE email_outbox
+         SET status = 'processing', attempts = attempts + 1, updated_at = NOW()
+         WHERE id IN (
+           SELECT id FROM email_outbox
+           WHERE status = 'pending'
+             AND batch_key IS NULL
+             AND message_type = $2
+             AND scheduled_for <= NOW()
+           ORDER BY scheduled_for ASC
+           LIMIT $1
+           FOR UPDATE SKIP LOCKED
+         )
+         RETURNING *`
+      : `UPDATE email_outbox
+         SET status = 'processing', attempts = attempts + 1, updated_at = NOW()
+         WHERE id IN (
+           SELECT id FROM email_outbox
+           WHERE status = 'pending'
+             AND batch_key IS NULL
+             AND scheduled_for <= NOW()
+           ORDER BY scheduled_for ASC
+           LIMIT $1
+           FOR UPDATE SKIP LOCKED
+         )
+         RETURNING *`,
+    messageType ? [cap, messageType] : [cap]
   );
   return r.rows;
 }

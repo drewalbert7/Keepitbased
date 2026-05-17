@@ -178,6 +178,25 @@ const config = {
     return Number.isFinite(n) && n >= 0 ? Math.min(n, 100) : 0;
   })(),
 
+  /** Phase 4 — Grok dip insight only when flags include overreaction or capitulation (not on_sale alone). */
+  DIP_INSIGHT_REQUIRE_OVERREACTION_TIER:
+    process.env.DIP_INSIGHT_REQUIRE_OVERREACTION_TIER !== 'false',
+
+  /**
+   * Run dip-insight Grok call via email_outbox worker (non-blocking for price cron).
+   * Default on when ENABLE_EMAIL_OUTBOX is on.
+   */
+  DIP_INSIGHT_ASYNC_VIA_OUTBOX: (() => {
+    if (process.env.DIP_INSIGHT_ASYNC_VIA_OUTBOX === 'false') return false;
+    if (process.env.DIP_INSIGHT_ASYNC_VIA_OUTBOX === 'true') return true;
+    return process.env.ENABLE_EMAIL_OUTBOX !== 'false';
+  })(),
+
+  DIP_INSIGHT_OUTBOX_PER_TICK: (() => {
+    const n = parseInt(process.env.DIP_INSIGHT_OUTBOX_PER_TICK, 10);
+    return Number.isFinite(n) && n >= 1 && n <= 10 ? n : 2;
+  })(),
+
   /**
    * Scheduled daily email: Grok analysis of Main watchlist + suggested tickers (Python service + GROK_*).
    * Users opt out via Profile `dailyWatchlistDigestEmail`. **Default on** for self-hosted installs;

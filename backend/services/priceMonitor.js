@@ -33,6 +33,10 @@ const {
   enqueueEmail,
   buildOpportunityOutboxSchedule
 } = require('./emailOutboxService');
+const {
+  qualifiesForDipInsightTier,
+  isDipInsightDailyCapReached
+} = require('../utils/dipInsightEmailPolicy');
 const { isUsStockRegularTradingHours } = require('../utils/researchAlertGates');
 const {
   recordOpportunitySignal,
@@ -920,12 +924,35 @@ class PriceMonitor {
       tech
     } = ctx;
 
-    const useInsight =
+    const insightBaseEnabled =
       config.ENABLE_DIP_INSIGHT_EMAIL &&
       !config.DISABLE_DIP_INSIGHT_EMAIL &&
-      prefs.dipInsightEmail;
+      prefs.dipInsightEmail &&
+      prefs.opportunityEmailDeliveryMode !== 'hourly_digest';
 
-    let runInsight = useInsight;
+    let runInsight = insightBaseEnabled;
+
+    if (runInsight && config.DIP_INSIGHT_REQUIRE_OVERREACTION_TIER) {
+      if (!qualifiesForDipInsightTier(evalResult.flags)) {
+        logger.info(
+          `Dip insight skipped (tier): user ${row.user_id} ${assetType}:${symbol} flags=${evalResult.flags.join(',')}`
+        );
+        runInsight = false;
+      }
+    }
+
+    if (runInsight) {
+      const dipCap = await isDipInsightDailyCapReached(
+        this.redis,
+        row.user_id,
+        prefs.dipInsightMaxEmailsPerDay
+      );
+      if (dipCap) {
+        logger.info(`Dip insight skipped (daily cap): user ${row.user_id} ${assetType}:${symbol}`);
+        runInsight = false;
+      }
+    }
+
     if (runInsight) {
       const fusion = await evaluateDipInsightFusionGate(prefs, evalResult, symbol);
       runInsight = fusion.allowDipInsight;
@@ -936,21 +963,44 @@ class PriceMonitor {
       }
     }
 
+    const dipInsightCtx = {
+      userId: row.user_id,
+      email,
+      row,
+      priceData,
+      evalResult,
+      dayChangePct: Number.isFinite(dayChangePct) ? dayChangePct : null,
+      assetType,
+      symbol,
+      prefs,
+      signalId,
+      tech
+    };
+
+    if (runInsight && config.DIP_INSIGHT_ASYNC_VIA_OUTBOX && config.ENABLE_EMAIL_OUTBOX) {
+      const q = await enqueueEmail({
+        userId: row.user_id,
+        toEmail: email,
+        messageType: 'opportunity_dip_insight',
+        payload: { deliverCtx: dipInsightCtx },
+        batchKey: null,
+        scheduledFor: new Date()
+      });
+      logOpportunityEmailEvent({
+        action: q.enqueued ? 'queued' : 'queue_failed',
+        reason: 'dip_insight_async',
+        userId: row.user_id,
+        symbol,
+        assetType,
+        flags: evalResult.flags,
+        outboxId: q.id
+      });
+      return;
+    }
+
     if (runInsight) {
       try {
-        await tryDipInsightEmailOrThrow({
-          userId: row.user_id,
-          email,
-          row,
-          priceData,
-          evalResult,
-          dayChangePct: Number.isFinite(dayChangePct) ? dayChangePct : null,
-          assetType,
-          symbol,
-          prefs,
-          signalId,
-          tech
-        });
+        await tryDipInsightEmailOrThrow(dipInsightCtx);
       } catch (insightErr) {
         logger.warn(
           `Dip insight email failed for user ${row.user_id} ${assetType}:${symbol}, sending plain opportunity email: ${insightErr?.message || insightErr}`

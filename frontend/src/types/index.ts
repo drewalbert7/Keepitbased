@@ -17,6 +17,8 @@ export interface User {
     researchMaxEmailsPerDay?: number;
     /** Requires backend ENABLE_DIP_INSIGHT_EMAIL; Grok dip briefing vs plain opportunity email. */
     dipInsightEmail?: boolean;
+    /** Max Grok dip-insight emails per UTC day (overreaction/capitulation tiers only). */
+    dipInsightMaxEmailsPerDay?: number;
     /** Caps suggested tranche % in dip briefing emails (1–50). */
     agentMaxPositionSizePct?: number;
     /** Opportunity dip emails; requires email master switch. Default true. */

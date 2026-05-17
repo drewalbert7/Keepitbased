@@ -16,6 +16,8 @@ const {
 } = require('../utils/opportunityEmailPolicy');
 const { markOpportunityEmailSentThisHour } = require('../utils/opportunityEmailConfirmation');
 const { getRedisClient } = require('../utils/redis');
+const { sendDipInsightForOpportunity } = require('./dipInsightEmailService');
+const { recordDipInsightEmailSent } = require('../utils/dipInsightEmailPolicy');
 
 let running = false;
 
@@ -65,19 +67,69 @@ async function deliverOpportunityOutboxRow(priceMonitor, row) {
   });
 }
 
+async function deliverDipInsightOutboxRow(row) {
+  const deliverCtx = row.payload?.deliverCtx;
+  if (!deliverCtx || !row.to_email) {
+    throw new Error('invalid dip insight outbox payload');
+  }
+
+  const result = await sendDipInsightForOpportunity(deliverCtx);
+  const redis = getRedisClient();
+
+  if (result?.emailSent) {
+    await recordDipInsightEmailSent(redis, row.user_id);
+  }
+  if (result?.emailSent || result?.plainOpportunityEmailSent) {
+    await recordOpportunityEmailSent(redis, row.user_id);
+    if (deliverCtx.assetType && deliverCtx.symbol) {
+      await markOpportunityEmailSentThisHour(
+        redis,
+        row.user_id,
+        deliverCtx.assetType,
+        deliverCtx.symbol,
+        config.OPPORTUNITY_DEDUPE_TTL_SEC
+      );
+      await markLegacyAlertBlocked(redis, row.user_id, deliverCtx.assetType, deliverCtx.symbol);
+    }
+  }
+
+  logOpportunityEmailEvent({
+    action: result?.emailSent || result?.plainOpportunityEmailSent ? 'sent' : 'suppressed',
+    via: 'outbox_dip_insight',
+    outboxId: row.id,
+    userId: row.user_id,
+    symbol: deliverCtx.symbol,
+    assetType: deliverCtx.assetType,
+    flags: deliverCtx.evalResult?.flags,
+    dipInsightRich: !!result?.emailSent,
+    suppressReason: result?.suppressReason
+  });
+}
+
 /**
  * @param {import('./priceMonitor')} priceMonitor
  */
 async function processInstantOutbox(priceMonitor) {
-  const rows = await claimInstantPending(config.EMAIL_OUTBOX_BATCH_SIZE);
-  for (const row of rows) {
-    if (row.message_type !== 'opportunity_signal') {
-      await markOutboxFailed(row.id, `unsupported type ${row.message_type}`);
-      continue;
+  let processed = 0;
+
+  const dipRows = await claimInstantPending(config.DIP_INSIGHT_OUTBOX_PER_TICK, 'opportunity_dip_insight');
+  for (const row of dipRows) {
+    try {
+      await deliverDipInsightOutboxRow(row);
+      await markOutboxSent([row.id]);
+      processed += 1;
+    } catch (e) {
+      logger.warn(`Outbox dip insight failed id=${row.id}: ${e.message}`);
+      await markOutboxFailed(row.id, e.message);
     }
+  }
+
+  const rows = await claimInstantPending(config.EMAIL_OUTBOX_BATCH_SIZE, 'opportunity_signal');
+  for (const row of rows) {
     try {
       await deliverOpportunityOutboxRow(priceMonitor, row);
       await markOutboxSent([row.id]);
+      processed += 1;
     } catch (e) {
       logger.warn(`Outbox instant send failed id=${row.id}: ${e.message}`);
       await markOutboxFailed(row.id, e.message);
@@ -90,7 +142,7 @@ async function processInstantOutbox(priceMonitor) {
       });
     }
   }
-  return rows.length;
+  return processed;
 }
 
 /**

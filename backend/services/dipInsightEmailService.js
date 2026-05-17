@@ -190,6 +190,8 @@ async function sendDipInsightForOpportunity(params) {
     },
     runMetadata
   });
+
+  return { emailSent, plainOpportunityEmailSent, suppressReason };
 }
 
 /** Try insight pipeline; on failure log and rethrow so caller can fall back to plain opportunity email. */

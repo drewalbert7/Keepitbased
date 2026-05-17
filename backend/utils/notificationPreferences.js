@@ -22,6 +22,8 @@ function mergeNotificationPreferences(raw) {
     /** Opt-out: unset defaults to on (fusion gate applies when enabled). */
     researchDigestEmail: p.researchDigestEmail !== false,
     researchMaxEmailsPerDay: clampInt(p.researchMaxEmailsPerDay, 1, 20, 5),
+    /** Max Grok dip-insight emails per UTC day (rich briefing); plain opportunity mail uses opportunityMaxEmailsPerDay. */
+    dipInsightMaxEmailsPerDay: clampInt(p.dipInsightMaxEmailsPerDay, 1, 20, 3),
     /** Grok dip briefing email when ENABLE_DIP_INSIGHT_EMAIL=true; default on under flag. */
     dipInsightEmail: enableDipInsight ? p.dipInsightEmail !== false : false,
     /** Matches dashboard agent slider default; used to cap suggestedTranchePct server-side. */

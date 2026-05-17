@@ -46,6 +46,7 @@ async function runInitializeDatabase() {
     opportunityEmailDeliveryMode: 'instant',
     opportunityStockMarketHoursOnly: true,
     dipInsightEmail: true,
+    dipInsightMaxEmailsPerDay: 3,
     researchDigestEmail: true,
     dailyWatchlistDigestEmail: true,
     agentMaxPositionSizePct: 10
