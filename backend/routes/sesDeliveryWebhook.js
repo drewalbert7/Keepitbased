@@ -1,5 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
+const https = require('https');
 const rateLimit = require('express-rate-limit');
 const db = require('../models/database');
 const logger = require('../utils/logger');
@@ -37,6 +38,26 @@ function parseSesInner(body) {
   return null;
 }
 
+function confirmSnsSubscription(subscribeUrl) {
+  const u = new URL(subscribeUrl);
+  const host = u.hostname.toLowerCase();
+  if (!host.endsWith('.amazonaws.com') && host !== 'sns.amazonaws.com') {
+    throw new Error('SubscribeURL host not allowed');
+  }
+  return new Promise((resolve, reject) => {
+    https
+      .get(subscribeUrl, (res) => {
+        res.resume();
+        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+          resolve();
+        } else {
+          reject(new Error(`HTTP ${res.statusCode}`));
+        }
+      })
+      .on('error', reject);
+  });
+}
+
 function collectEmailsFromSes(ses) {
   const out = new Set();
   if (!ses || typeof ses !== 'object') return [];
@@ -68,6 +89,18 @@ router.post('/', webhookPostLimit, async (req, res) => {
     return res.status(404).json({ error: 'Not found' });
   }
 
+  if (req.body && req.body.Type === 'SubscriptionConfirmation' && req.body.SubscribeURL) {
+    const url = String(req.body.SubscribeURL);
+    try {
+      await confirmSnsSubscription(url);
+      logger.info('SES webhook: SNS subscription confirmed');
+      return res.status(200).json({ ok: true, subscribed: true });
+    } catch (e) {
+      logger.warn(`SES webhook: SNS subscription confirm failed: ${e.message}`);
+      return res.status(200).json({ ok: true, note: 'subscription_confirm_failed', url });
+    }
+  }
+
   const auth = req.get('Authorization') || '';
   const m = /^Bearer\s+(.+)$/i.exec(auth.trim());
   const token = m ? m[1].trim() : '';
@@ -78,12 +111,6 @@ router.post('/', webhookPostLimit, async (req, res) => {
 
   const inner = parseSesInner(req.body);
   if (!inner) {
-    if (req.body && req.body.Type === 'SubscriptionConfirmation' && req.body.SubscribeURL) {
-      logger.warn(
-        'SES webhook: SNS subscription confirmation received — confirm the subscription in AWS or set up forwarding with the secret header.'
-      );
-      return res.status(200).json({ ok: true, note: 'subscription_confirmation_ignored' });
-    }
     return res.status(400).json({ error: 'Unrecognized payload' });
   }
 

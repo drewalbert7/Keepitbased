@@ -10,6 +10,7 @@
     "test:charts": "node scripts/chartRegressionCheck.js",
     "email:test-opportunity": "node scripts/sendTestOpportunityEmail.js",
     "email:verify-smtp": "node scripts/verifySesSmtp.js",
+    "email:check-dns": "bash ../scripts/check-email-dns.sh",
     "digest:run-once": "node scripts/runDailyWatchlistDigestOnce.js",
     "migrate:supabase-chat": "node scripts/applySupabaseChatMigration.js",
     "setup:supabase-chat": "node scripts/setupSupabaseChat.js",

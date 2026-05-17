@@ -2,6 +2,7 @@ const nodemailer = require('nodemailer');
 const logger = require('../utils/logger');
 const emailDeliveryEligibility = require('./emailDeliveryEligibility');
 const emailSendBudget = require('../utils/emailSendBudget');
+const { buildOneClickUnsubscribeUrl } = require('../utils/emailUnsubscribeToken');
 
 /** Coerce DB/Redis values (often strings) for safe numeric formatting. */
 function toFiniteNumber(v) {
@@ -40,23 +41,53 @@ function profilePreferencesUrl() {
 }
 
 /**
- * RFC 2369 List-Unsubscribe — mailbox providers (and AWS SES guidance) expect a clear prefs URL.
- * One-click POST is not implemented; HTTPS profile only.
+ * RFC 2369 + RFC 8058 — one-click HTTPS unsubscribe (Gmail/Yahoo) plus profile fallback.
+ * @param {number} [userId]
  */
-function listUnsubscribeHeaders() {
+function listUnsubscribeHeaders(userId) {
+  const headers = {};
+  const urls = [];
+
+  if (userId != null && Number.isFinite(Number(userId)) && Number(userId) > 0) {
+    try {
+      const oneClick = buildOneClickUnsubscribeUrl(Number(userId));
+      const u = new URL(oneClick);
+      if (u.protocol === 'https:') {
+        urls.push(oneClick);
+      }
+    } catch (_) {
+      /* token build failed */
+    }
+  }
+
   try {
-    const u = new URL(profilePreferencesUrl());
-    if (u.protocol === 'https:') {
-      return { 'List-Unsubscribe': `<${profilePreferencesUrl()}>` };
+    const prefs = profilePreferencesUrl();
+    if (new URL(prefs).protocol === 'https:') {
+      urls.push(prefs);
     }
   } catch (_) {
     /* dev http */
   }
-  return {};
+
+  if (urls.length) {
+    headers['List-Unsubscribe'] = urls.map((u) => `<${u}>`).join(', ');
+    if (urls[0] && urls[0].includes('/api/email/unsubscribe')) {
+      headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
+    }
+  }
+
+  return headers;
 }
 
-function mergeMailHeaders(extra = {}) {
-  return { ...listUnsubscribeHeaders(), ...extra };
+/**
+ * @param {object} [opts]
+ * @param {number} [opts.userId]
+ * @param {object} [opts.extra]
+ */
+function mergeMailHeaders(opts = {}) {
+  const userId = opts.userId;
+  const extra = opts.extra || {};
+  return { ...listUnsubscribeHeaders(userId), ...extra };
 }
 
 /** Repeated in HTML footers — explicit consent language for SES / ISP trust. */
@@ -225,7 +256,7 @@ class EmailService {
         subject: `KeepItBased — ${emoji} ${alertData.level.toUpperCase()} alert: ${alertData.symbol} (${alertData.dropPercentage}% drop)`,
         text: textPlain,
         html: html,
-        headers: mergeMailHeaders()
+        headers: mergeMailHeaders({ userId: alertData.userId })
       };
 
       const delivered = await deliverMarketingMail({
@@ -578,7 +609,7 @@ class EmailService {
             subject: subjectLine,
             text: plain,
             html,
-            headers: mergeMailHeaders()
+            headers: mergeMailHeaders({ userId: options.userId })
           })
       });
       if (!delivered.sent) {
@@ -686,7 +717,7 @@ class EmailService {
             subject: `KeepItBased — Hourly dip digest (${list.length} signal${list.length === 1 ? '' : 's'})`,
             text: plain,
             html,
-            headers: mergeMailHeaders()
+            headers: mergeMailHeaders({ userId: options?.userId })
           })
       });
       if (!delivered.sent) {
@@ -883,7 +914,7 @@ class EmailService {
             subject: `KeepItBased — Daily market briefing (${new Date().toLocaleDateString('en-US')})`,
             text: digestPlain,
             html,
-            headers: mergeMailHeaders()
+            headers: mergeMailHeaders({ userId: payload?.userId })
           })
       });
       if (!delivered.sent) {
@@ -1080,7 +1111,7 @@ class EmailService {
             subject: `KeepItBased — Dip briefing: ${sym} — ${subVerdict}`,
             text: dipPlain,
             html,
-            headers: mergeMailHeaders()
+            headers: mergeMailHeaders({ userId: params.userId })
           })
       });
       if (!delivered.sent) {

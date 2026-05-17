@@ -90,7 +90,8 @@ Last updated: **2026-05-17** (email quota discipline + daily Grok digest restore
 | **Send budgets (app)** | **✅** Opportunity mail **80/day** + **12/hr**; daily Grok digest **150/day** (separate pool); per-user dip cap default **5** (Profile 1–50); digest does not count toward dip cap |
 | **Daily Grok briefing** | **✅ Cron on** — `DAILY_WATCHLIST_DIGEST_CRON` default `0 7 * * *` UTC; opt-out via Profile |
 | **Production access** | **Pending** — console showed **“More information needed”**; limits increase previously **denied** until account issues cleared |
-| **DNS** | **Open** — SPF still Namecheap-only; DMARC missing (see table above) |
+| **DNS** | **Open** — run `npm run email:check-dns`; follow **`docs/DELIVERABILITY_DNS.md`** (DKIM CNAMEs, SPF merge, DMARC) |
+| **One-click unsubscribe** | **✅ Shipped** — `List-Unsubscribe-Post` + `POST/GET /api/email/unsubscribe?token=…` |
 
 **Smoke commands (from repo root):**
 

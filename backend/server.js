@@ -41,6 +41,7 @@ const adminSignupInviteRoutes = require('./routes/adminSignupInvite');
 const chatRoutes = require('./routes/chat');
 const fundamentalsRoutes = require('./routes/fundamentals');
 const sesDeliveryWebhook = require('./routes/sesDeliveryWebhook');
+const emailUnsubscribeRoutes = require('./routes/emailUnsubscribe');
 
 const jwt = require('jsonwebtoken');
 const PriceMonitor = require('./services/priceMonitor');
@@ -132,6 +133,7 @@ const alertService = new AlertService(io);
 
 // Routes
 app.use('/api/webhooks/ses-delivery', sesDeliveryWebhook);
+app.use('/api/email/unsubscribe', emailUnsubscribeRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/alerts', alertRoutes);
 app.use('/api/prices', priceRoutes);
