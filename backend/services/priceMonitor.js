@@ -11,6 +11,13 @@ const {
   mergeNotificationPreferences,
   passesOpportunityEmailTierFilter
 } = require('../utils/notificationPreferences');
+const {
+  logOpportunityEmailEvent,
+  isOpportunityQuietHours,
+  isOpportunityDailyEmailCapReached,
+  recordOpportunityEmailSent,
+  markLegacyAlertBlocked
+} = require('../utils/opportunityEmailPolicy');
 const { isUsStockRegularTradingHours } = require('../utils/researchAlertGates');
 const {
   recordOpportunitySignal,
@@ -22,6 +29,7 @@ const { tryDipInsightEmailOrThrow } = require('./dipInsightEmailService');
 const { evaluateDipInsightFusionGate } = require('./researchFusionGate');
 const { getOpportunityTechnicalBundle } = require('./dailyAtrService');
 const openbbClient = require('./openbbClient');
+const { resolveUsStockSnapshotTicker } = require('../utils/stockSnapshotQuote');
 
 class PriceMonitor {
   constructor(io) {
@@ -158,57 +166,34 @@ class PriceMonitor {
       }
 
       const response = await this.makePolygonRequest(`/v2/snapshot/locale/us/markets/stocks/tickers/${encodeURIComponent(symbol)}`);
-      const ticker = response.ticker;
+      const resolved = resolveUsStockSnapshotTicker(response.ticker);
 
-      if (!ticker) {
-        throw new Error(`No Polygon stock snapshot found for ${symbol}`);
+      if (!resolved) {
+        throw new Error(`No usable Polygon stock snapshot for ${symbol}`);
       }
-
-      const open = Number(ticker.day?.o ?? ticker.day?.c ?? 0);
-      const close = Number(ticker.day?.c ?? ticker.lastTrade?.p ?? open);
-      const change = close - open;
-      const changePercent = open ? (change / open) * 100 : 0;
-      const h = ticker.day?.h != null ? Number(ticker.day.h) : NaN;
-      const l = ticker.day?.l != null ? Number(ticker.day.l) : NaN;
-      const v = ticker.day?.v != null ? Number(ticker.day.v) : NaN;
-      const prevC = ticker.prevDay?.c != null ? Number(ticker.prevDay.c) : NaN;
 
       const out = {
         symbol: symbol,
-        price: close,
-        change24h: change,
-        changePercent,
+        price: resolved.close,
+        change24h: resolved.change,
+        changePercent: resolved.changePercent,
         timestamp: Date.now(),
         type: 'stock',
         sourceUsed: 'polygon_snapshot'
       };
-      if (Number.isFinite(h)) out.dayHigh = h;
-      if (Number.isFinite(l)) out.dayLow = l;
-      if (Number.isFinite(v)) out.volume = v;
-      if (Number.isFinite(prevC)) out.prevClose = prevC;
+      if (resolved.high != null) out.dayHigh = resolved.high;
+      if (resolved.low != null) out.dayLow = resolved.low;
+      if (Number.isFinite(resolved.volume)) out.volume = resolved.volume;
+      if (resolved.prevClose != null) out.prevClose = resolved.prevClose;
+      if (resolved.dayOpen != null) out.dayOpen = resolved.dayOpen;
+      if (resolved.sessionVwap != null) out.sessionVwap = resolved.sessionVwap;
 
-      const dayOpenRaw = ticker.day?.o != null ? Number(ticker.day.o) : NaN;
-      if (Number.isFinite(dayOpenRaw) && dayOpenRaw > 0) {
-        out.dayOpen = dayOpenRaw;
-      }
-      const vwRaw = ticker.day?.vw != null ? Number(ticker.day.vw) : NaN;
-      if (Number.isFinite(vwRaw) && vwRaw > 0) {
-        out.sessionVwap = vwRaw;
-      }
-
-      const lq = ticker.lastQuote;
+      const lq = resolved.lastQuote;
       if (lq && typeof lq === 'object') {
         const bidR = lq.p != null ? Number(lq.p) : lq.bid != null ? Number(lq.bid) : NaN;
         const askR = lq.P != null ? Number(lq.P) : lq.ask != null ? Number(lq.ask) : NaN;
         if (Number.isFinite(bidR) && bidR > 0) out.bidPrice = bidR;
         if (Number.isFinite(askR) && askR > 0) out.askPrice = askR;
-      }
-
-      if (ticker.todaysChange != null && Number.isFinite(Number(ticker.todaysChange))) {
-        out.todaysChange = Number(ticker.todaysChange);
-      }
-      if (ticker.todaysChangePerc != null && Number.isFinite(Number(ticker.todaysChangePerc))) {
-        out.todaysChangePerc = Number(ticker.todaysChangePerc);
       }
 
       return out;
@@ -598,45 +583,42 @@ class PriceMonitor {
         emailService.isConfigured();
 
       if (wantOppEmail) {
-        const useInsight =
-          config.ENABLE_DIP_INSIGHT_EMAIL &&
-          !config.DISABLE_DIP_INSIGHT_EMAIL &&
-          prefs.dipInsightEmail;
-
-        let runInsight = useInsight;
-        if (runInsight) {
-          const fusion = await evaluateDipInsightFusionGate(prefs, evalResult, symbol);
-          runInsight = fusion.allowDipInsight;
-          if (prefs.researchDigestEmail && !fusion.allowDipInsight) {
-            logger.info(
-              `Dip insight skipped (research fusion): user ${row.user_id} ${assetType}:${symbol} artifacts=${fusion.artifactCount} reasons=${fusion.fusionReasons.join(',')}`
-            );
-          }
-        }
-
-        if (runInsight) {
-          try {
-            await tryDipInsightEmailOrThrow({
-              userId: row.user_id,
-              email: row.email,
-              row,
-              priceData,
-              evalResult,
-              dayChangePct: Number.isFinite(dayChangePct) ? dayChangePct : null,
-              assetType,
-              symbol,
-              prefs,
-              signalId,
-              tech
-            });
-          } catch (insightErr) {
-            logger.warn(
-              `Dip insight email failed for user ${row.user_id} ${assetType}:${symbol}, sending plain opportunity email: ${insightErr?.message || insightErr}`
-            );
-            await emailService.sendOpportunitySignalEmail(row.email, payload);
-          }
+        const suppressReason = await this.getOpportunityEmailSuppressReason(
+          row.user_id,
+          prefs
+        );
+        if (suppressReason) {
+          logOpportunityEmailEvent({
+            action: 'suppressed',
+            reason: suppressReason,
+            userId: row.user_id,
+            symbol,
+            assetType,
+            flags: evalResult.flags
+          });
         } else {
-          await emailService.sendOpportunitySignalEmail(row.email, payload);
+          await this.deliverOpportunityEmail({
+            row,
+            email: row.email,
+            payload,
+            prefs,
+            priceData,
+            evalResult,
+            dayChangePct,
+            assetType,
+            symbol,
+            signalId,
+            tech
+          });
+          await recordOpportunityEmailSent(this.redis, row.user_id);
+          await markLegacyAlertBlocked(this.redis, row.user_id, assetType, symbol);
+          logOpportunityEmailEvent({
+            action: 'sent',
+            userId: row.user_id,
+            symbol,
+            assetType,
+            flags: evalResult.flags
+          });
         }
       } else if (
         passesEmailTier &&
@@ -646,9 +628,14 @@ class PriceMonitor {
         emailService.isConfigured() &&
         stockOutsideRth
       ) {
-        logger.info(
-          `Opportunity email suppressed (US stock outside regular session) user ${row.user_id} ${assetType}:${symbol}`
-        );
+        logOpportunityEmailEvent({
+          action: 'suppressed',
+          reason: 'stock_outside_rth',
+          userId: row.user_id,
+          symbol,
+          assetType,
+          flags: evalResult.flags
+        });
       }
 
       logger.info(
@@ -658,6 +645,81 @@ class PriceMonitor {
           (passesEmailTier ? '' : ' (email tier filtered)') +
           (stockOutsideRth ? ' (stock outside RTH)' : '')
       );
+    }
+  }
+
+  /**
+   * @returns {Promise<string|null>} suppress reason or null if send allowed
+   */
+  async getOpportunityEmailSuppressReason(userId, prefs) {
+    if (isOpportunityQuietHours(prefs)) {
+      return 'quiet_hours';
+    }
+    const capReached = await isOpportunityDailyEmailCapReached(
+      this.redis,
+      userId,
+      prefs.opportunityMaxEmailsPerDay
+    );
+    if (capReached) {
+      return 'daily_cap_reached';
+    }
+    return null;
+  }
+
+  async deliverOpportunityEmail(ctx) {
+    const {
+      row,
+      email,
+      payload,
+      prefs,
+      priceData,
+      evalResult,
+      dayChangePct,
+      assetType,
+      symbol,
+      signalId,
+      tech
+    } = ctx;
+
+    const useInsight =
+      config.ENABLE_DIP_INSIGHT_EMAIL &&
+      !config.DISABLE_DIP_INSIGHT_EMAIL &&
+      prefs.dipInsightEmail;
+
+    let runInsight = useInsight;
+    if (runInsight) {
+      const fusion = await evaluateDipInsightFusionGate(prefs, evalResult, symbol);
+      runInsight = fusion.allowDipInsight;
+      if (prefs.researchDigestEmail && !fusion.allowDipInsight) {
+        logger.info(
+          `Dip insight skipped (research fusion): user ${row.user_id} ${assetType}:${symbol} artifacts=${fusion.artifactCount} reasons=${fusion.fusionReasons.join(',')}`
+        );
+      }
+    }
+
+    if (runInsight) {
+      try {
+        await tryDipInsightEmailOrThrow({
+          userId: row.user_id,
+          email,
+          row,
+          priceData,
+          evalResult,
+          dayChangePct: Number.isFinite(dayChangePct) ? dayChangePct : null,
+          assetType,
+          symbol,
+          prefs,
+          signalId,
+          tech
+        });
+      } catch (insightErr) {
+        logger.warn(
+          `Dip insight email failed for user ${row.user_id} ${assetType}:${symbol}, sending plain opportunity email: ${insightErr?.message || insightErr}`
+        );
+        await emailService.sendOpportunitySignalEmail(email, payload);
+      }
+    } else {
+      await emailService.sendOpportunitySignalEmail(email, payload);
     }
   }
 

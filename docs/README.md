@@ -6,8 +6,8 @@ All paths below are relative to the **repository root** (`keepitbased/` after cl
 
 | Document | Purpose |
 |----------|---------|
-| [../todo.md](../todo.md) | Execution roadmap, deploy pick-up notes, phase status. |
-| [PROJECT_REVIEW_TODO.md](./PROJECT_REVIEW_TODO.md) | Broader project review, **pull-request workflow**, shipped-feature tracker, dev commands. |
+| [../todo.md](../todo.md) | **Canonical roadmap** — execution phases, resume-here, SES/DNS, Quant/LangGraph, §11 research, deploy notes, project-review appendix. |
+| [PROJECT_REVIEW_TODO.md](./PROJECT_REVIEW_TODO.md) | Redirect → [../todo.md](../todo.md) (merged 2026-05-17). |
 | [AI_BUY_ALERT_AGENT_PLAN.md](./AI_BUY_ALERT_AGENT_PLAN.md) | AI buy-alert / multi-agent initiative (canonical plan). |
 | [PROJECT_REVIEW_GUIDE.md](./PROJECT_REVIEW_GUIDE.md) | Long “review for future sessions” checklist. |
 | [project-review-guide.md](./project-review-guide.md) | Shorter project review outline. |

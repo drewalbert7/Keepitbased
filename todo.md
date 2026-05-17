@@ -1,12 +1,18 @@
-# KeepItBased Professional Implementation Plan
+# KeepItBased — Canonical roadmap (`todo.md`)
 
-Last updated: **2026-05-11** — **Session checkpoint:** Quant **`rule_breaker_gardner`** (`/diag/market-universe-rank?strategy=rule_breaker_gardner`) — six 0–100 Gardner-proxy legs + terminal preset; LangGraph **`opportunity_scout`** order-independent scores + live-price **`suggestedLimitBand`**; **`llm_client`** Grok/scan respects **`topCandidates`** order vs server score; **`scripts/deploy-production.sh`** starts **`quant-agi-api`** / **`quant-agi-frontend`** when missing; Quant tape sorts by score; **`npm run quant:autoresearch-nightly`**. **Next:** LangGraph ingests **all rank strategies** + batched fundamentals + macro/news/X (`buildAgentWatchlistContext`). **Prior (2026-05-09):** fundamentals pipeline + Financials modal + photonics/momentum rank defaults. **Prior (2026-05-06):** **Profile + marketing + notification defaults:** **`ProfilePage`** — one **Notifications** section (channels, opportunity **dip email** + toast/email **tiers**, **quiet hours**, **timezone**, US **RTH** option, Grok/digest toggles); removed **`AlertDeliveryPreferences.tsx`**; **`OpportunityPolicyPanel`** dashboard copy + link to Profile only. **`backend/utils/notificationPreferences.js`:** merged defaults — **`opportunityEmailNotifyLevel`** default **`all`** (was smaller-tier filter by default); **`researchDigestEmail`** + **`dailyWatchlistDigestEmail`** **opt-out** (`!== false`). **`backend/models/database.js`:** **`notification_preferences`** rich **JSONB DEFAULT** + **`ALTER COLUMN … SET DEFAULT`** on init for new inserts. **`HomePage`** — marketing copy aligned to **AI agent**, **deterministic tiers** (`on_sale` / `overreaction` / `capitulation`), notifications; removed **vanity metrics** & **fabricated testimonials**; **`Link`** CTAs. **Ship:** **`npm run deploy`**.
+> **Single source of truth:** `keepitbased/todo.md` in this repo. When you or Cursor reference **`todo.md`**, use **this file only**. A stub at `/home/dstrad/todo.md` redirects here.
+
+Last updated: **2026-05-17** (SES SMTP restored; roadmap consolidated earlier same day).
+
+**Session checkpoint (2026-05-17) — AWS SES / email:** Rotated **SMTP credentials**; aligned **`SMTP_HOST=email-smtp.us-east-1.amazonaws.com`** with SES console (**US East N. Virginia**) — prior **`us-east-2`** host caused **535 Authentication Credentials Invalid**. Added **`npm run email:verify-smtp`** (`backend/scripts/verifySesSmtp.js`); **`GET /api/health/config`** exposes **`smtpConfigured`**. **`npm run email:verify-smtp`** → OK; **`npm run email:test-opportunity`** → **`[TEST]`** opportunity mail to verified user (sandbox). **`pm2 restart keepitbased-api --update-env`**. **Still open:** SES **Sandbox** (200/day); production access **“More information needed”** / prior limits denial — complete request in **us-east-1**; **SPF** merge `include:amazonses.com`; **DMARC**; confirm **DKIM** CNAMEs; deactivate old SMTP IAM creds after leak. **Next engineering:** Quant rank → **`buildAgentWatchlistContext`** (unchanged).
+
+**Session checkpoint (2026-05-11):** Quant **`rule_breaker_gardner`** (`/diag/market-universe-rank?strategy=rule_breaker_gardner`) — six 0–100 Gardner-proxy legs + terminal preset; LangGraph **`opportunity_scout`** order-independent scores + live-price **`suggestedLimitBand`**; **`llm_client`** Grok/scan respects **`topCandidates`** order vs server score; **`scripts/deploy-production.sh`** starts **`quant-agi-api`** / **`quant-agi-frontend`** when missing; Quant tape sorts by score; **`npm run quant:autoresearch-nightly`**. **Next:** LangGraph ingests **all rank strategies** + batched fundamentals + macro/news/X (`buildAgentWatchlistContext`). **Prior (2026-05-09):** fundamentals pipeline + Financials modal + photonics/momentum rank defaults. **Prior (2026-05-06):** **Profile + marketing + notification defaults:** **`ProfilePage`** — one **Notifications** section (channels, opportunity **dip email** + toast/email **tiers**, **quiet hours**, **timezone**, US **RTH** option, Grok/digest toggles); removed **`AlertDeliveryPreferences.tsx`**; **`OpportunityPolicyPanel`** dashboard copy + link to Profile only. **`backend/utils/notificationPreferences.js`:** merged defaults — **`opportunityEmailNotifyLevel`** default **`all`** (was smaller-tier filter by default); **`researchDigestEmail`** + **`dailyWatchlistDigestEmail`** **opt-out** (`!== false`). **`backend/models/database.js`:** **`notification_preferences`** rich **JSONB DEFAULT** + **`ALTER COLUMN … SET DEFAULT`** on init for new inserts. **`HomePage`** — marketing copy aligned to **AI agent**, **deterministic tiers** (`on_sale` / `overreaction` / `capitulation`), notifications; removed **vanity metrics** & **fabricated testimonials**; **`Link`** CTAs. **Ship:** **`npm run deploy`**.
 
 **Prior (2026-05-05):** **Watchlist UX + mail + daily briefing:** Polygon/Massive-backed **Open / VWAP / Bid–Ask / `quoteSourceUsed`** end-to-end (PriceMonitor → Redis → **`buildAgentWatchlistContext`** → **`watchlistDerived`** merge + **`overlayFresherWatchlistQuotes`**); crypto **`dayChangeAbs`** stock-only in **`agentWatchlistContext.js`**. **`Opportunity email tier`** split from toasts: **`opportunityEmailNotifyLevel`** via **`passesOpportunityEmailTierFilter`** in **`priceMonitor.js`**; **`AlertDeliveryPreferences`** (later **removed** 2026-05-06) + **`notificationPreferences.js`**. **Fix:** missing `}` after RTH suppression branch in **`priceMonitor.js`** (deploy blocker). **Dashboard:** **`AIAgentPage`** — removed **Latest plan**, **Top opportunities**, **Run metadata** card; kept backup-mode strip. **Daily market briefing:** Node **`researchArtifacts`** → **`dailyWatchlistDigestWorker`**; Python **`generate_daily_watchlist_digest`**; **`sendDailyWatchlistDigestEmail`**. **§11 / dip:** `opportunity_signals.ai_assessment`, UltimateDipBuyer / confluence / email copy. **`npm run deploy`** + **`pm2 restart stock-service`** when Python changes.
 
 **Prior (2026-05-04):** **Dashboard agent UX:** modes **Scan & rank** / **Ask a question** / **Smart**; LangGraph **`educational_qa`** + **`compose_scan_reply`**; Node→Python **`AGENT_PYTHON_TIMEOUT_MS`**; **`assistantIntent`** + **`conversationHistory`**; UI **backup-mode** banner + **progressive reply**. **Auth / signup:** **`username`**, personal **signup passcode**, **`invited_by_user_id`**. **Ops:** Navbar file ownership note if needed.
 
-**Prior (2026-05-03):** **OpenBB ODP** app-wide (equity/crypto via **`openbb-yfinance`** / Polygon, **`OPENBB_ENABLED`**, PM2 **`openbb-platform`**); **AI agent backlog** + **[TradingAgents](https://github.com/tauricresearch/tradingagents)** notes in **§3.1**; Polygon retry/stale-quote; crypto dashboard parity; **Supabase** global chat + **`FloatingChatDock`**; watchlist/52-week hardening. **AGPL / Massive / deploy:** unchanged — `npm run deploy`, OpenBB AGPL review. **Git:** [PR workflow](docs/PROJECT_REVIEW_TODO.md) when `main` is protected.
+**Prior (2026-05-03):** **OpenBB ODP** app-wide (equity/crypto via **`openbb-yfinance`** / Polygon, **`OPENBB_ENABLED`**, PM2 **`openbb-platform`**); **AI agent backlog** + **[TradingAgents](https://github.com/tauricresearch/tradingagents)** notes in **§3.1**; Polygon retry/stale-quote; crypto dashboard parity; **Supabase** global chat + **`FloatingChatDock`**; watchlist/52-week hardening. **AGPL / Massive / deploy:** unchanged — `npm run deploy`, OpenBB AGPL review. **Git:** [PR workflow](#pull-requests--doing-it-correctly) when `main` is protected.
 
 **Also shipped (follow-on):** Same as prior line; **§3.1** checklist items marked done where implemented below.
 
@@ -22,6 +28,7 @@ Last updated: **2026-05-11** — **Session checkpoint:** Quant **`rule_breaker_g
 | **§11 Phase B** — Ingestion | **🟡 MVP shipped** | `research_artifacts` + Polygon `/v2/reference/news` + cron worker; all-watchlist tickers; dedupe `content_hash`. **Open:** dedicated queue worker, X + EDGAR (see §11). |
 | **§11 Phase D** — Fusion gate | **🟡 MVP shipped** | `researchFusionGate` + `correlationRuleV1` on dip-insight path when **`researchDigestEmail`** true → else plain opportunity email. **Open:** digest dedupe keys, async queue, full `ResearchAlertEvaluator`. |
 | **§11 Phase C** — Agent context | **🟡 MVP shipped** | Internal **`/research/artifacts`** + **`research_context_loader`** + reply digest + **`opportunity_scout`** scoring/LLM (**`news_context`**, risk bumps). **Open:** **`signal_fusion_scorer`**, vol from history, filing rows. |
+| **AWS SES (transactional mail)** | **🟡 SMTP working; sandbox** | **us-east-1** SMTP auth OK; test opportunity email sends. **Open:** production access, SPF/DMARC/DKIM DNS, bounce webhook hardening. |
 | **§9 Go-live checklist** | Open | Hard gates before declaring “launch”: queues, DR, etc. |
 | **Situation room** — global awareness / “major events” | **Planned** | In-house feed (no reliance on monitor-the-situation.com); **dashboard UI directly under watchlist**; doubles as **live context for AI agents**. Full plan: **§ Situation room / global monitor** below. |
 
@@ -39,17 +46,123 @@ Last updated: **2026-05-11** — **Session checkpoint:** Quant **`rule_breaker_g
 - **Watchlist triggers:** Define **inputs** (last price, baseline/fair band, short-window return, vol proxy) and **dedupe/cooldown** (per user+symbol+trigger class, time bucket) before wiring schedulers—avoid duplicate or spam notifications.
 - **Cost / abuse:** Track LLM usage per run where possible; enforce existing rate limits; optional per-user caps / backoff for chat and opportunity scans in production.
 
+## Email / SES — do not repeat this mistake (2026-05-09)
+
+**What went wrong:** Real **AWS SES SMTP credentials** (`SMTP_USER` / `SMTP_PASS`, often an `AKIA…` style username) were stored in **`backend/.env.example`**, a file meant to be **committed to git**. Anyone with the repo (or a leaked clone) could relay mail through your SES domain — leading to abuse (e.g. forged invoice spam), **Trust & Safety pausing sending**, and `554 Sending paused`.
+
+**Hard rules — never violate:**
+
+1. **Secrets live only** in **`backend/.env`** on the server (or AWS Secrets Manager / SSM — **never** in example files, README, screenshots, or tickets).
+2. **`backend/.env.example`** contains **only placeholders** (`YOUR_SES_SMTP_USERNAME`, fake hosts, comments). Spot-check before every merge.
+3. **Rotate SES SMTP IAM credentials immediately** after any suspicion of leakage; deactivate old keys in **IAM / SES SMTP settings**.
+4. **AWS console:** MFA on human users; dedicated IAM principal for SES SMTP with **least privilege**.
+5. **GitHub:** enable **secret scanning** and **push protection** where available; optional local hook (gitleaks) on `SMTP_PASS`, `AKIA…`, etc.
+
+**Operational checks:**
+
+- **`SMTP_HOST`** must match **SES region** (e.g. `email-smtp.us-east-1.amazonaws.com` vs `…us-east-2…`).
+- **`SMTP_FROM`** must be an address/domain **verified in SES** in that region.
+- **Test sends:** `backend/scripts/sendTestOpportunityEmail.js` — exits **non‑zero** if SES rejects (e.g. pause); `pm2 logs` should show **`Opportunity signal email sent`** only on success.
+- **Trust & Safety pause** is resolved **only when AWS reinstate sending** — not by code changes alone.
+
+**DNS / deliverability (checked 2026-05-09 via public DNS; re-verify after changes)**
+
+| Record | Current | Action |
+|--------|---------|--------|
+| **SPF** (`keepitbased.com` TXT) | `v=spf1 include:spf.efwd.registrar-servers.com ~all` (Namecheap forwarding) | **Merge** SES: single apex TXT SPF only — e.g. `v=spf1 include:spf.efwd.registrar-servers.com include:amazonses.com ~all` (confirm in [SES SPF docs](https://docs.aws.amazon.com/ses/latest/dg/send-email-authentication-spf.html); flatten if you hit lookup limits). |
+| **DMARC** (`_dmarc.keepitbased.com` TXT) | **None found** | Add at least **`v=DMARC1; p=none; rua=mailto:…@keepitbased.com`** (monitoring), then tighten policy later when mail is stable. |
+| **DKIM** | *Not verified from CLI* (selectors are per-identity in SES) | In **SES → Identities → keepitbased.com**, copy each **DKIM CNAME** host; run `dig <host> CNAME +short` until all resolve. |
+
+**Reference:** [Rotate SMTP credentials (AWS)](https://repost.aws/knowledge-center/ses-rotate-smtp-access-keys)
+
+### Current status (2026-05-17)
+
+| Item | Status |
+|------|--------|
+| **Region** | **us-east-1** (N. Virginia) — `SMTP_HOST`, verified identities, and SMTP credentials must all match |
+| **SMTP auth** | **✅** `npm run email:verify-smtp` → `OK — SMTP login accepted` |
+| **End-to-end send** | **✅** `npm run email:test-opportunity` (use real `TEST_USER_EMAIL` from `users` table; not the placeholder `your-verified-email@…`) |
+| **Account mode** | **Sandbox** — 200 emails/24h, 1/sec; recipients must be **verified** in SES until production access |
+| **Production access** | **Pending** — console showed **“More information needed”**; limits increase previously **denied** until account issues cleared |
+| **DNS** | **Open** — SPF still Namecheap-only; DMARC missing (see table above) |
+
+**Smoke commands (from repo root):**
+
+```bash
+npm run email:verify-smtp
+pm2 restart keepitbased-api --update-env   # after .env SMTP_* changes
+
+DISABLE_EMAIL_ENGAGEMENT_SUNSET=true \
+TEST_USE_SYNTHETIC_BASELINE=true \
+TEST_USER_EMAIL=<user@email-in-db> \
+npm run email:test-opportunity
+```
+
+## Opportunity signal emails — efficiency & timing (plan)
+
+**Goal:** Fewer low-signal emails, better send timing, no duplicate templates per dip, SES-safe volume.
+
+**Architecture today:** Every **1 min**, `PriceMonitor.checkAllPrices` → quotes → `emitWatchlistOpportunitySignals` (requires **`user_alerts` + `baseline_price`**). Separate **`AlertService.processAlerts`** can still send legacy **`sendAlert`** emails (small/medium/large %). Optional **Grok dip-insight** on opportunity path. **Quiet hours were removed from send path (2026-05-06)** — restoring in Phase 1.
+
+| Pain point | Mitigation |
+|------------|------------|
+| Default email tier `all` → noisy inbox | Default **`overreaction_only`** for new merges; Profile unchanged options |
+| Legacy + opportunity double email | Suppress legacy email when opportunity mail sent same user/symbol/hour |
+| No daily cap on opportunity mail | **`opportunityMaxEmailsPerDay`** (per user, Redis counter) |
+| No quiet hours | **`timezone` + quiet window** + `opportunityRespectQuietHours` |
+| Grok on every fire | Phase 4: tier-gate dip insight (not Phase 1) |
+| 1-min single-tick whipsaw | Phase 2: confirmation + RTH morning batch |
+
+### Phase 0 — Metrics (shipped 2026-05-17)
+
+- Structured logs: `opportunity_email_event` with `action` (`suppressed` \| `sent`), `reason`, `userId`, `symbol`, `flags`.
+- **Acceptance:** grep PM2 logs / ship to aggregator later.
+
+### Phase 1 — Quick wins (shipped 2026-05-17)
+
+- [x] **`backend/utils/opportunityEmailPolicy.js`** — quiet hours, daily cap, legacy-alert block key, event logger
+- [x] **`notificationPreferences.js`** — default email tier `overreaction_only`, `opportunityMaxEmailsPerDay`, quiet-hour fields
+- [x] **`priceMonitor.js`** — enforce cap + quiet hours before send; block legacy alert after opportunity email
+- [x] **`alertService.js`** — skip legacy email when block key set
+- [x] **`database.js`** default JSON for new users
+- [x] **Profile** — quiet hours + max emails/day + baseline copy; persist new pref keys
+- [x] **Tests** — `backend/utils/notificationPreferences.test.js`, `opportunityEmailPolicy.test.js` (`node --test utils/*.test.js`)
+
+### Phase 2 — Smarter timing (queued)
+
+- [ ] Confirmation: 2-of-3 polls below threshold before email
+- [ ] RTH **pending queue** → single morning batch (ET)
+- [ ] Stock poll cadence: RTH 1m / off-hours less frequent
+
+### Phase 3 — Outbox & batching (queued)
+
+- [ ] `email_outbox` table + worker; hourly digest mode in Profile
+
+### Phase 4 — Grok discipline (queued)
+
+- [ ] Dip insight only for `overreaction` / `capitulation`; daily cap; async send
+
+**Do not change in Phase 1:** ATR tier math (`watchlistOpportunityEvaluator`), opportunity DB logging, test script behavior beyond new gates.
+
 ## Roadmap position (reality check)
 
 - **Phase 0** (charts / regression): **✅ MVP complete** — non-blocking polish only if regressions appear (§2).
 - **Phase 1** (LangGraph foundation): **✅ Core complete** — gateway, Opportunity Scout graph, dip-insight path, persistence, golden smoke tests.
 - **Now:** **§11 Phase C** (tail) — **`signal_fusion_scorer`** + history vol; **§11 Phase B** — queue worker, EDGAR; **§11 Phase D** — dedupe + async send; **Phase E** briefing card.
-- **Also (Quant AGI + dashboard LangGraph, 2026-05-11):** **`/diag/market-universe-rank`** now has **`momentum_liquidity`**, **`photonics_chokepoint`**, and **`rule_breaker_gardner`**; momentum rank still uses **`QUANT_AGI_MOMENTUM_FUNDAMENTALS_WEIGHT`**; **dashboard chat does not yet auto-ingest** any rank snapshot. Planned: inject all three + batched fundamentals + macro card + news + X sentiment into **`buildAgentWatchlistContext`** / agent→Python payloads, optional deterministic fusion before Grok narrative. See **`todo.md`** § *Quant AGI — unified stock selection* (home `todo.md` Cursor handoff if mirrored).
+- **Also (Quant AGI + dashboard LangGraph, 2026-05-11):** **`/diag/market-universe-rank`** now has **`momentum_liquidity`**, **`photonics_chokepoint`**, and **`rule_breaker_gardner`**; momentum rank still uses **`QUANT_AGI_MOMENTUM_FUNDAMENTALS_WEIGHT`**; **dashboard chat does not yet auto-ingest** any rank snapshot. Planned: inject all three + batched fundamentals + macro card + news + X sentiment into **`buildAgentWatchlistContext`** / agent→Python payloads, optional deterministic fusion before Grok narrative. See § [Quant AGI — unified stock selection for dashboard LangGraph](#quant-agi--unified-stock-selection-for-dashboard-langgraph).
 - **Phases 2–5 & §9:** deferred until fusion + observability justify broader tooling and launch gates.
 
 ## Resume Here Next Session
 
-### Session save spot (2026-05-11) — continue here next time
+### Session save spot (2026-05-17) — continue here next time
+
+**Email / AWS:** SMTP works in **us-east-1**. Finish **SES production access** form; merge **SPF** + add **DMARC**; verify **DKIM** for `keepitbased.com`. In sandbox, verify each test recipient email in SES before expecting delivery.
+
+**Opportunity emails:** Phase 1 shipped in code (see § Opportunity signal emails — efficiency & timing). Verify in prod: fewer `on_sale` emails, legacy alert suppressed when opportunity mail sent, quiet hours respected. Then Phase 2 (confirmation + morning batch).
+
+**Product (unchanged next):** Wire **`/diag/market-universe-rank`** (all three strategies) + fundamentals/macro/news/X into **`buildAgentWatchlistContext`** — § [Quant AGI — unified stock selection](#quant-agi--unified-stock-selection-for-dashboard-langgraph).
+
+### Session save spot (2026-05-11)
 
 **Git:** `keepitbased` **`main`** pushed to **`origin`** (latest includes Rule Breaker rank + earlier Grok-rank / deploy fixes). Run **`git pull`** on other clones.
 
@@ -57,7 +170,32 @@ Last updated: **2026-05-11** — **Session checkpoint:** Quant **`rule_breaker_g
 
 **Ops:** **`bash scripts/deploy-production.sh`** (builds main CRA + Quant Next, reloads API, reloads **`quant-agi-api`**, restarts **`quant-agi-frontend`**). LangGraph / Flask changes → **`pm2 restart stock-service`** + **`curl -sf http://127.0.0.1:5001/health`**.
 
-**Next:** Wire **`/diag/market-universe-rank`** for **`momentum_liquidity`**, **`photonics_chokepoint`**, and **`rule_breaker_gardner`** + batched fundamentals + macro/news/X into **dashboard LangGraph** / **`buildAgentWatchlistContext`** (checklist in repo **`todo.md`** § *Quant AGI — unified stock selection* and `/home/dstrad/todo.md` Cursor handoff if mirrored).
+**Next:** Wire **`/diag/market-universe-rank`** for all three strategies + batched fundamentals + macro/news/X into **dashboard LangGraph** / **`buildAgentWatchlistContext`** — checklist in § [Quant AGI — unified stock selection](#quant-agi--unified-stock-selection-for-dashboard-langgraph).
+
+### Quant AGI terminal integration (production)
+
+- Terminal app: `quant_agi/frontend` (Next.js), PM2 **`quant-agi-frontend`** on port **3010**.
+- Sidecar API: PM2 **`quant-agi-api`** on port **8844**; Massive access confirmed (`api.massive.com`, key present).
+- **nginx** (`config/nginx/sites-available/app.keepitbased-https.conf`):
+  - `/quant-agi-terminal/` → `127.0.0.1:3010`; `/_next/` → `127.0.0.1:3010/_next/`
+  - **`/quant-sidecar/`** → `127.0.0.1:8844/` — browser must never call `127.0.0.1:8844` directly
+- Quant build env: `NEXT_PUBLIC_QUANT_AGI_URL=https://app.keepitbased.com/quant-sidecar` (`quant_agi/frontend/env.production.example`); PM2 apps also in root `ecosystem.config.js`.
+- **Landing auth** (`config/nginx/sites-available/keepitbased.com.landing`): `/login` → app subdomain; root `/api` proxies backend (avoids cross-domain login failures).
+- **In-app tab** (`frontend/src/pages/QuantAgiPage.tsx`): on `keepitbased.com` / `www`, iframe `src` forced to `https://app.keepitbased.com/quant-agi-terminal/?embed=1` (fixes double navbars); on `app.keepitbased.com`, same-origin `/quant-agi-terminal/?embed=1`. Fail-safe redirect if Quant opens inside wrong iframe shell. No-cache headers on `/quant-agi-terminal/` in nginx.
+
+### Quant AGI — unified stock selection for dashboard LangGraph
+
+**Goal:** Dashboard assistant (LangGraph / Grok) should synthesize “best stock options” using the **same signal stack** as the Quant tape — not heuristic ranks in isolation. Today **`QUANT_AGI_MOMENTUM_FUNDAMENTALS_WEIGHT`** etc. affect **`momentum_liquidity`** only; **`photonics_chokepoint`** and **`rule_breaker_gardner`** have their own composites — **chat does not auto-ingest** rank snapshots.
+
+- [ ] **`agentWatchlistContext` / internal agent payload:** Inject latest **`market-universe-rank`** for **`momentum_liquidity`**, **`photonics_chokepoint`**, **`rule_breaker_gardner`** — include `tape_score_raw` / `strategy_factors`, blended `score`, `valuation_score`, liquidity gate, `why`, `history_source`, **`rule_breaker_gardner` `breakdown`** legs, timestamp.
+- [ ] **Fundamentals:** Batch + cache **EV/Revenue, P/S, margins** for watchlist symbols (python-service; avoid N+1).
+- [ ] **Macro regime:** Small **macro card** (rates / curve / risk proxy / VIX or FRED); cite source + as-of.
+- [ ] **News:** Ticker headlines (Polygon/Massive, OpenBB, research ingest) — bullets + URLs, max age, dedupe.
+- [ ] **X / social:** `DIP_INSIGHT_USE_X_SEARCH`, `X_MONITORED_ACCOUNTS_JSON`, digest patterns — with manipulation/sarcasm disclaimers.
+- [ ] **Fusion layer:** Optional deterministic **`signal_fusion_scorer`** before LLM narrative.
+- [ ] **Safety / product:** Educational, watchlist- and cap-bounded; log tool payloads; never a standalone “model price” as advice.
+
+**Honest limit:** Signals + LLM synthesis, not omniscient AGI; latency, OTC gaps, stale news remain risks.
 
 ### Recent session — Profile hub, landing page, notification defaults (2026-05-06, done)
 
@@ -102,7 +240,7 @@ Last updated: **2026-05-11** — **Session checkpoint:** Quant **`rule_breaker_g
 ### Last deploy (pick up here)
 
 - **2026-05-05:** If **`/api/health`** fails after reload, check **`pm2 logs keepitbased-api`** — a prior **`priceMonitor.js`** brace bug caused **SyntaxError** until fixed.
-- **Git workflow:** When `main` is protected, use **`git checkout -b feature/…` → push branch → open PR on GitHub → merge** instead of relying on push bypass. Full checklist: [docs/PROJECT_REVIEW_TODO.md](docs/PROJECT_REVIEW_TODO.md) (section *Pull requests — doing it correctly*).
+- **Git workflow:** When `main` is protected, use **`git checkout -b feature/…` → push branch → open PR on GitHub → merge** instead of relying on push bypass. Full checklist: § [Pull requests — doing it correctly](#pull-requests--doing-it-correctly).
 - **Frontend + Node:** `npm run deploy` or `bash scripts/deploy-production.sh` — builds **`frontend/build`**, **`pm2 reload keepitbased-api`**, checks **`http://127.0.0.1:3001/api/health`**. Production chat needs **`REACT_APP_SUPABASE_URL`** + **`REACT_APP_SUPABASE_ANON_KEY`** in **`frontend/.env.production`** before build (script prints a reminder).
 - **OpenBB sidecar:** `pm2 start ecosystem.openbb.config.js` (loads **`backend/.env`** into **`openbb-platform`** for **`POLYGON_API_KEY`** / **`MASSIVE_*`** merge into **`~/.openbb_platform/.env`**). Probe **`http://127.0.0.1:6900/docs`**. **`OPENBB_*`** toggle in **`backend/.env`**; **`GET /api/health/config`** → **`config.OPENBB_ENABLED`**, **`OPENBB_STOCK_HISTORY_EXCLUSIVE`**, etc.
 - **Python / LangGraph:** deploy script does **not** restart **`stock-service`** — after backend/agent changes run **`pm2 restart stock-service`** (and verify **`http://127.0.0.1:5001/health`** — `opportunityGraphReady`, etc.).
@@ -206,6 +344,26 @@ Last updated: **2026-05-11** — **Session checkpoint:** Quant **`rule_breaker_g
 ### Parallel work with §11
 
 - Complements **Phase B** (`research_artifacts`) as a **macro/geopolitical** channel; **do not** conflate with **ticker news** from Polygon—keep **separate ingestion** jobs and **fuse in agent layer** only when relevant (e.g. energy shipping + oil names).
+
+## Production ops (smoke & recovery)
+
+**Last verified healthy: 2026-05-17** — `keepitbased.com` landing **200**; `app.keepitbased.com/` **200**; `/api/health` **200**; `/quant-agi-terminal/` **200**; `/quant-sidecar/health` **200**; **`npm run email:verify-smtp`** **OK** (us-east-1); test opportunity email sent via SES.
+
+**Historical incident (2026-05-08):** App returned **403/502** when `frontend/build` missing/unreadable, PM2 down, or nginx perms blocked `www-data`. Use this runbook if it recurs:
+
+1. `cd /home/dstrad/keepitbased && npm run build` — restores `frontend/build/index.html`
+2. `pm2 status` — **`keepitbased-api`**, **`quant-agi-api`**, **`quant-agi-frontend`** online
+3. If **403:** `namei -l /home/dstrad/keepitbased/frontend/build/index.html` — fix traverse/read for `www-data`
+4. `sudo nginx -t && sudo systemctl reload nginx`
+5. Re-smoke:
+   - `curl -sSI https://app.keepitbased.com/` → 200
+   - `curl -sSI https://app.keepitbased.com/api/health` → 200
+   - `curl -sS https://app.keepitbased.com/quant-sidecar/health` → JSON `{"ok":true,...}` (not HTML)
+   - `curl -sSI https://app.keepitbased.com/quant-agi-terminal/` → 200; body contains `Autoresearch and execution cockpit`
+   - Browser: one navbar on `https://app.keepitbased.com/quant-agi` with terminal in iframe
+6. **Email:** `npm run email:verify-smtp` → OK; optional test send (see § Email / SES — Current status)
+
+**SES 535 / auth failures:** `SMTP_HOST` region must match where SMTP credentials were created (`email-smtp.us-east-1.amazonaws.com` vs `…us-east-2…`).
 
 ## 1) Program Goals
 
@@ -504,7 +662,8 @@ Next steps for next session:
 - **OpenBB:** first time per host: `cd openbb-service && ./start.sh` (or rely on PM2). **`pm2 start ecosystem.openbb.config.js`** reads **`backend/.env`** automatically. Set **`OPENBB_ENABLED=true`** in **`backend/.env`** (api process load). After OpenBB dep changes: refresh venv `pip install -r openbb-service/requirements.txt`.
 - **Python agent:** `pm2 restart stock-service` then `curl -sf http://127.0.0.1:5001/health` (opportunity graph + LLM must be healthy).
 - **Ingestion cron** runs inside **`keepitbased-api`**; enable with **`ENABLE_RESEARCH_INGESTION=true`** in `backend/.env`.
-- **Test opportunity email (plain HTML, same template as PriceMonitor):** `npm run email:test-opportunity` from repo root — requires an active **stock** **`user_alerts`** row with **`baseline_price`**, and email notifications on. Optional **`TEST_USER_ID`**. Subject prefix **`[TEST]`**.
+- **Verify SMTP (no send):** `npm run email:verify-smtp` from repo root.
+- **Test opportunity email (plain HTML, same template as PriceMonitor):** `npm run email:test-opportunity` — requires a **`users.email`** match (`TEST_USER_EMAIL`) or **`TEST_USER_ID`**; optional **`TEST_USE_SYNTHETIC_BASELINE=true`** if no alert baseline. Use **`DISABLE_EMAIL_ENGAGEMENT_SUNSET=true`** for inactive accounts. Subject prefix **`[TEST]`**. Sandbox: recipient must be verified in SES.
 
 ## 9) Go-Live Infrastructure Checklist (Must Complete Before Launch)
 
@@ -608,3 +767,128 @@ Extend Python graph (new workflow or subgraph) beyond `opportunity_scout`:
 **Speed path (shipped) does not replace B:** Live Grok **`x_search`** dip emails + Profile toggles complement §11 but **do not** persist artifacts for dedupe, dashboards, or offline QA—**Phase B** remains the dependency for fusion + `ResearchAlertEvaluator`.
 
 **Estimated reality:** Phase B (EDGAR + XBRL) and licensing are **the long poles**; align scope to an **MVP** (headlines + 8-K earnings + XBRL-lite or vendor fundamentals) before “full 10-K semantic search.”
+
+---
+
+## Appendix — project review, backlog & references
+
+*Formerly split across `docs/PROJECT_REVIEW_TODO.md` and `/home/dstrad/todo.md`. Kept here so **`todo.md` is the only roadmap.*
+
+### Stack overview
+
+- **Backend:** Node.js/Express, PostgreSQL
+- **Frontend:** React/TypeScript, TradingView-style charts
+- **Python:** Flask (`stock-service`), LangGraph agent paths
+- **Real-time:** Socket.IO price/opportunity updates
+- **Security:** JWT, rate limits, audit logging, nginx TLS
+
+### AI Stock Buy-Alert Agent (parallel track)
+
+**Full plan:** [docs/AI_BUY_ALERT_AGENT_PLAN.md](docs/AI_BUY_ALERT_AGENT_PLAN.md)
+
+- **Phase 0:** rules + indicators, fixed universe, scheduled job, no LLM first.
+- **Phase 1+:** optional LLM explainer on fixed JSON; ML after labels/backtests.
+- **Multi-agent (reserved):** research agents → planner → execution only behind policy (human approval / paper / kill switch / audit).
+
+**Checklist:**
+
+- [ ] Confirm MVP: universe size, timeframe, max alerts/day, delivery channel
+- [x] Phase 0 scaffold: LangGraph schema + graph + API + CLI (`GET /agent/buy-alert/<symbol>`)
+- [ ] Phase 0 remaining: Postgres persistence + scheduled job + alert/email wiring
+- [ ] Outcome labels + backtest harness
+- [ ] Optional LLM explainer (structured input only)
+- [ ] Multi-agent message contract sketch
+- [ ] If execution: paper mode, approvals, vault, audit, risk veto agent
+
+### Pull requests — doing it correctly
+
+When **`main`** is protected: **`git checkout -b feature/…`** → commit → **`git push -u origin feature/…`** → GitHub PR → merge → **`git checkout main && git pull`**. Self-review OK for solo. Admin bypass: still prefer small commits; adjust branch protection only if PRs are impractical.
+
+### Shipped features (reference log)
+
+**Security:** parameterized SQL, bcrypt JWT, rate limits, CSP/HSTS, credential rotation script, HTTPS.
+
+**Charts:** crypto Kraken + stock Polygon/OpenBB paths; lightweight-charts; indicators SMA/EMA/RSI/MACD; `npm run test:charts`.
+
+**Agent:** `/api/agent/chat`, Opportunity Scout graph, dip-insight emails, `agent_runs` persistence, golden scripts.
+
+**Supabase chat:** migration `20260203120000_global_chat.sql`, `FloatingChatDock`, `REACT_APP_SUPABASE_*` in production build.
+
+**Watchlist:** 52-week column hardening (`oppTech:v4`), dashboard first-load spinner in card only.
+
+**Repo:** `main` default, `.gitignore` for env/venv, branch protection, `frontend/env.production.example`.
+
+### Current ops issues (non-blocking)
+
+- Fresh clone: `npm install` (root, backend, frontend) + Python venvs not in git
+- Local secrets: copy `backend/.env.example` → `backend/.env` only on server
+- Port **3001** `EADDRINUSE`: `pm2 stop all`, check `lsof -i :3001`, single API instance
+- DB: verify PostgreSQL up, schema current (dev may use fallback creds)
+
+### Architecture review (summary)
+
+| Area | Strengths | Improve |
+|------|-----------|---------|
+| Backend | Security middleware, modular services, env config | Schema validation, tests |
+| Frontend | TS, charts, sockets, responsive | Error boundaries, more loading patterns |
+| Python | Flask, Redis cache, indicators | Rate limits, validation, tests |
+
+### Priority backlog (generic — execution order is § Resume Here)
+
+**Critical:** post-clone install + `.env`; `pm2` / `/api/health`; DB migrations.
+
+**High:** PM2 health across services; React error boundaries; test coverage.
+
+**Medium:** DB/query perf; Redis API cache; bundle size; APM/logs.
+
+**Low:** portfolio tracking; mobile app; horizontal scale; CDN.
+
+**Parallel:** §11 research phases; Situation room; Quant rank → LangGraph fusion (§ unified selection).
+
+### Development commands (extended)
+
+```bash
+# Once per machine
+cd keepitbased && npm run install:all
+cp backend/.env.example backend/.env
+cp frontend/env.production.example frontend/.env.production   # before prod build
+
+# Dev
+npm run dev | npm run dev:backend | npm run dev:frontend | npm run pm2:start
+
+# Prod
+npm run deploy          # or bash scripts/deploy-production.sh
+pm2 restart stock-service   # after Python/LangGraph changes (not in deploy script)
+cd backend && node scripts/rotateApiKeys.js
+npm run email:verify-smtp
+npm run email:test-opportunity   # TEST_USER_EMAIL must exist in users table
+npm run golden:dip-insight | npm run golden:opportunity | npm run test:charts
+```
+
+### Documentation index
+
+| Doc | Purpose |
+|-----|---------|
+| [README.md](README.md) | Project overview |
+| [docs/README.md](docs/README.md) | Guides TOC |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Deploy procedures |
+| [docs/RESEARCH_AGENT.md](docs/RESEARCH_AGENT.md) | Research / dip-insight env |
+| [docs/AI_BUY_ALERT_AGENT_PLAN.md](docs/AI_BUY_ALERT_AGENT_PLAN.md) | Buy-alert multi-agent plan |
+| [docs/LANGGRAPH_SETUP.md](docs/LANGGRAPH_SETUP.md) | LangGraph quickstart |
+| [SECURITY.md](SECURITY.md) | Security guide |
+
+**Missing / wanted:** OpenAPI specs, Storybook, DB schema doc, troubleshooting one-pager.
+
+### Status snapshot (2026-05-17)
+
+| Area | Status |
+|------|--------|
+| Security | 🟢 Production-ready |
+| Charts / watchlist | 🟢 MVP complete |
+| LangGraph agent + dip email | 🟢 Core shipped |
+| AWS SES SMTP | 🟡 Auth + test send OK; **sandbox**; production access + DNS open |
+| §11 research fusion | 🟡 MVP; queue/EDGAR open |
+| Quant → dashboard context | 🟠 **Next product priority** |
+| §9 go-live gates | Open |
+
+*Consolidated 2026-05-17. Prior split files redirect here.*

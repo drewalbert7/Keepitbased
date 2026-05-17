@@ -3,6 +3,13 @@ const config = require('../config');
 const logger = require('../utils/logger');
 
 const REQUEST_MS = Number(process.env.OPENBB_HTTP_TIMEOUT_MS || 28000);
+const OPENBB_DOWN_COOLDOWN_MS = Number(process.env.OPENBB_DOWN_COOLDOWN_MS || 60000);
+
+/** Skip OpenBB HTTP when sidecar was recently unreachable (watchlist opens many parallel quotes). */
+let openbbSkipUntil = 0;
+let openbbReachableAt = 0;
+let openbbReachableCached = false;
+let openbbDownLogged = false;
 
 function isEnabled() {
   return config.OPENBB_ENABLED === true;
@@ -51,7 +58,35 @@ async function probeStatus() {
   }
 }
 
+async function isSidecarReachable() {
+  if (!isEnabled()) return false;
+  const now = Date.now();
+  if (now < openbbSkipUntil) return false;
+  if (openbbReachableCached && now - openbbReachableAt < 30000) return true;
+
+  const probe = await probeStatus();
+  openbbReachableCached = probe.ok === true;
+  openbbReachableAt = now;
+
+  if (!openbbReachableCached) {
+    openbbSkipUntil = now + OPENBB_DOWN_COOLDOWN_MS;
+    if (!openbbDownLogged) {
+      logger.warn(
+        `OpenBB sidecar unreachable at ${probe.url || client().baseURL} (${probe.error || probe.reason}); using Massive/Polygon fallback for ${OPENBB_DOWN_COOLDOWN_MS / 1000}s`
+      );
+      openbbDownLogged = true;
+    }
+    return false;
+  }
+
+  openbbDownLogged = false;
+  return true;
+}
+
 async function axiosOpenBB(endpointPath, params) {
+  if (!(await isSidecarReachable())) {
+    return { data: null, status: 503 };
+  }
   const { baseURL, prefix } = client();
   return axios.get(`${baseURL}${prefix}${endpointPath}`, {
     params,
@@ -208,6 +243,7 @@ async function fetchEquityHistoricalAsPolygonBars(symbolUpper, chartInterval, fr
 /** Daily OHLC bars for ATR/opportunity bundle (sanitizeBar-compatible raw). */
 async function fetchDailyBarsForTechnicalBundle(assetType, symbol) {
   if (!isEnabled()) return [];
+  if (!(await isSidecarReachable())) return [];
 
   const to = new Date();
   const from = new Date(to.getTime() - 450 * 24 * 60 * 60 * 1000);
@@ -362,6 +398,7 @@ async function fetchCryptoTickerMapped(pairEncoded) {
  */
 async function fetchEquityQuoteMapped(symbolUpper) {
   if (!isEnabled()) return null;
+  if (!(await isSidecarReachable())) return null;
   const { baseURL, prefix } = client();
   const upper = symbolUpper.toUpperCase();
   const provider = String(config.OPENBB_EQUITY_PROVIDER || 'polygon').toLowerCase();

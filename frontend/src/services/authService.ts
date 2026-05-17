@@ -177,16 +177,18 @@ class AuthService {
     return response.data;
   }
 
-  async recoverUsername(email: string): Promise<{ message: string }> {
+  async recoverUsername(email: string, turnstileToken?: string | null): Promise<{ message: string }> {
     const response = await axios.post<{ message: string }>('/auth/recover-username', {
-      email
+      email,
+      ...(turnstileToken ? { turnstileToken } : {})
     });
     return response.data;
   }
 
-  async recoverPassword(email: string): Promise<{ message: string }> {
+  async recoverPassword(email: string, turnstileToken?: string | null): Promise<{ message: string }> {
     const response = await axios.post<{ message: string }>('/auth/recover-password', {
-      email
+      email,
+      ...(turnstileToken ? { turnstileToken } : {})
     });
     return response.data;
   }

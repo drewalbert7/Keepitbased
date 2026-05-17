@@ -23,6 +23,7 @@
     "golden:dip-insight": "node scripts/runGoldenDipInsight.js",
     "research:ingest-once": "node scripts/runResearchIngestionOnce.js",
     "email:test-opportunity": "cd backend && npm run email:test-opportunity",
+    "email:verify-smtp": "cd backend && npm run email:verify-smtp",
     "digest:run-once": "cd backend && npm run digest:run-once",
     "quant:autoresearch-nightly": "bash scripts/run-quant-autoresearch-nightly.sh"
   },

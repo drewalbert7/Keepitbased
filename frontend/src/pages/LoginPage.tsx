@@ -1,8 +1,19 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { authService } from '../services/authService';
+import { fetchPublicHealthConfig } from '../services/healthConfigService';
 import toast from 'react-hot-toast';
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (container: HTMLElement | string, params: Record<string, unknown>) => string;
+      remove?: (widgetId: string) => void;
+      reset?: (widgetId: string) => void;
+    };
+  }
+}
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -12,10 +23,96 @@ const LoginPage: React.FC = () => {
   const [showRecovery, setShowRecovery] = useState<'username' | 'password' | null>(null);
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const turnstileMountRef = useRef<HTMLDivElement | null>(null);
+  const turnstileWidgetIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!showRecovery) {
+      if (turnstileWidgetIdRef.current && window.turnstile?.remove) {
+        try {
+          window.turnstile.remove(turnstileWidgetIdRef.current);
+        } catch {
+          /* ignore */
+        }
+      }
+      turnstileWidgetIdRef.current = null;
+      setTurnstileSiteKey('');
+      setTurnstileToken(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      const cfg = await fetchPublicHealthConfig();
+      if (cancelled) return;
+      setTurnstileSiteKey((cfg?.turnstileSiteKey || '').trim());
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showRecovery]);
+
+  useEffect(() => {
+    if (!showRecovery || !turnstileSiteKey || !turnstileMountRef.current) {
+      return;
+    }
+
+    const el = turnstileMountRef.current;
+
+    const mountWidget = () => {
+      if (!window.turnstile || !el) return;
+      if (turnstileWidgetIdRef.current) {
+        try {
+          window.turnstile.remove?.(turnstileWidgetIdRef.current);
+        } catch {
+          /* ignore */
+        }
+        turnstileWidgetIdRef.current = null;
+      }
+      turnstileWidgetIdRef.current = window.turnstile.render(el, {
+        sitekey: turnstileSiteKey,
+        callback: (token: string) => setTurnstileToken(token),
+        'expired-callback': () => setTurnstileToken(null),
+        'error-callback': () => setTurnstileToken(null)
+      });
+    };
+
+    if (window.turnstile) {
+      mountWidget();
+    } else {
+      const existing = document.querySelector(
+        'script[src*="challenges.cloudflare.com/turnstile/v0/api.js"]'
+      );
+      if (existing) {
+        existing.addEventListener('load', mountWidget);
+        return () => existing.removeEventListener('load', mountWidget);
+      } else {
+        const scr = document.createElement('script');
+        scr.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+        scr.async = true;
+        scr.onload = () => mountWidget();
+        document.head.appendChild(scr);
+      }
+    }
+
+    return () => {
+      if (turnstileWidgetIdRef.current && window.turnstile?.remove) {
+        try {
+          window.turnstile.remove(turnstileWidgetIdRef.current);
+        } catch {
+          /* ignore */
+        }
+      }
+      turnstileWidgetIdRef.current = null;
+    };
+  }, [showRecovery, turnstileSiteKey]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!email || !password) {
       toast.error('Please fill in all fields');
       return;
@@ -32,9 +129,14 @@ const LoginPage: React.FC = () => {
 
   const handleRecoverySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!recoveryEmail) {
       toast.error('Please enter your email address');
+      return;
+    }
+
+    if (turnstileSiteKey && !turnstileToken) {
+      toast.error('Complete the security check, then try again.');
       return;
     }
 
@@ -42,17 +144,26 @@ const LoginPage: React.FC = () => {
 
     try {
       if (showRecovery === 'username') {
-        const response = await authService.recoverUsername(recoveryEmail);
+        const response = await authService.recoverUsername(recoveryEmail, turnstileToken);
         toast.success(response.message);
       } else if (showRecovery === 'password') {
-        const response = await authService.recoverPassword(recoveryEmail);
+        const response = await authService.recoverPassword(recoveryEmail, turnstileToken);
         toast.success(response.message);
       }
-      
+
       setShowRecovery(null);
       setRecoveryEmail('');
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.message || 'Recovery request failed';
+      if (turnstileWidgetIdRef.current && window.turnstile?.reset) {
+        try {
+          window.turnstile.reset(turnstileWidgetIdRef.current);
+        } catch {
+          /* ignore */
+        }
+      }
+      setTurnstileToken(null);
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } };
+      const errorMessage = err.response?.data?.message || 'Recovery request failed';
       toast.error(errorMessage);
     } finally {
       setRecoveryLoading(false);
@@ -75,15 +186,15 @@ const LoginPage: React.FC = () => {
           </h2>
           <p className="mt-2 text-kib-muted">
             {showRecovery ? (
-              showRecovery === 'username' 
-                ? 'Enter your email to receive your username' 
+              showRecovery === 'username'
+                ? 'Enter your email to receive your username'
                 : 'Enter your email to receive reset instructions'
             ) : (
               'Never miss a buying opportunity'
             )}
           </p>
         </div>
-        
+
         {showRecovery ? (
           <form className="mt-8 space-y-6" onSubmit={handleRecoverySubmit}>
             <div>
@@ -103,19 +214,23 @@ const LoginPage: React.FC = () => {
               />
             </div>
 
+            {turnstileSiteKey ? (
+              <div className="flex justify-center pt-1">
+                <div ref={turnstileMountRef} className="min-h-[65px]" />
+              </div>
+            ) : null}
+
             <div className="space-y-3">
-              <button
-                type="submit"
-                disabled={recoveryLoading}
-                className="w-full btn-primary"
-              >
+              <button type="submit" disabled={recoveryLoading} className="w-full btn-primary">
                 {recoveryLoading ? (
                   showRecovery === 'username' ? 'Sending username...' : 'Sending reset link...'
+                ) : showRecovery === 'username' ? (
+                  'Send Username'
                 ) : (
-                  showRecovery === 'username' ? 'Send Username' : 'Send Reset Link'
+                  'Send Reset Link'
                 )}
               </button>
-              
+
               <button
                 type="button"
                 onClick={() => {
@@ -147,7 +262,7 @@ const LoginPage: React.FC = () => {
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
-              
+
               <div>
                 <label htmlFor="password" className="block text-sm font-medium text-slate-300">
                   Password
@@ -167,17 +282,12 @@ const LoginPage: React.FC = () => {
             </div>
 
             <div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full btn-primary"
-              >
+              <button type="submit" disabled={loading} className="w-full btn-primary">
                 {loading ? 'Signing in...' : 'Sign in'}
               </button>
             </div>
 
             <div className="space-y-3">
-              {/* Recovery Options */}
               <div className="flex space-x-4 justify-center">
                 <button
                   type="button"
@@ -196,7 +306,6 @@ const LoginPage: React.FC = () => {
                 </button>
               </div>
 
-              {/* Sign Up Link */}
               <div className="text-center">
                 <p className="text-sm text-kib-muted">
                   Don't have an account?{' '}

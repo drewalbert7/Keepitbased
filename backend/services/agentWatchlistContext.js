@@ -129,7 +129,7 @@ async function getPricePayloadForRow(redis, assetType, symbol) {
     } else {
       return null;
     }
-    if (pd && pd.price != null && Number.isFinite(Number(pd.price))) {
+    if (pd && Number.isFinite(Number(pd.price)) && Number(pd.price) > 0) {
       const cacheKey = redisPriceKey(pd.type || typ, pd.symbol || sym);
       try {
         await redis.setEx(cacheKey, 300, JSON.stringify(pd));

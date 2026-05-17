@@ -20,6 +20,8 @@ export type PublicHealthConfig = {
   opportunityShortTrendSmaDays?: number;
   opportunityAtrMinPctOfPrice?: number;
   marketDataKeyPresent?: boolean;
+  /** When set, login recovery forms should render Cloudflare Turnstile. */
+  turnstileSiteKey?: string;
 };
 
 export async function fetchPublicHealthConfig(): Promise<PublicHealthConfig | null> {

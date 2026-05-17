@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const config = require('../config');
+const emailService = require('../services/emailService');
 const db = require('../models/database');
 const logger = require('../utils/logger');
 
@@ -139,6 +140,7 @@ router.get('/config', (req, res) => {
     hasJwtSecret: !!config.JWT_SECRET,
     hasDatabaseUrl: !!config.DATABASE_URL,
     hasRedisUrl: !!config.REDIS_URL,
+    smtpConfigured: emailService.isConfigured(),
     dipInsightGloballyEnabled:
       !!config.ENABLE_DIP_INSIGHT_EMAIL && !config.DISABLE_DIP_INSIGHT_EMAIL,
     researchIngestionEnabled: !!config.ENABLE_RESEARCH_INGESTION,
@@ -163,7 +165,8 @@ router.get('/config', (req, res) => {
     opportunityCapitulationDedupeTtlSec: config.OPPORTUNITY_CAPITULATION_DEDUPE_TTL_SEC,
     opportunityShortTrendFilterEnabled: !!config.OPPORTUNITY_SHORT_TREND_FILTER_ENABLED,
     opportunityShortTrendSmaDays: config.OPPORTUNITY_SHORT_TREND_SMA_DAYS,
-    opportunityAtrMinPctOfPrice: config.OPPORTUNITY_ATR_MIN_PCT_OF_PRICE
+    opportunityAtrMinPctOfPrice: config.OPPORTUNITY_ATR_MIN_PCT_OF_PRICE,
+    turnstileSiteKey: (process.env.TURNSTILE_SITE_KEY || '').trim()
   };
 
   res.json({

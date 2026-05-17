@@ -73,6 +73,37 @@ const registrationRateLimit = rateLimit({
 });
 
 /**
+ * Per-IP cap across all recovery targets (complements recoveryEmailRateLimit which is IP+email).
+ * Prevents spraying many different addresses from one host.
+ */
+const recoveryEmailPerIpRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 12,
+  message: {
+    error: 'Too many recovery attempts',
+    message: 'Too many account recovery attempts from this network. Please try again in 1 hour.',
+    retryAfter: 3600
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `recovery-email-ip:${req.ip}`,
+  handler: (req, res) => {
+    logger.warn(`Recovery email per-IP rate limit exceeded for IP: ${req.ip} path=${req.path}`);
+    cryptoSecurity.createAuditLog('recovery_email_per_ip_rate_limit_exceeded', req.ip, {
+      endpoint: req.path,
+      method: req.method,
+      ip: req.ip,
+      userAgent: req.get('User-Agent')
+    });
+    res.status(429).json({
+      error: 'Rate limit exceeded',
+      message: 'Too many account recovery attempts from this network. Please try again in 1 hour.',
+      retryAfter: 3600
+    });
+  }
+});
+
+/**
  * Shared cap for any unauthenticated route that triggers outbound email (SES).
  * One limiter instance so bots cannot split traffic across /recover-password and /recover-username.
  */
@@ -143,6 +174,7 @@ const adminSignupInvitePutLimit = rateLimit({
 module.exports = {
   authRateLimit,
   registrationRateLimit,
+  recoveryEmailPerIpRateLimit,
   recoveryEmailRateLimit,
   passwordResetRateLimit,
   adminSignupInvitePutLimit

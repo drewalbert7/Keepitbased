@@ -37,7 +37,12 @@ async function runInitializeDatabase() {
     opportunityToasts: true,
     opportunityEmail: true,
     opportunityNotifyLevel: 'all',
-    opportunityEmailNotifyLevel: 'all',
+    opportunityEmailNotifyLevel: 'overreaction_only',
+    opportunityMaxEmailsPerDay: 10,
+    timezone: 'America/New_York',
+    quietHoursStart: '22:00',
+    quietHoursEnd: '08:00',
+    opportunityRespectQuietHours: true,
     opportunityStockMarketHoursOnly: true,
     dipInsightEmail: true,
     researchDigestEmail: true,
@@ -304,6 +309,15 @@ async function runInitializeDatabase() {
     `);
     await client.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS invited_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+    `);
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS email_ses_suppressed_at TIMESTAMPTZ;
+    `);
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS email_ses_suppress_reason VARCHAR(64);
+    `);
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS email_last_seen_at TIMESTAMPTZ;
     `);
     await client.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_lower

@@ -6,6 +6,7 @@ const logger = require('../utils/logger');
 const config = require('../config');
 const openbbClient = require('../services/openbbClient');
 const { getRedisClient } = require('../utils/redis');
+const { resolveUsStockSnapshotTicker } = require('../utils/stockSnapshotQuote');
 
 const getMarketDataApiKey = () => config.POLYGON_API_KEY || config.MASSIVE_API_KEY;
 
@@ -572,22 +573,20 @@ router.get('/quote/:symbol', quoteRateLimiter, async (req, res) => {
     // Preferred path: real-time snapshot
     try {
       const ticker = await makeMassiveRequest(`/v2/snapshot/locale/us/markets/stocks/tickers/${encodeURIComponent(upper)}`);
-      const t = ticker.ticker;
-      if (!t) {
+      const resolved = resolveUsStockSnapshotTicker(ticker.ticker);
+      if (!resolved) {
         throw new Error('Snapshot not available');
       }
 
-      const open = Number(t.day?.o ?? t.prevDay?.c ?? t.day?.c ?? 0);
-      const price = Number(t.day?.c ?? t.min?.c ?? open);
       quoteData = {
         symbol: upper,
-        price,
-        open,
-        high: Number(t.day?.h ?? price),
-        low: Number(t.day?.l ?? price),
-        volume: Number(t.day?.v ?? 0),
-        change: price - open,
-        changePercent: open ? ((price - open) / open) * 100 : 0,
+        price: resolved.close,
+        open: resolved.open,
+        high: resolved.high,
+        low: resolved.low,
+        volume: resolved.volume,
+        change: resolved.change,
+        changePercent: resolved.changePercent,
         marketCap: 0,
         companyName: upper,
         timestamp: new Date().toISOString()

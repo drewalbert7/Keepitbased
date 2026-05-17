@@ -2,6 +2,11 @@ const logger = require('../utils/logger');
 const db = require('../models/database');
 const emailService = require('./emailService');
 const { getRedisClient } = require('../utils/redis');
+const { mergeNotificationPreferences } = require('../utils/notificationPreferences');
+const {
+  isLegacyAlertBlocked,
+  logOpportunityEmailEvent
+} = require('../utils/opportunityEmailPolicy');
 
 class AlertService {
   constructor(io) {
@@ -138,13 +143,29 @@ class AlertService {
       // Send real-time notification to user
       this.io.to(`user_${alert.user_id}`).emit('alert', alertData);
 
-      // Send email if enabled
-      const notificationPrefs = alert.notification_preferences || {};
+      const notificationPrefs = mergeNotificationPreferences(alert.notification_preferences);
+
       if (notificationPrefs.email !== false) {
-        await emailService.sendAlert(alert.email, alertData);
+        const legacyBlocked = await isLegacyAlertBlocked(
+          this.redis,
+          alert.user_id,
+          alert.asset_type,
+          alert.symbol
+        );
+        if (legacyBlocked) {
+          logOpportunityEmailEvent({
+            action: 'suppressed',
+            reason: 'legacy_blocked_by_opportunity',
+            userId: alert.user_id,
+            symbol: alert.symbol,
+            assetType: alert.asset_type,
+            level
+          });
+        } else {
+          await emailService.sendAlert(alert.email, alertData);
+        }
       }
 
-      // Send push notification if enabled
       if (notificationPrefs.push !== false) {
         await this.sendPushNotification(alert.user_id, alertData);
       }

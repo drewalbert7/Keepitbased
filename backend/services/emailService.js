@@ -1,5 +1,6 @@
 const nodemailer = require('nodemailer');
 const logger = require('../utils/logger');
+const emailDeliveryEligibility = require('./emailDeliveryEligibility');
 
 /** Coerce DB/Redis values (often strings) for safe numeric formatting. */
 function toFiniteNumber(v) {
@@ -98,6 +99,12 @@ class EmailService {
   }
 
   async sendAlert(email, alertData) {
+    if (!this.isConfigured()) {
+      logger.warn('Alert email skipped: SMTP not configured');
+      return;
+    }
+    const skipM = await emailDeliveryEligibility.shouldSkipOptionalMarketingEmail(email, 'price_alert');
+    if (skipM.skip) return;
     try {
       const baselineNum = toFiniteNumber(alertData.baselinePrice);
       const currentNum = toFiniteNumber(alertData.currentPrice);
@@ -201,6 +208,9 @@ class EmailService {
   }
 
   async sendWelcome(email, displayName) {
+    if (!this.isConfigured()) return;
+    const skipM = await emailDeliveryEligibility.shouldSkipOptionalMarketingEmail(email, 'welcome');
+    if (skipM.skip) return;
     const greet = displayName && String(displayName).trim() ? String(displayName).trim() : 'there';
     try {
       const html = `
@@ -258,6 +268,14 @@ class EmailService {
   }
 
   async sendUsernameRecovery(email, username) {
+    if (!this.isConfigured()) {
+      logger.warn('Username recovery email skipped: SMTP not configured');
+      return;
+    }
+    if (await emailDeliveryEligibility.isSesDeliverySuppressed(email)) {
+      logger.warn(`Username recovery skipped: SES-suppressed address (${email})`);
+      return;
+    }
     const uname = username && String(username).trim() ? String(username).trim() : null;
     try {
       const html = `
@@ -320,6 +338,14 @@ class EmailService {
   }
 
   async sendPasswordReset(email, resetToken) {
+    if (!this.isConfigured()) {
+      logger.warn('Password reset email skipped: SMTP not configured');
+      return;
+    }
+    if (await emailDeliveryEligibility.isSesDeliverySuppressed(email)) {
+      logger.warn(`Password reset email skipped: SES-suppressed address (${email})`);
+      return;
+    }
     try {
       const resetUrl = `${appBaseUrl()}/reset-password?token=${encodeURIComponent(resetToken)}`;
       
@@ -395,6 +421,11 @@ class EmailService {
       logger.warn('Opportunity email skipped: SMTP not configured');
       return false;
     }
+    const skipM = await emailDeliveryEligibility.shouldSkipOptionalMarketingEmail(
+      toAddress,
+      'opportunity_signal'
+    );
+    if (skipM.skip) return false;
     try {
       const subjectPrefix =
         typeof options.subjectPrefix === 'string' ? options.subjectPrefix : '';
@@ -513,6 +544,11 @@ class EmailService {
       logger.warn('Daily watchlist digest email skipped: SMTP not configured');
       return;
     }
+    const skipM = await emailDeliveryEligibility.shouldSkipOptionalMarketingEmail(
+      toAddress,
+      'daily_digest'
+    );
+    if (skipM.skip) return;
     try {
       const digest = payload.digest || {};
       const meta = payload.runMetadata || {};
@@ -691,6 +727,11 @@ class EmailService {
       logger.warn('Dip insight email skipped: SMTP not configured');
       return;
     }
+    const skipM = await emailDeliveryEligibility.shouldSkipOptionalMarketingEmail(
+      toAddress,
+      'dip_insight'
+    );
+    if (skipM.skip) return;
     try {
       const {
         symbol,

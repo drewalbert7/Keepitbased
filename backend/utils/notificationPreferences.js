@@ -5,14 +5,13 @@
  * - researchDigestEmail: when true with dipInsightEmail, Grok dip email requires ≥1 `research_artifacts` row (lookback RESEARCH_FUSION_LOOKBACK_HOURS); else plain opportunity email
  * - researchMaxEmailsPerDay: cap for fused digests
  *
- * Legacy keys `researchQuietHoursLocal`, `timezone`, `opportunityRespectQuietHours` are stripped — we no longer gate sends on quiet hours.
+ * Opportunity email: quiet hours + daily cap (see opportunityEmailPolicy.js).
+ * Legacy `researchQuietHoursLocal` is stripped if present.
  */
 function mergeNotificationPreferences(raw) {
   const p =
     raw != null && typeof raw === 'object' && !Array.isArray(raw) ? { ...raw } : {};
-  delete p.opportunityRespectQuietHours;
   delete p.researchQuietHoursLocal;
-  delete p.timezone;
 
   const enableDipInsight = process.env.ENABLE_DIP_INSIGHT_EMAIL === 'true';
 
@@ -40,14 +39,36 @@ function mergeNotificationPreferences(raw) {
       : 'all',
 
     /**
-     * Opportunity **email** tier (plain + dip-insight). Default `all` = mail for every qualifying tier.
+     * Opportunity **email** tier (plain + dip-insight). Default `overreaction_only` for new/unspecified rows.
      * `capitulation_only` = major long-term tier only.
      */
     opportunityEmailNotifyLevel: ['all', 'overreaction_only', 'capitulation_only'].includes(
       p.opportunityEmailNotifyLevel
     )
       ? p.opportunityEmailNotifyLevel
-      : 'all',
+      : 'overreaction_only',
+
+    /** Max opportunity (plain + dip-insight) emails per user per UTC day. */
+    opportunityMaxEmailsPerDay: clampInt(p.opportunityMaxEmailsPerDay, 1, 50, 10),
+
+    /** IANA timezone for quiet hours (e.g. America/New_York). */
+    timezone:
+      typeof p.timezone === 'string' && p.timezone.trim().length > 0
+        ? p.timezone.trim()
+        : 'America/New_York',
+
+    quietHoursStart:
+      typeof p.quietHoursStart === 'string' && /^\d{1,2}:\d{2}$/.test(p.quietHoursStart.trim())
+        ? p.quietHoursStart.trim()
+        : '22:00',
+
+    quietHoursEnd:
+      typeof p.quietHoursEnd === 'string' && /^\d{1,2}:\d{2}$/.test(p.quietHoursEnd.trim())
+        ? p.quietHoursEnd.trim()
+        : '08:00',
+
+    /** When true (default), defer opportunity emails during quiet hours in `timezone`. */
+    opportunityRespectQuietHours: p.opportunityRespectQuietHours !== false,
 
     /**
      * When true (default), stock opportunity toasts/emails only during US regular session (not crypto).

@@ -124,4 +124,4 @@ Design for **multiple specialized agents** communicating over a **clear contract
 
 ## 9. Tracker
 
-Project-level tasks for this initiative should stay in **[docs/PROJECT_REVIEW_TODO.md](./PROJECT_REVIEW_TODO.md)** (section *AI Stock Buy-Alert Agent*) or the root [todo.md](../todo.md) roadmap so coding sessions start from one place.
+Project-level tasks for this initiative should stay in **[todo.md](../todo.md)** (§ *AI Stock Buy-Alert Agent* in the appendix) so coding sessions start from one place.

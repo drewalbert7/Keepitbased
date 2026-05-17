@@ -45,7 +45,7 @@ keepitbased/
 ├── ecosystem.config.js      # PM2 (API + stock-service)
 ├── ecosystem.openbb.config.js
 ├── package.json             # Root scripts: install:all, build, deploy, health checks
-└── todo.md                  # Execution roadmap (long-form review: docs/PROJECT_REVIEW_TODO.md)
+└── todo.md                  # Canonical roadmap (execution + project review appendix)
 ```
 
 Typical gitignored paths: `node_modules/`, `frontend/build/`, `logs/`, local `venv/`s, `**/.env`.
@@ -53,8 +53,8 @@ Typical gitignored paths: `node_modules/`, `frontend/build/`, `logs/`, local `ve
 ### Documentation index
 
 - **[docs/README.md](docs/README.md)** — table of contents for all guides under `docs/`.
-- **[docs/PROJECT_REVIEW_TODO.md](docs/PROJECT_REVIEW_TODO.md)** — project review, PR workflow, shipped-feature log.
-- **[todo.md](todo.md)** — execution roadmap / “resume here” snapshot.
+- **[todo.md](todo.md)** — **single roadmap** (resume here, phases, SES, Quant, §11, appendix: PR workflow, backlog, docs index).
+- **[docs/PROJECT_REVIEW_TODO.md](docs/PROJECT_REVIEW_TODO.md)** — redirect to `todo.md` (legacy path).
 - **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** — deployment notes; production: `npm run deploy` from repo root.
 
 ## 🔧 Management Scripts

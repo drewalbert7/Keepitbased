@@ -9,8 +9,10 @@ const {
   authRateLimit,
   registrationRateLimit,
   passwordResetRateLimit,
-  recoveryEmailRateLimit
+  recoveryEmailRateLimit,
+  recoveryEmailPerIpRateLimit
 } = require('../middleware/authRateLimit');
+const { verifyTurnstile } = require('../middleware/verifyTurnstile');
 const { sanitizeInput, validateEmail, validatePassword, handleValidationErrors } = require('../middleware/inputValidation');
 const logger = require('../utils/logger');
 const config = require('../config');
@@ -131,9 +133,9 @@ router.post('/register', sanitizeInput, registrationRateLimit, [
       `
       INSERT INTO users (
         email, password_hash, username, first_name, last_name,
-        invited_by_user_id, created_at, updated_at
+        invited_by_user_id, email_last_seen_at, created_at, updated_at
       )
-      VALUES ($1, $2, $3, NULL, NULL, $4, NOW(), NOW())
+      VALUES ($1, $2, $3, NULL, NULL, $4, NOW(), NOW(), NOW())
       RETURNING id, email, username, first_name, last_name, created_at
     `,
       [email, passwordHash, usernameNorm, invitedByUserId]
@@ -203,6 +205,15 @@ router.post('/login', sanitizeInput, authRateLimit, [
     const isValidPassword = await bcrypt.compare(password, user.password_hash);
     if (!isValidPassword) {
       return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    try {
+      await db.query(
+        `UPDATE users SET email_last_seen_at = NOW(), updated_at = NOW() WHERE id = $1`,
+        [user.id]
+      );
+    } catch (e) {
+      logger.warn(`email_last_seen_at update skipped: ${e.message}`);
     }
 
     // Generate JWT
@@ -305,7 +316,9 @@ router.post(
   sanitizeInput,
   [body('email').isEmail().withMessage('Valid email is required')],
   handleValidationErrors,
+  recoveryEmailPerIpRateLimit,
   recoveryEmailRateLimit,
+  verifyTurnstile,
   async (req, res) => {
   try {
     const { email } = req.body;
@@ -338,9 +351,12 @@ router.post(
 // Recover password (reset password)
 router.post(
   '/recover-password',
+  sanitizeInput,
   [body('email').isEmail().withMessage('Valid email is required')],
   handleValidationErrors,
+  recoveryEmailPerIpRateLimit,
   passwordResetRateLimit,
+  verifyTurnstile,
   async (req, res) => {
   try {
     const { email } = req.body;

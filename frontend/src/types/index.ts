@@ -24,10 +24,22 @@ export interface User {
     /** In-app toasts: `overreaction_only` skips on_sale-only (still in Signals). */
     opportunityNotifyLevel?: 'all' | 'overreaction_only';
     /**
-     * Opportunity **emails** only. Default `all`; use `overreaction_only` to skip smallest tier in inbox.
+     * Opportunity **emails** only. Default `overreaction_only`; use `all` for every qualifying tier.
      * `capitulation_only` = major long-term tier only.
      */
     opportunityEmailNotifyLevel?: 'all' | 'overreaction_only' | 'capitulation_only';
+
+    /** Max opportunity dip emails per UTC day (plain + Grok briefing). */
+    opportunityMaxEmailsPerDay?: number;
+
+    /** IANA timezone for quiet hours (e.g. America/New_York). */
+    timezone?: string;
+    /** Local quiet window start (HH:mm). */
+    quietHoursStart?: string;
+    /** Local quiet window end (HH:mm). */
+    quietHoursEnd?: string;
+    /** When true (default), no opportunity emails during quiet hours. */
+    opportunityRespectQuietHours?: boolean;
 
     /** Daily batched Grok email (server flag + Python Grok). Default on unless opted out. */
     dailyWatchlistDigestEmail?: boolean;

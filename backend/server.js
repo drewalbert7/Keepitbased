@@ -40,6 +40,7 @@ const internalResearchRoutes = require('./routes/internalResearch');
 const adminSignupInviteRoutes = require('./routes/adminSignupInvite');
 const chatRoutes = require('./routes/chat');
 const fundamentalsRoutes = require('./routes/fundamentals');
+const sesDeliveryWebhook = require('./routes/sesDeliveryWebhook');
 
 const jwt = require('jsonwebtoken');
 const PriceMonitor = require('./services/priceMonitor');
@@ -101,7 +102,8 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      scriptSrc: ["'self'"],
+      scriptSrc: ["'self'", "https://challenges.cloudflare.com"],
+      frameSrc: ["'self'", "https://challenges.cloudflare.com"],
       imgSrc: ["'self'", "data:", "https:"],
       connectSrc: ["'self'", "wss:", "https:"]
     }
@@ -128,6 +130,7 @@ const priceMonitor = new PriceMonitor(io);
 const alertService = new AlertService(io);
 
 // Routes
+app.use('/api/webhooks/ses-delivery', sesDeliveryWebhook);
 app.use('/api/auth', authRoutes);
 app.use('/api/alerts', alertRoutes);
 app.use('/api/prices', priceRoutes);

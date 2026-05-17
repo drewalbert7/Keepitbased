@@ -33,7 +33,12 @@ const ProfilePage: React.FC = () => {
     opportunityToasts: true,
     opportunityEmail: true,
     opportunityNotifyLevel: 'all' as OpportunityToastTier,
-    opportunityEmailNotifyLevel: 'all' as OpportunityEmailTier,
+    opportunityEmailNotifyLevel: 'overreaction_only' as OpportunityEmailTier,
+    opportunityMaxEmailsPerDay: 10,
+    timezone: 'America/New_York',
+    quietHoursStart: '22:00',
+    quietHoursEnd: '08:00',
+    opportunityRespectQuietHours: true,
     opportunityStockMarketHoursOnly: true,
     dipInsightEmail: true,
     researchDigestEmail: true,
@@ -115,7 +120,26 @@ const ProfilePage: React.FC = () => {
       opportunityEmail: n.opportunityEmail !== false,
       opportunityNotifyLevel: n.opportunityNotifyLevel === 'overreaction_only' ? 'overreaction_only' : 'all',
       opportunityEmailNotifyLevel:
-        enl === 'all' || enl === 'overreaction_only' || enl === 'capitulation_only' ? enl : 'all',
+        enl === 'all' || enl === 'overreaction_only' || enl === 'capitulation_only'
+          ? enl
+          : 'overreaction_only',
+      opportunityMaxEmailsPerDay:
+        typeof n.opportunityMaxEmailsPerDay === 'number' && Number.isFinite(n.opportunityMaxEmailsPerDay)
+          ? Math.min(50, Math.max(1, Math.round(n.opportunityMaxEmailsPerDay)))
+          : 10,
+      timezone:
+        typeof n.timezone === 'string' && n.timezone.trim().length > 0
+          ? n.timezone.trim()
+          : 'America/New_York',
+      quietHoursStart:
+        typeof n.quietHoursStart === 'string' && /^\d{1,2}:\d{2}$/.test(n.quietHoursStart.trim())
+          ? n.quietHoursStart.trim()
+          : '22:00',
+      quietHoursEnd:
+        typeof n.quietHoursEnd === 'string' && /^\d{1,2}:\d{2}$/.test(n.quietHoursEnd.trim())
+          ? n.quietHoursEnd.trim()
+          : '08:00',
+      opportunityRespectQuietHours: n.opportunityRespectQuietHours !== false,
       opportunityStockMarketHoursOnly: n.opportunityStockMarketHoursOnly !== false,
       dipInsightEmail: n.dipInsightEmail !== false,
       researchDigestEmail: n.researchDigestEmail !== false,
@@ -204,9 +228,7 @@ const ProfilePage: React.FC = () => {
     setNotifSaving(true);
     try {
       const base = { ...(user.notificationPreferences || {}) } as Record<string, unknown>;
-      delete base.opportunityRespectQuietHours;
       delete base.researchQuietHoursLocal;
-      delete base.timezone;
       const updated = await authService.updateProfile({
         notificationPreferences: {
           ...(base as NonNullable<User['notificationPreferences']>),
@@ -216,6 +238,11 @@ const ProfilePage: React.FC = () => {
           opportunityEmail: notifPrefs.opportunityEmail,
           opportunityNotifyLevel: notifPrefs.opportunityNotifyLevel,
           opportunityEmailNotifyLevel: notifPrefs.opportunityEmailNotifyLevel,
+          opportunityMaxEmailsPerDay: notifPrefs.opportunityMaxEmailsPerDay,
+          timezone: notifPrefs.timezone.trim() || 'America/New_York',
+          quietHoursStart: notifPrefs.quietHoursStart.trim() || '22:00',
+          quietHoursEnd: notifPrefs.quietHoursEnd.trim() || '08:00',
+          opportunityRespectQuietHours: notifPrefs.opportunityRespectQuietHours,
           opportunityStockMarketHoursOnly: notifPrefs.opportunityStockMarketHoursOnly,
           dipInsightEmail: notifPrefs.dipInsightEmail,
           researchDigestEmail: notifPrefs.researchDigestEmail,
@@ -441,8 +468,10 @@ const ProfilePage: React.FC = () => {
             <section className="border-t border-kib-line pt-6">
               <h3 className="text-sm font-semibold text-kib-fg mb-1">Opportunity dip alerts</h3>
               <p className="mb-4 text-xs text-kib-muted">
-                Fires when live quotes cross our dip tiers vs your alert baseline. Crypto is 24/7; US stocks can be
-                limited to regular session below.
+                Fires when live quotes cross dip tiers vs the <strong className="font-medium text-slate-300">baseline price</strong>{' '}
+                on each symbol in your watchlist alerts (set when you add or refresh an alert). Without a baseline,
+                opportunity emails will not send for that symbol. Crypto is 24/7; US stocks can be limited to regular
+                session below.
               </p>
               <div className="space-y-4 text-sm">
                 <label className="flex cursor-pointer items-start gap-3">
@@ -520,6 +549,116 @@ const ProfilePage: React.FC = () => {
                     US stocks: only notify during regular session (Mon–Fri 9:30–16:00 ET). Crypto unaffected.
                   </span>
                 </label>
+
+                <div>
+                  <label htmlFor="prof-opp-max-day" className="mb-1 block text-xs font-medium text-slate-300">
+                    Max dip emails per day
+                  </label>
+                  <input
+                    id="prof-opp-max-day"
+                    type="number"
+                    min={1}
+                    max={50}
+                    step={1}
+                    value={notifPrefs.opportunityMaxEmailsPerDay}
+                    disabled={!notifPrefs.email || !notifPrefs.opportunityEmail}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (!Number.isFinite(v)) return;
+                      setNotifPrefs((p) => ({
+                        ...p,
+                        opportunityMaxEmailsPerDay: Math.min(50, Math.max(1, Math.round(v)))
+                      }));
+                    }}
+                    className="input-field max-w-xs w-full text-sm disabled:opacity-50"
+                  />
+                  <p className="mt-1 text-[11px] text-kib-muted">UTC day; counts plain and Grok dip emails.</p>
+                </div>
+
+                <div className="rounded-lg border border-kib-line/80 bg-kib-raise/40 px-3 py-3 space-y-3 max-w-2xl">
+                  <label className="flex cursor-pointer items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={notifPrefs.opportunityRespectQuietHours}
+                      disabled={!notifPrefs.email || !notifPrefs.opportunityEmail}
+                      onChange={(e) =>
+                        setNotifPrefs((p) => ({
+                          ...p,
+                          opportunityRespectQuietHours: e.target.checked
+                        }))
+                      }
+                      className="mt-0.5 rounded border-kib-line bg-kib-raise text-kib-cyber focus:ring-kib-cyber disabled:opacity-50"
+                    />
+                    <span
+                      className={`text-sm ${!notifPrefs.email || !notifPrefs.opportunityEmail ? 'text-kib-muted' : 'text-kib-fg'}`}
+                    >
+                      Quiet hours — pause dip emails overnight (toasts still fire if enabled)
+                    </span>
+                  </label>
+                  <div className="grid gap-3 sm:grid-cols-3 text-sm">
+                    <div>
+                      <label htmlFor="prof-tz" className="mb-1 block text-xs font-medium text-slate-300">
+                        Timezone
+                      </label>
+                      <input
+                        id="prof-tz"
+                        type="text"
+                        value={notifPrefs.timezone}
+                        disabled={
+                          !notifPrefs.email ||
+                          !notifPrefs.opportunityEmail ||
+                          !notifPrefs.opportunityRespectQuietHours
+                        }
+                        onChange={(e) => setNotifPrefs((p) => ({ ...p, timezone: e.target.value }))}
+                        className="input-field w-full font-mono text-xs disabled:opacity-50"
+                        placeholder="America/New_York"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="prof-quiet-start" className="mb-1 block text-xs font-medium text-slate-300">
+                        Quiet from
+                      </label>
+                      <input
+                        id="prof-quiet-start"
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]{1,2}:[0-9]{2}"
+                        value={notifPrefs.quietHoursStart}
+                        disabled={
+                          !notifPrefs.email ||
+                          !notifPrefs.opportunityEmail ||
+                          !notifPrefs.opportunityRespectQuietHours
+                        }
+                        onChange={(e) => setNotifPrefs((p) => ({ ...p, quietHoursStart: e.target.value }))}
+                        className="input-field w-full font-mono text-xs disabled:opacity-50"
+                        placeholder="22:00"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="prof-quiet-end" className="mb-1 block text-xs font-medium text-slate-300">
+                        Quiet until
+                      </label>
+                      <input
+                        id="prof-quiet-end"
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]{1,2}:[0-9]{2}"
+                        value={notifPrefs.quietHoursEnd}
+                        disabled={
+                          !notifPrefs.email ||
+                          !notifPrefs.opportunityEmail ||
+                          !notifPrefs.opportunityRespectQuietHours
+                        }
+                        onChange={(e) => setNotifPrefs((p) => ({ ...p, quietHoursEnd: e.target.value }))}
+                        className="input-field w-full font-mono text-xs disabled:opacity-50"
+                        placeholder="08:00"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-kib-muted m-0">
+                    Local time in your timezone (24h, e.g. 22:00–08:00). Overnight windows wrap past midnight.
+                  </p>
+                </div>
               </div>
             </section>
 
