@@ -6,6 +6,8 @@ const logger = require('../utils/logger');
 const AlertService = require('../services/alertService');
 const { watchlistService } = require('../services/watchlistService');
 const { searchUsStocks, getApiKey } = require('../services/stockReferenceService');
+const itickClient = require('../services/itickClient');
+const config = require('../config');
 const requireDeleteConfirmation = require('../middleware/requireDeleteConfirmation');
 
 const router = express.Router();
@@ -48,6 +50,35 @@ router.get('/', auth, watchlistLimiter, async (req, res) => {
   }
 });
 
+/** GET /watchlist/tw-stock-search?q= — Taiwan (TWSE) symbol lookup via iTick */
+router.get('/tw-stock-search', auth, stockSearchLimiter, async (req, res) => {
+  try {
+    const raw = req.query.q;
+    const q = typeof raw === 'string' ? raw.trim().slice(0, 32) : '';
+    if (!config.ITICK_TW_ENABLED) {
+      return res.json({ results: [], searchAvailable: false, reason: 'disabled' });
+    }
+    if (!itickClient.isConfigured()) {
+      return res.json({ results: [], searchAvailable: false, reason: 'not_configured' });
+    }
+    if (q.length < 1) {
+      return res.json({ results: [], searchAvailable: true });
+    }
+    const rows = await itickClient.searchTaiwanSymbols(q, 25);
+    const results = rows.map((r) => ({
+      code: r.code,
+      name: r.name,
+      exchange: r.exchange || 'TWSE',
+      alertSymbol: `TW:${r.code}`,
+      matchedAlias: r.matchedAlias || null
+    }));
+    return res.json({ results, searchAvailable: true });
+  } catch (error) {
+    logger.error('GET watchlist tw-stock-search failed:', error);
+    return res.status(500).json({ message: 'Taiwan symbol search failed' });
+  }
+});
+
 /** GET /watchlist/stock-search?q= — US stock lookup for dashboard combobox */
 router.get('/stock-search', auth, stockSearchLimiter, async (req, res) => {
   try {
@@ -70,7 +101,8 @@ router.post(
   watchlistLimiter,
   [
     body('symbol').isString().trim().isLength({ min: 1, max: 24 }),
-    body('assetType').optional().isIn(['stock', 'crypto'])
+    body('assetType').optional().isIn(['stock', 'crypto']),
+    body('stockMarket').optional().isIn(['US', 'TW'])
   ],
   async (req, res) => {
     try {
@@ -79,10 +111,13 @@ router.post(
         return res.status(400).json({ errors: errors.array() });
       }
       const assetType = req.body.assetType === 'crypto' ? 'crypto' : 'stock';
+      const stockMarket = String(req.body.stockMarket || 'US').trim().toUpperCase();
       const data =
         assetType === 'crypto'
           ? await watchlistService.addCrypto(req.user.id, req.body.symbol, alertService)
-          : await watchlistService.addStock(req.user.id, req.body.symbol, alertService);
+          : stockMarket === 'TW'
+            ? await watchlistService.addTwStock(req.user.id, req.body.symbol, alertService)
+            : await watchlistService.addStock(req.user.id, req.body.symbol, alertService);
       return res.status(201).json(data);
     } catch (error) {
       const code = error.statusCode || 500;

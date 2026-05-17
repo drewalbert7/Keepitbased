@@ -69,6 +69,15 @@ const config = {
    */
   MARKET_DATA_API_URL: (process.env.MARKET_DATA_API_URL || 'https://api.polygon.io').replace(/\/$/, ''),
 
+  /** iTick — non-US equities (Taiwan TWSE first). https://docs.itick.io */
+  ITICK_API_TOKEN: (process.env.ITICK_API_TOKEN || process.env.ITICK_TOKEN || '').trim(),
+  ITICK_API_BASE_URL: (process.env.ITICK_API_BASE_URL || 'https://api.itick.io').replace(/\/$/, ''),
+  ITICK_TW_ENABLED: process.env.ITICK_TW_ENABLED !== 'false',
+  ITICK_REQUEST_TIMEOUT_MS: (() => {
+    const n = parseInt(process.env.ITICK_REQUEST_TIMEOUT_MS, 10);
+    return Number.isFinite(n) && n >= 2000 ? Math.min(n, 60000) : 15000;
+  })(),
+
   /**
    * Optional OpenBB ODP REST hub (Polygon + other connectors). AGPL-3.0 — legal review advised.
    * Run: `./openbb-service/start.sh` or `pm2 start ecosystem.openbb.config.js`

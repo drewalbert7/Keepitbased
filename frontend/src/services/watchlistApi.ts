@@ -10,11 +10,18 @@ export async function fetchWatchlist(): Promise<WatchlistResponse> {
   return data;
 }
 
+export type StockMarket = 'US' | 'TW';
+
 export async function addWatchlistSymbol(
   symbol: string,
-  assetType: 'stock' | 'crypto' = 'stock'
+  assetType: 'stock' | 'crypto' = 'stock',
+  options?: { stockMarket?: StockMarket }
 ): Promise<WatchlistResponse> {
-  const { data } = await axios.post<WatchlistResponse>('/watchlist/symbols', { symbol, assetType });
+  const { data } = await axios.post<WatchlistResponse>('/watchlist/symbols', {
+    symbol,
+    assetType,
+    ...(assetType === 'stock' && options?.stockMarket ? { stockMarket: options.stockMarket } : {})
+  });
   return data;
 }
 
@@ -46,4 +53,31 @@ export async function searchWatchlistStocks(q: string): Promise<StockSearchRespo
     params: { q: q.trim().slice(0, 64) }
   });
   return data;
+}
+
+export interface TwStockSearchHit {
+  code: string;
+  name: string;
+  exchange: string;
+  alertSymbol: string;
+  /** e.g. FOCI when matched via English alias map */
+  matchedAlias?: string | null;
+}
+
+export interface TwStockSearchResponse {
+  results: TwStockSearchHit[];
+  searchAvailable: boolean;
+  reason?: string;
+}
+
+/** Taiwan (TWSE) company / numeric code search via iTick */
+export async function searchWatchlistTwStocks(q: string): Promise<TwStockSearchResponse> {
+  const { data } = await axios.get<TwStockSearchResponse>('/watchlist/tw-stock-search', {
+    params: { q: q.trim().slice(0, 32) }
+  });
+  return data;
+}
+
+export function isTwStockSymbol(symbol: string): boolean {
+  return /^TW:\d{4,6}$/i.test(String(symbol || '').trim());
 }

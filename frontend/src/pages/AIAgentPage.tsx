@@ -11,7 +11,7 @@ import {
   type WatchlistContextItem,
   type WatchlistContextResponse
 } from '../services/aiAgentService';
-import { removeWatchlistSymbol } from '../services/watchlistApi';
+import { isTwStockSymbol, removeWatchlistSymbol } from '../services/watchlistApi';
 import { useSocket } from '../contexts/SocketContext';
 import {
   chartQuoteToPriceUpdatePayload,
@@ -24,6 +24,7 @@ import { getCryptoTicker, polygonPairFromCryptoBase, type CryptoTicker } from '.
 import { OpportunityPolicyPanel } from '../components/OpportunityPolicyPanel';
 import { ResizablePair } from '../components/ResizablePair';
 import { WatchlistStockSearchInput } from '../components/WatchlistStockSearchInput';
+import { WatchlistTwStockSearchInput } from '../components/WatchlistTwStockSearchInput';
 import { WatchlistCryptoSearchInput } from '../components/WatchlistCryptoSearchInput';
 import { Watchlist52WeekRange } from '../components/Watchlist52WeekRange';
 import { StockFundamentalsModal } from '../components/StockFundamentalsModal';
@@ -67,7 +68,7 @@ export const AIAgentPage: React.FC = () => {
   type WlAssetTab = 'all' | 'stock' | 'crypto';
   const [wlAssetTab, setWlAssetTab] = useState<WlAssetTab>('all');
   /** Add form: one search at a time for clearer layout */
-  const [wlAddTab, setWlAddTab] = useState<'stock' | 'crypto'>('stock');
+  const [wlAddTab, setWlAddTab] = useState<'stock' | 'tw' | 'crypto'>('stock');
 
   const [agentPreferences, setAgentPreferences] = useState<AgentPreferences>({
     topN: 3,
@@ -113,7 +114,11 @@ export const AIAgentPage: React.FC = () => {
       if (gen !== watchlistLoadGenRef.current) return;
 
       const stockSymbols = Array.from(
-        new Set(data.items.filter((i) => i.assetType === 'stock').map((i) => i.symbol.toUpperCase()))
+        new Set(
+          data.items
+            .filter((i) => i.assetType === 'stock' && !isTwStockSymbol(i.symbol))
+            .map((i) => i.symbol.toUpperCase())
+        )
       );
       let merged = data;
       if (stockSymbols.length) {
@@ -192,7 +197,11 @@ export const AIAgentPage: React.FC = () => {
       if (!ctx?.items?.length) return;
 
       const stockSyms = Array.from(
-        new Set(ctx.items.filter((i) => i.assetType === 'stock').map((i) => i.symbol.toUpperCase()))
+        new Set(
+          ctx.items
+            .filter((i) => i.assetType === 'stock' && !isTwStockSymbol(i.symbol))
+            .map((i) => i.symbol.toUpperCase())
+        )
       );
       const cryptoPolys = Array.from(
         new Set(
@@ -562,6 +571,15 @@ export const AIAgentPage: React.FC = () => {
                   <button
                     type="button"
                     role="tab"
+                    aria-selected={wlAddTab === 'tw'}
+                    onClick={() => setWlAddTab('tw')}
+                    className={wlTabBtn(wlAddTab === 'tw')}
+                  >
+                    Taiwan (TWSE)
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
                     aria-selected={wlAddTab === 'crypto'}
                     onClick={() => setWlAddTab('crypto')}
                     className={wlTabBtn(wlAddTab === 'crypto')}
@@ -572,6 +590,11 @@ export const AIAgentPage: React.FC = () => {
                 <div className="mt-3 max-w-xl">
                   {wlAddTab === 'stock' ? (
                     <WatchlistStockSearchInput
+                      onSymbolAdded={() => void loadWatchlist()}
+                      disabled={watchlistLoading}
+                    />
+                  ) : wlAddTab === 'tw' ? (
+                    <WatchlistTwStockSearchInput
                       onSymbolAdded={() => void loadWatchlist()}
                       disabled={watchlistLoading}
                     />
@@ -738,13 +761,22 @@ export const AIAgentPage: React.FC = () => {
                               <td className="sticky left-0 z-10 border-r border-white/[0.06] bg-kib-surface px-2 py-2 align-top shadow-[4px_0_12px_-4px_rgba(0,0,0,0.35)] transition-colors group-hover:bg-white/[0.03] lg:static lg:z-auto lg:border-0 lg:bg-transparent lg:px-3 lg:py-2.5 lg:pl-4 lg:shadow-none">
                                 <div className="flex flex-col gap-0.5">
                                   {row.assetType === 'stock' ? (
-                                    <Link
-                                      to={`/charts?symbol=${encodeURIComponent(row.symbol)}`}
-                                      className="font-semibold font-mono text-kib-fg hover:text-kib-cyber w-fit"
-                                      title={`Open chart for ${row.symbol}`}
-                                    >
-                                      {row.symbol}
-                                    </Link>
+                                    isTwStockSymbol(row.symbol) ? (
+                                      <span
+                                        className="font-semibold font-mono text-kib-fg w-fit"
+                                        title="Taiwan (TWSE) — charts via iTick coming soon"
+                                      >
+                                        {row.symbol}
+                                      </span>
+                                    ) : (
+                                      <Link
+                                        to={`/charts?symbol=${encodeURIComponent(row.symbol)}`}
+                                        className="font-semibold font-mono text-kib-fg hover:text-kib-cyber w-fit"
+                                        title={`Open chart for ${row.symbol}`}
+                                      >
+                                        {row.symbol}
+                                      </Link>
+                                    )
                                   ) : (
                                     <Link
                                       to={`/crypto?symbol=${encodeURIComponent(row.symbol)}`}
@@ -757,7 +789,7 @@ export const AIAgentPage: React.FC = () => {
                                   {!row.active && (
                                     <span className="text-[10px] uppercase tracking-wide text-amber-500">paused</span>
                                   )}
-                                  {row.assetType === 'stock' && (
+                                  {row.assetType === 'stock' && !isTwStockSymbol(row.symbol) && (
                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pt-1">
                                       <button
                                         type="button"

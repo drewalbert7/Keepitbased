@@ -49,6 +49,8 @@ const { evaluateDipInsightFusionGate } = require('./researchFusionGate');
 const { getOpportunityTechnicalBundle } = require('./dailyAtrService');
 const openbbClient = require('./openbbClient');
 const { resolveUsStockSnapshotTicker } = require('../utils/stockSnapshotQuote');
+const { parseStockAlertSymbol, parseWatchlistToken } = require('../utils/stockMarketIdentity');
+const itickClient = require('./itickClient');
 
 class PriceMonitor {
   constructor(io) {
@@ -171,10 +173,29 @@ class PriceMonitor {
 
 
   async getStockPrice(symbol) {
+    const stockId = parseStockAlertSymbol(symbol);
+    if (stockId?.market === 'TW') {
+      try {
+        if (!config.ITICK_TW_ENABLED || !itickClient.isConfigured()) {
+          return null;
+        }
+        return await itickClient.fetchTaiwanStockPriceRow(stockId.code);
+      } catch (e) {
+        this.logWithCooldown(
+          `itick-tw-failure-${stockId.code}`,
+          'warn',
+          `iTick Taiwan quote failed for ${stockId.alertSymbol}: ${e.message}`
+        );
+        return null;
+      }
+    }
+
+    const usSymbol = stockId?.market === 'US' ? stockId.code : String(symbol || '').toUpperCase();
+
     try {
       if (config.OPENBB_ENABLED) {
         try {
-          const row = await openbbClient.fetchStockPriceMonitorRow(symbol);
+          const row = await openbbClient.fetchStockPriceMonitorRow(usSymbol);
           if (row) return row;
         } catch (_e) {
           /* fall through */
@@ -184,15 +205,17 @@ class PriceMonitor {
         return null;
       }
 
-      const response = await this.makePolygonRequest(`/v2/snapshot/locale/us/markets/stocks/tickers/${encodeURIComponent(symbol)}`);
+      const response = await this.makePolygonRequest(
+        `/v2/snapshot/locale/us/markets/stocks/tickers/${encodeURIComponent(usSymbol)}`
+      );
       const resolved = resolveUsStockSnapshotTicker(response.ticker);
 
       if (!resolved) {
-        throw new Error(`No usable Polygon stock snapshot for ${symbol}`);
+        throw new Error(`No usable Polygon stock snapshot for ${usSymbol}`);
       }
 
       const out = {
-        symbol: symbol,
+        symbol: usSymbol,
         price: resolved.close,
         change24h: resolved.change,
         changePercent: resolved.changePercent,
@@ -221,7 +244,11 @@ class PriceMonitor {
         this.polygonStocksUnavailable = true;
         this.logWithCooldown('polygon-stock-entitlement', 'warn', 'Polygon stock snapshot endpoints are unavailable for this API key.');
       }
-      this.logWithCooldown(`polygon-stock-failure-${symbol}`, 'warn', `Polygon stock price fetch failed for ${symbol}.`);
+      this.logWithCooldown(
+        `polygon-stock-failure-${usSymbol}`,
+        'warn',
+        `Polygon stock price fetch failed for ${usSymbol}.`
+      );
       return null;
     }
   }
@@ -346,29 +373,29 @@ class PriceMonitor {
       const pricePromises = [];
       
       for (const symbolWithType of allSymbols) {
-        const sep = symbolWithType.indexOf(':');
-        if (sep < 1) continue;
-        const type = symbolWithType.slice(0, sep);
-        const symbol = symbolWithType.slice(sep + 1);
-        const t = String(type).toUpperCase();
-
-        if (t === 'CRYPTO') {
-          pricePromises.push(this.getCryptoPrice(symbol));
-        } else if (t === 'STOCK') {
-          if (
-            shouldPollStockSymbolThisCycle(
-              new Date(),
-              config.OPPORTUNITY_STOCK_OFFHOURS_POLL_MIN
-            )
-          ) {
-            pricePromises.push(this.getStockPrice(symbol));
-          }
-        } else {
+        const parsed = parseWatchlistToken(symbolWithType);
+        if (!parsed) {
           this.logWithCooldown(
             `unknown-watchlist-token-${symbolWithType}`,
             'warn',
-            `Skipping watchlist price token with unknown type prefix: ${symbolWithType}`
+            `Skipping watchlist price token: ${symbolWithType}`
           );
+          continue;
+        }
+
+        if (parsed.assetType === 'crypto') {
+          pricePromises.push(this.getCryptoPrice(parsed.symbol));
+          continue;
+        }
+
+        if (parsed.assetType === 'stock') {
+          const twStock = parsed.market === 'TW';
+          if (
+            twStock ||
+            shouldPollStockSymbolThisCycle(new Date(), config.OPPORTUNITY_STOCK_OFFHOURS_POLL_MIN)
+          ) {
+            pricePromises.push(this.getStockPrice(parsed.alertSymbol));
+          }
         }
       }
       

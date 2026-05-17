@@ -5,13 +5,23 @@ const { validateAlertSymbol, normalizeAlertSymbol } = require('../utils/alertSym
 const PriceMonitor = require('./priceMonitor');
 const config = require('../config');
 const { assertTradableUsStock } = require('./stockReferenceService');
+const itickClient = require('./itickClient');
+const {
+  parseWatchlistToken,
+  tokenForUsStock,
+  tokenForTwStock,
+  twAlertSymbol,
+  parseTwAlertSymbol,
+  normalizeTwCode,
+  resolveTwSymbolInput,
+  alertKey,
+  CRYPTO_PREFIX
+} = require('../utils/stockMarketIdentity');
 
 const MAIN_NAME = 'Main';
-const STOCK_PREFIX = 'STOCK';
-const CRYPTO_PREFIX = 'CRYPTO';
 
 function tokenForStock(symbol) {
-  return `${STOCK_PREFIX}:${String(symbol).toUpperCase()}`;
+  return tokenForUsStock(symbol);
 }
 
 function tokenForCrypto(baseSymbol) {
@@ -19,22 +29,7 @@ function tokenForCrypto(baseSymbol) {
 }
 
 function parseToken(token) {
-  const s = String(token || '').trim();
-  const i = s.indexOf(':');
-  if (i < 1) return null;
-  const type = s.slice(0, i).toUpperCase();
-  const sym = s.slice(i + 1).trim().toUpperCase();
-  if (!sym) return null;
-  if (type === STOCK_PREFIX) return { assetType: 'stock', symbol: sym };
-  if (type === CRYPTO_PREFIX) return { assetType: 'crypto', symbol: sym };
-  return null;
-}
-
-/**
- * Keys aligned with user_alerts: `${asset_type}:${SYMBOL}` e.g. stock:AAPL
- */
-function alertKey(assetType, symbol) {
-  return `${String(assetType).toLowerCase()}:${String(symbol).toUpperCase()}`;
+  return parseWatchlistToken(token);
 }
 
 /** Strip Polygon-style suffix if user pasted `X:BTCUSD` — store base `BTC` in alerts/redis. */
@@ -94,7 +89,12 @@ async function seedMainWatchlistFromAlertsIfEmpty(userId) {
     [userId]
   );
   const tokens = [
-    ...stockAlerts.rows.map((r) => tokenForStock(r.symbol)),
+    ...stockAlerts.rows.map((r) => {
+      const sym = String(r.symbol || '').trim().toUpperCase();
+      const tw = parseTwAlertSymbol(sym);
+      if (tw) return tokenForTwStock(tw.code);
+      return tokenForStock(sym);
+    }),
     ...cryptoAlerts.rows.map((r) => tokenForCrypto(r.symbol))
   ];
   if (tokens.length === 0) return row;
@@ -108,9 +108,9 @@ async function seedMainWatchlistFromAlertsIfEmpty(userId) {
   return updated.rows[0];
 }
 
-async function warmStockQuote(symbol) {
+async function warmStockQuote(alertSymbol) {
   const pm = new PriceMonitor(null);
-  const priceData = await pm.getStockPrice(symbol);
+  const priceData = await pm.getStockPrice(alertSymbol);
   if (!priceData) return false;
   const redis = getRedisClient();
   await redis.setEx(
@@ -144,7 +144,7 @@ class WatchlistService {
     const set = new Set();
     for (const t of arr) {
       const p = parseToken(t);
-      if (p) set.add(alertKey(p.assetType, p.symbol));
+      if (p) set.add(alertKey(p.assetType, p.alertSymbol || p.symbol));
     }
     return set;
   }
@@ -156,12 +156,17 @@ class WatchlistService {
     const symbols = [];
     for (const t of arr) {
       const p = parseToken(t);
-      if (p) symbols.push(p.symbol);
+      if (p) symbols.push(p.alertSymbol || p.symbol);
     }
     return { symbols, tokens: arr.filter((x) => typeof x === 'string') };
   }
 
   async addStock(userId, rawSymbol, alertService) {
+    const raw = String(rawSymbol || '').trim().toUpperCase();
+    if (raw.startsWith('TW:')) {
+      return this.addTwStock(userId, raw, alertService);
+    }
+
     const symCheck = validateAlertSymbol(rawSymbol);
     if (!symCheck.ok) {
       const err = new Error(symCheck.message);
@@ -222,6 +227,82 @@ class WatchlistService {
     );
 
     logger.info(`Watchlist +stock user=${userId} ${symbol}${normalizedInput !== symbol ? ` (from "${normalizedInput}")` : ''}`);
+    return this.getMainWatchlist(userId);
+  }
+
+  async addTwStock(userId, rawSymbol, alertService) {
+    if (!config.ITICK_TW_ENABLED) {
+      const err = new Error('Taiwan market data is disabled on this server');
+      err.statusCode = 503;
+      throw err;
+    }
+    if (!itickClient.isConfigured()) {
+      const err = new Error('Taiwan stocks require ITICK_API_TOKEN on the server');
+      err.statusCode = 503;
+      throw err;
+    }
+
+    const codeCheck = resolveTwSymbolInput(rawSymbol);
+    if (!codeCheck.ok) {
+      const err = new Error(codeCheck.message);
+      err.statusCode = 400;
+      throw err;
+    }
+    const alertSymbol = twAlertSymbol(codeCheck.code);
+    const token = tokenForTwStock(codeCheck.code);
+    if (!token) {
+      const err = new Error('Invalid Taiwan stock code');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const row = await seedMainWatchlistFromAlertsIfEmpty(userId);
+    let arr = [...parseSymbolsJson(row.symbols)];
+
+    if (arr.includes(token)) {
+      const err = new Error(`${alertSymbol} is already on your watchlist`);
+      err.statusCode = 409;
+      throw err;
+    }
+
+    const existingCount = await alertService.countUserAlerts(userId);
+    const existingAlert = await db.query(
+      `SELECT id FROM user_alerts WHERE user_id = $1 AND UPPER(TRIM(symbol)) = $2 AND asset_type = 'stock'`,
+      [userId, alertSymbol]
+    );
+
+    if (existingCount >= config.MAX_ALERTS_PER_USER && existingAlert.rows.length === 0) {
+      const err = new Error(
+        `Maximum ${config.MAX_ALERTS_PER_USER} monitored symbols per account. Remove one from your watchlist first.`
+      );
+      err.statusCode = 403;
+      throw err;
+    }
+
+    const warmed = await warmStockQuote(alertSymbol);
+    if (!warmed) {
+      const err = new Error(
+        `Could not load a quote for Taiwan symbol ${codeCheck.code}. Check the code or iTick plan coverage.`
+      );
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (existingAlert.rows.length === 0) {
+      await alertService.createAlert(userId, alertSymbol, 'stock', {
+        small_threshold: 5,
+        medium_threshold: 10,
+        large_threshold: 15
+      });
+    }
+
+    arr.push(token);
+    await db.query(
+      `UPDATE user_watchlists SET symbols = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+      [JSON.stringify(arr), row.id]
+    );
+
+    logger.info(`Watchlist +TW stock user=${userId} ${alertSymbol}`);
     return this.getMainWatchlist(userId);
   }
 
@@ -293,14 +374,27 @@ class WatchlistService {
       symbol = symCheck.symbol;
       token = tokenForCrypto(symbol);
     } else {
-      const symCheck = validateAlertSymbol(rawSymbol);
-      if (!symCheck.ok) {
-        const err = new Error(symCheck.message);
-        err.statusCode = 400;
-        throw err;
+      const raw = String(rawSymbol || '').trim().toUpperCase();
+      const tw = raw.startsWith('TW:') ? raw : null;
+      if (tw) {
+        const code = tw.slice(3).replace(/\D/g, '');
+        symbol = twAlertSymbol(code);
+        token = tokenForTwStock(code);
+        if (!token) {
+          const err = new Error('Invalid Taiwan symbol');
+          err.statusCode = 400;
+          throw err;
+        }
+      } else {
+        const symCheck = validateAlertSymbol(rawSymbol);
+        if (!symCheck.ok) {
+          const err = new Error(symCheck.message);
+          err.statusCode = 400;
+          throw err;
+        }
+        symbol = symCheck.symbol;
+        token = tokenForStock(symbol);
       }
-      symbol = symCheck.symbol;
-      token = tokenForStock(symbol);
     }
 
     const row = await getMainRow(userId);
@@ -339,5 +433,7 @@ module.exports = {
   alertKey,
   seedMainWatchlistFromAlertsIfEmpty,
   warmStockQuote,
-  parseSymbolsJson
+  parseSymbolsJson,
+  tokenForTwStock,
+  twAlertSymbol
 };

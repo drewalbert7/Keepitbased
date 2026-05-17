@@ -146,6 +146,8 @@ router.get('/config', (req, res) => {
     researchIngestionEnabled: !!config.ENABLE_RESEARCH_INGESTION,
     researchNewsCron: config.RESEARCH_NEWS_CRON,
     marketDataKeyPresent: !!(config.POLYGON_API_KEY || config.MASSIVE_API_KEY),
+    itickTwEnabled: !!config.ITICK_TW_ENABLED,
+    itickConfigured: !!(config.ITICK_API_TOKEN || '').trim(),
     researchFusionLookbackHours: config.RESEARCH_FUSION_LOOKBACK_HOURS,
     opportunityTriggerMode: config.OPPORTUNITY_TRIGGER_MODE,
     opportunityOnSaleAtrMult: config.OPPORTUNITY_ON_SALE_ATR_MULT,

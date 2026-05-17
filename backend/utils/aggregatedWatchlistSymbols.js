@@ -1,4 +1,5 @@
 const db = require('../models/database');
+const { parseWatchlistToken } = require('./stockMarketIdentity');
 
 /**
  * Parse JSONB `symbols` arrays from watchlists: `STOCK:AAPL`, `CRYPTO:BTC`, …
@@ -32,13 +33,12 @@ async function loadSymbolsFromAllWatchlistRows() {
   for (const row of result.rows) {
     for (const t of parseSymbolsArray(row.symbols)) {
       if (typeof t !== 'string') continue;
-      const sep = t.indexOf(':');
-      if (sep < 1) continue;
-      const typ = t.slice(0, sep).toUpperCase();
-      const sym = t.slice(sep + 1).trim().toUpperCase();
+      const parsed = parseWatchlistToken(t);
+      if (!parsed) continue;
+      const sym = String(parsed.alertSymbol || parsed.symbol || '').toUpperCase();
       if (!sym) continue;
-      if (typ === 'STOCK') stocks.add(sym);
-      if (typ === 'CRYPTO') cryptos.add(sym);
+      if (parsed.assetType === 'stock') stocks.add(sym);
+      if (parsed.assetType === 'crypto') cryptos.add(sym);
     }
   }
 

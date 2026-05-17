@@ -3,7 +3,8 @@
  * Allows dots for classes like BRK.B.
  */
 
-const SYMBOL_RE = /^[A-Z0-9.]{1,16}$/;
+/** US tickers + Taiwan `TW:2330` style keys stored on alerts. */
+const SYMBOL_RE = /^[A-Z0-9.:]{1,16}$/;
 
 function normalizeAlertSymbol(raw) {
   return String(raw || '')
