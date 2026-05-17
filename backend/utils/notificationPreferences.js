@@ -56,7 +56,7 @@ function mergeNotificationPreferences(raw) {
       : 'overreaction_only',
 
     /** Max opportunity (plain + dip-insight) emails per user per UTC day. */
-    opportunityMaxEmailsPerDay: clampInt(p.opportunityMaxEmailsPerDay, 1, 50, 3),
+    opportunityMaxEmailsPerDay: clampInt(p.opportunityMaxEmailsPerDay, 1, 50, 5),
 
     /** IANA timezone for quiet hours (e.g. America/New_York). */
     timezone:

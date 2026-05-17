@@ -35,7 +35,7 @@ const ProfilePage: React.FC = () => {
     opportunityEmail: true,
     opportunityNotifyLevel: 'all' as OpportunityToastTier,
     opportunityEmailNotifyLevel: 'overreaction_only' as OpportunityEmailTier,
-    opportunityMaxEmailsPerDay: 10,
+    opportunityMaxEmailsPerDay: 5,
     timezone: 'America/New_York',
     quietHoursStart: '22:00',
     quietHoursEnd: '08:00',
@@ -128,7 +128,7 @@ const ProfilePage: React.FC = () => {
       opportunityMaxEmailsPerDay:
         typeof n.opportunityMaxEmailsPerDay === 'number' && Number.isFinite(n.opportunityMaxEmailsPerDay)
           ? Math.min(50, Math.max(1, Math.round(n.opportunityMaxEmailsPerDay)))
-          : 3,
+          : 5,
       timezone:
         typeof n.timezone === 'string' && n.timezone.trim().length > 0
           ? n.timezone.trim()
@@ -602,7 +602,8 @@ const ProfilePage: React.FC = () => {
                     className="input-field max-w-xs w-full text-sm disabled:opacity-50"
                   />
                   <p className="mt-1 text-[11px] text-kib-muted">
-                    UTC day; counts critical dip alerts only (not the daily Grok watchlist briefing).
+                    UTC day; critical dip alerts only (default 5). With hourly digest, each email can batch
+                    several symbols. Daily Grok briefing is separate.
                   </p>
                 </div>
 

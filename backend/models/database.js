@@ -39,7 +39,7 @@ async function runInitializeDatabase() {
     opportunityEmail: true,
     opportunityNotifyLevel: 'overreaction_only',
     opportunityEmailNotifyLevel: 'overreaction_only',
-    opportunityMaxEmailsPerDay: 3,
+    opportunityMaxEmailsPerDay: 5,
     timezone: 'America/New_York',
     quietHoursStart: '22:00',
     quietHoursEnd: '08:00',
