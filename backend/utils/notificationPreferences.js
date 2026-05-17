@@ -56,7 +56,7 @@ function mergeNotificationPreferences(raw) {
       : 'overreaction_only',
 
     /** Max opportunity (plain + dip-insight) emails per user per UTC day. */
-    opportunityMaxEmailsPerDay: clampInt(p.opportunityMaxEmailsPerDay, 1, 50, 5),
+    opportunityMaxEmailsPerDay: clampInt(p.opportunityMaxEmailsPerDay, 1, 50, 3),
 
     /** IANA timezone for quiet hours (e.g. America/New_York). */
     timezone:
@@ -81,7 +81,7 @@ function mergeNotificationPreferences(raw) {
      * Opportunity email delivery: `instant` (outbox worker, ~1 min) or `hourly_digest` (batched table email).
      */
     opportunityEmailDeliveryMode:
-      p.opportunityEmailDeliveryMode === 'hourly_digest' ? 'hourly_digest' : 'instant',
+      p.opportunityEmailDeliveryMode === 'instant' ? 'instant' : 'hourly_digest',
 
     /**
      * When true (default), stock opportunity toasts/emails only during US regular session (not crypto).

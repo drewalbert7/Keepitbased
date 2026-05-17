@@ -844,7 +844,7 @@ class PriceMonitor {
       return;
     }
 
-    await this.deliverOpportunityEmail({
+    const sent = await this.deliverOpportunityEmail({
       row,
       email,
       payload,
@@ -857,6 +857,17 @@ class PriceMonitor {
       signalId,
       tech
     });
+    if (!sent) {
+      logOpportunityEmailEvent({
+        action: 'suppressed',
+        reason: 'smtp_or_budget',
+        userId: row.user_id,
+        symbol,
+        assetType,
+        flags: evalResult.flags
+      });
+      return;
+    }
     await markOpportunityEmailSentThisHour(
       this.redis,
       row.user_id,
@@ -1028,15 +1039,15 @@ class PriceMonitor {
     if (runInsight) {
       try {
         await tryDipInsightEmailOrThrow(dipInsightCtx);
+        return true;
       } catch (insightErr) {
         logger.warn(
           `Dip insight email failed for user ${row.user_id} ${assetType}:${symbol}, sending plain opportunity email: ${insightErr?.message || insightErr}`
         );
-        await emailService.sendOpportunitySignalEmail(email, payload);
+        return emailService.sendOpportunitySignalEmail(email, payload, { userId: row.user_id });
       }
-    } else {
-      await emailService.sendOpportunitySignalEmail(email, payload);
     }
+    return emailService.sendOpportunitySignalEmail(email, payload, { userId: row.user_id });
   }
 
   async tryOpportunityDedupe(redisKey) {

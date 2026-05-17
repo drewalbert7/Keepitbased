@@ -125,7 +125,8 @@ async function runDailyWatchlistDigestTick(alertService) {
       try {
         await emailService.sendDailyWatchlistDigestEmail(row.email, {
           digest,
-          runMetadata: pyMeta
+          runMetadata: pyMeta,
+          userId: row.id
         });
         sent += 1;
       } catch (e) {

@@ -16,6 +16,7 @@ const {
 } = require('../utils/opportunityEmailPolicy');
 const { markOpportunityEmailSentThisHour } = require('../utils/opportunityEmailConfirmation');
 const { getRedisClient } = require('../utils/redis');
+const emailSendBudget = require('../utils/emailSendBudget');
 const { sendDipInsightForOpportunity } = require('./dipInsightEmailService');
 const { recordDipInsightEmailSent } = require('../utils/dipInsightEmailPolicy');
 
@@ -31,7 +32,7 @@ async function deliverOpportunityOutboxRow(priceMonitor, row) {
     throw new Error('invalid opportunity outbox payload');
   }
 
-  await priceMonitor.deliverOpportunityEmail({
+  const sent = await priceMonitor.deliverOpportunityEmail({
     row: { user_id: row.user_id, notification_preferences: deliverCtx.notification_preferences },
     email: row.to_email,
     payload: payload.opportunity || deliverCtx.payload,
@@ -44,6 +45,9 @@ async function deliverOpportunityOutboxRow(priceMonitor, row) {
     signalId: deliverCtx.signalId,
     tech: deliverCtx.tech || {}
   });
+  if (!sent) {
+    throw new Error('opportunity email not sent (budget cap, SES pause, or SMTP)');
+  }
 
   const redis = getRedisClient();
   await markOpportunityEmailSentThisHour(
@@ -124,7 +128,11 @@ async function processInstantOutbox(priceMonitor) {
     }
   }
 
-  const rows = await claimInstantPending(config.EMAIL_OUTBOX_BATCH_SIZE, 'opportunity_signal');
+  const instantCap = Math.min(
+    config.EMAIL_OUTBOX_BATCH_SIZE,
+    config.EMAIL_OUTBOX_INSTANT_MAX_PER_TICK
+  );
+  const rows = await claimInstantPending(instantCap, 'opportunity_signal');
   for (const row of rows) {
     try {
       await deliverOpportunityOutboxRow(priceMonitor, row);
@@ -168,7 +176,9 @@ async function processDigestBatches(priceMonitor) {
     const items = opportunityRows.map((r) => r.payload?.opportunity || r.payload?.deliverCtx?.payload).filter(Boolean);
 
     try {
-      const ok = await emailService.sendOpportunityHourlyDigestEmail(toEmail, items);
+      const ok = await emailService.sendOpportunityHourlyDigestEmail(toEmail, items, {
+        userId: opportunityRows[0].user_id
+      });
       if (!ok) {
         throw new Error('digest SMTP send returned false');
       }
@@ -219,6 +229,9 @@ async function runEmailOutboxTick(priceMonitor) {
   }
   if (!emailService.isConfigured()) {
     return { skipped: true, reason: 'smtp' };
+  }
+  if (await emailSendBudget.isSesSendPaused()) {
+    return { skipped: true, reason: 'ses_paused' };
   }
   if (running) {
     return { skipped: true, reason: 'overlap' };

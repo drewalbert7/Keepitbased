@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const config = require('../config');
 const emailService = require('../services/emailService');
+const emailSendBudget = require('../utils/emailSendBudget');
 const db = require('../models/database');
 const logger = require('../utils/logger');
 
@@ -117,8 +118,9 @@ router.get('/detailed', async (req, res) => {
 });
 
 // Configuration check (non-sensitive info only — never SMTP secrets)
-router.get('/config', (req, res) => {
+router.get('/config', async (req, res) => {
   const prod = config.NODE_ENV === 'production';
+  const emailBudget = await emailSendBudget.getEmailBudgetStatus();
   const safeConfig = {
     NODE_ENV: config.NODE_ENV,
     PORT: config.PORT,
@@ -141,6 +143,9 @@ router.get('/config', (req, res) => {
     hasDatabaseUrl: !!config.DATABASE_URL,
     hasRedisUrl: !!config.REDIS_URL,
     smtpConfigured: emailService.isConfigured(),
+    emailSendBudget: emailBudget,
+    legacyThresholdAlertEmails: !!config.ENABLE_LEGACY_THRESHOLD_ALERT_EMAILS,
+    dailyWatchlistDigestCronEnabled: !!config.ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL,
     dipInsightGloballyEnabled:
       !!config.ENABLE_DIP_INSIGHT_EMAIL && !config.DISABLE_DIP_INSIGHT_EMAIL,
     researchIngestionEnabled: !!config.ENABLE_RESEARCH_INGESTION,

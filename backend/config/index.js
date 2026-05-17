@@ -176,6 +176,29 @@ const config = {
   ENABLE_LEGACY_THRESHOLD_ALERT_EMAILS:
     process.env.ENABLE_LEGACY_THRESHOLD_ALERT_EMAILS === 'true',
 
+  /**
+   * Marketing SMTP budget (opportunity, digest, legacy alerts). Transactional auth mail bypasses.
+   * Sandbox SES ≈200/day — default 80 leaves headroom; raise after production access.
+   */
+  SES_GLOBAL_DAILY_EMAIL_CAP: (() => {
+    const n = parseInt(process.env.SES_GLOBAL_DAILY_EMAIL_CAP, 10);
+    return Number.isFinite(n) && n >= 0 ? Math.min(n, 50_000) : 80;
+  })(),
+  SES_GLOBAL_HOURLY_EMAIL_CAP: (() => {
+    const n = parseInt(process.env.SES_GLOBAL_HOURLY_EMAIL_CAP, 10);
+    return Number.isFinite(n) && n >= 0 ? Math.min(n, 5000) : 12;
+  })(),
+  /** Min seconds between any two marketing emails to the same address. */
+  EMAIL_MIN_INTERVAL_PER_RECIPIENT_SEC: (() => {
+    const n = parseInt(process.env.EMAIL_MIN_INTERVAL_PER_RECIPIENT_SEC, 10);
+    return Number.isFinite(n) && n >= 0 ? Math.min(n, 86400) : 1800;
+  })(),
+  /** After SES 454 quota error, pause marketing sends (seconds). */
+  SES_THROTTLE_PAUSE_SEC: (() => {
+    const n = parseInt(process.env.SES_THROTTLE_PAUSE_SEC, 10);
+    return Number.isFinite(n) && n >= 60 ? Math.min(n, 86400) : 3600;
+  })(),
+
   /** When true, optional Grok dip briefing email replaces plain opportunity email (see notification_preferences.dipInsightEmail). */
   ENABLE_DIP_INSIGHT_EMAIL: process.env.ENABLE_DIP_INSIGHT_EMAIL === 'true',
   /** Emergency kill switch: when true, never send Grok dip briefing emails (plain opportunity email still allowed). */
@@ -331,7 +354,12 @@ const config = {
   EMAIL_OUTBOX_CRON: process.env.EMAIL_OUTBOX_CRON || '*/1 * * * *',
   EMAIL_OUTBOX_BATCH_SIZE: (() => {
     const n = parseInt(process.env.EMAIL_OUTBOX_BATCH_SIZE, 10);
-    return Number.isFinite(n) && n >= 1 && n <= 100 ? n : 20;
+    return Number.isFinite(n) && n >= 1 && n <= 100 ? n : 8;
+  })(),
+  /** Max instant opportunity rows processed per outbox cron tick (plus dip-insight cap). */
+  EMAIL_OUTBOX_INSTANT_MAX_PER_TICK: (() => {
+    const n = parseInt(process.env.EMAIL_OUTBOX_INSTANT_MAX_PER_TICK, 10);
+    return Number.isFinite(n) && n >= 0 && n <= 50 ? n : 3;
   })(),
   EMAIL_OUTBOX_MAX_ATTEMPTS: (() => {
     const n = parseInt(process.env.EMAIL_OUTBOX_MAX_ATTEMPTS, 10);

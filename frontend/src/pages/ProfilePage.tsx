@@ -40,7 +40,7 @@ const ProfilePage: React.FC = () => {
     quietHoursStart: '22:00',
     quietHoursEnd: '08:00',
     opportunityRespectQuietHours: true,
-    opportunityEmailDeliveryMode: 'instant' as OpportunityEmailDeliveryMode,
+    opportunityEmailDeliveryMode: 'hourly_digest' as OpportunityEmailDeliveryMode,
     opportunityStockMarketHoursOnly: true,
     dipInsightEmail: false,
     researchDigestEmail: true,
@@ -128,7 +128,7 @@ const ProfilePage: React.FC = () => {
       opportunityMaxEmailsPerDay:
         typeof n.opportunityMaxEmailsPerDay === 'number' && Number.isFinite(n.opportunityMaxEmailsPerDay)
           ? Math.min(50, Math.max(1, Math.round(n.opportunityMaxEmailsPerDay)))
-          : 5,
+          : 3,
       timezone:
         typeof n.timezone === 'string' && n.timezone.trim().length > 0
           ? n.timezone.trim()
@@ -143,7 +143,7 @@ const ProfilePage: React.FC = () => {
           : '08:00',
       opportunityRespectQuietHours: n.opportunityRespectQuietHours !== false,
       opportunityEmailDeliveryMode:
-        n.opportunityEmailDeliveryMode === 'hourly_digest' ? 'hourly_digest' : 'instant',
+        n.opportunityEmailDeliveryMode === 'instant' ? 'instant' : 'hourly_digest',
       opportunityStockMarketHoursOnly: n.opportunityStockMarketHoursOnly !== false,
       dipInsightEmail: n.dipInsightEmail === true,
       researchDigestEmail: n.researchDigestEmail !== false,

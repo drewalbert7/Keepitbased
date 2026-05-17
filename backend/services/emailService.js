@@ -1,6 +1,7 @@
 const nodemailer = require('nodemailer');
 const logger = require('../utils/logger');
 const emailDeliveryEligibility = require('./emailDeliveryEligibility');
+const emailSendBudget = require('../utils/emailSendBudget');
 
 /** Coerce DB/Redis values (often strings) for safe numeric formatting. */
 function toFiniteNumber(v) {
@@ -82,6 +83,33 @@ function sanitizeXPostUrl(raw) {
     return u.href;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Marketing / watchlist mail only — enforces global SES budget. Transactional auth mail calls sendMail directly.
+ * @param {object} params
+ * @param {string} params.to
+ * @param {string} params.kind
+ * @param {number} [params.userId]
+ * @param {() => Promise<void>} params.sendFn
+ * @returns {Promise<{ sent: boolean, reason?: string }>}
+ */
+async function deliverMarketingMail({ to, kind, userId, sendFn }) {
+  const budget = await emailSendBudget.tryReserveSendSlot({
+    kind,
+    toEmail: to,
+    userId
+  });
+  if (!budget.ok) {
+    return { sent: false, reason: budget.reason };
+  }
+  try {
+    await sendFn();
+    return { sent: true };
+  } catch (err) {
+    await emailSendBudget.noteSesThrottleError(err);
+    throw err;
   }
 }
 
@@ -200,9 +228,21 @@ class EmailService {
         headers: mergeMailHeaders()
       };
 
-      await this.transporter.sendMail(mailOptions);
+      const delivered = await deliverMarketingMail({
+        to: email,
+        kind: 'legacy_threshold_alert',
+        userId: alertData.userId,
+        sendFn: () => this.transporter.sendMail(mailOptions)
+      });
+      if (!delivered.sent) {
+        logger.warn(
+          `Alert email skipped (budget): ${delivered.reason} ${email} ${alertData.symbol}`
+        );
+        return;
+      }
       logger.info(`Alert email sent to ${email} for ${alertData.symbol}`);
     } catch (error) {
+      await emailSendBudget.noteSesThrottleError(error);
       logger.error('Error sending alert email:', error);
     }
   }
@@ -260,9 +300,18 @@ class EmailService {
         html: html
       };
 
-      await this.transporter.sendMail(mailOptions);
+      const delivered = await deliverMarketingMail({
+        to: email,
+        kind: 'welcome',
+        sendFn: () => this.transporter.sendMail(mailOptions)
+      });
+      if (!delivered.sent) {
+        logger.warn(`Welcome email skipped (budget): ${delivered.reason} ${email}`);
+        return;
+      }
       logger.info(`Welcome email sent to ${email}`);
     } catch (error) {
+      await emailSendBudget.noteSesThrottleError(error);
       logger.error('Error sending welcome email:', error);
     }
   }
@@ -518,17 +567,30 @@ class EmailService {
         `Unsubscribe / email preferences: ${profilePreferencesUrl()}`
       ].join('\n\n');
 
-      await this.transporter.sendMail({
-        from: smtpFromHeader(),
+      const delivered = await deliverMarketingMail({
         to: toAddress,
-        subject: subjectLine,
-        text: plain,
-        html,
-        headers: mergeMailHeaders()
+        kind: 'opportunity_signal',
+        userId: options.userId,
+        sendFn: () =>
+          this.transporter.sendMail({
+            from: smtpFromHeader(),
+            to: toAddress,
+            subject: subjectLine,
+            text: plain,
+            html,
+            headers: mergeMailHeaders()
+          })
       });
+      if (!delivered.sent) {
+        logger.warn(
+          `Opportunity email skipped (budget): ${delivered.reason} ${toAddress} ${symbol}`
+        );
+        return false;
+      }
       logger.info(`Opportunity signal email sent to ${toAddress} for ${symbol}`);
       return true;
     } catch (error) {
+      await emailSendBudget.noteSesThrottleError(error);
       logger.error('Error sending opportunity signal email:', error);
       return false;
     }
@@ -539,7 +601,7 @@ class EmailService {
    * @param {string} toAddress
    * @param {object[]} items — opportunity signal payloads
    */
-  async sendOpportunityHourlyDigestEmail(toAddress, items) {
+  async sendOpportunityHourlyDigestEmail(toAddress, items, options = {}) {
     if (!this.isConfigured()) {
       logger.warn('Opportunity digest email skipped: SMTP not configured');
       return false;
@@ -613,17 +675,28 @@ class EmailService {
         `Signals: ${appBaseUrl()}/opportunity-signals`
       ].join('\n');
 
-      await this.transporter.sendMail({
-        from: smtpFromHeader(),
+      const delivered = await deliverMarketingMail({
         to: toAddress,
-        subject: `KeepItBased — Hourly dip digest (${list.length} signal${list.length === 1 ? '' : 's'})`,
-        text: plain,
-        html,
-        headers: mergeMailHeaders()
+        kind: 'opportunity_digest',
+        userId: options?.userId,
+        sendFn: () =>
+          this.transporter.sendMail({
+            from: smtpFromHeader(),
+            to: toAddress,
+            subject: `KeepItBased — Hourly dip digest (${list.length} signal${list.length === 1 ? '' : 's'})`,
+            text: plain,
+            html,
+            headers: mergeMailHeaders()
+          })
       });
+      if (!delivered.sent) {
+        logger.warn(`Opportunity digest skipped (budget): ${delivered.reason} ${toAddress}`);
+        return false;
+      }
       logger.info(`Opportunity hourly digest sent to ${toAddress} (${list.length} signals)`);
       return true;
     } catch (error) {
+      await emailSendBudget.noteSesThrottleError(error);
       logger.error('Error sending opportunity hourly digest:', error);
       return false;
     }
@@ -799,16 +872,27 @@ class EmailService {
         `Manage or unsubscribe: ${profilePreferencesUrl()}`
       ].join('\n\n');
 
-      await this.transporter.sendMail({
-        from: smtpFromHeader(),
+      const delivered = await deliverMarketingMail({
         to: toAddress,
-        subject: `KeepItBased — Daily market briefing (${new Date().toLocaleDateString('en-US')})`,
-        text: digestPlain,
-        html,
-        headers: mergeMailHeaders()
+        kind: 'daily_watchlist_digest',
+        userId: payload?.userId,
+        sendFn: () =>
+          this.transporter.sendMail({
+            from: smtpFromHeader(),
+            to: toAddress,
+            subject: `KeepItBased — Daily market briefing (${new Date().toLocaleDateString('en-US')})`,
+            text: digestPlain,
+            html,
+            headers: mergeMailHeaders()
+          })
       });
+      if (!delivered.sent) {
+        logger.warn(`Daily digest skipped (budget): ${delivered.reason} ${toAddress}`);
+        return;
+      }
       logger.info(`Daily watchlist digest sent to ${toAddress}`);
     } catch (error) {
+      await emailSendBudget.noteSesThrottleError(error);
       logger.error('Error sending daily watchlist digest email:', error);
       throw error;
     }
@@ -985,14 +1069,24 @@ class EmailService {
         `${appBaseUrl()}/dashboard`,
         `Manage email: ${profilePreferencesUrl()}`
       ].join('\n\n');
-      await this.transporter.sendMail({
-        from: smtpFromHeader(),
+      const delivered = await deliverMarketingMail({
         to: toAddress,
-        subject: `KeepItBased — Dip briefing: ${sym} — ${subVerdict}`,
-        text: dipPlain,
-        html,
-        headers: mergeMailHeaders()
+        kind: 'dip_insight',
+        userId: params.userId,
+        sendFn: () =>
+          this.transporter.sendMail({
+            from: smtpFromHeader(),
+            to: toAddress,
+            subject: `KeepItBased — Dip briefing: ${sym} — ${subVerdict}`,
+            text: dipPlain,
+            html,
+            headers: mergeMailHeaders()
+          })
       });
+      if (!delivered.sent) {
+        logger.warn(`Dip insight skipped (budget): ${delivered.reason} ${toAddress} ${sym}`);
+        return;
+      }
       logger.info(`Dip insight email sent to ${toAddress} for ${sym}`);
     } catch (error) {
       logger.error('Error sending dip insight email:', error);

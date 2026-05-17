@@ -140,7 +140,7 @@ async function sendDipInsightForOpportunity(params) {
       price: priceData.price,
       timestamp: dipContext.timestamp
     };
-    await emailService.sendOpportunitySignalEmail(email, oppPayload);
+    await emailService.sendOpportunitySignalEmail(email, oppPayload, { userId: ctx.userId });
     plainOpportunityEmailSent = true;
     logger.info(
       `Plain opportunity email sent (dip insight rich email suppressed) user=${userId} ${assetType}:${symbol}`
