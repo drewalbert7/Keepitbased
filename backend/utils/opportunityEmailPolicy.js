@@ -98,6 +98,7 @@ async function recordOpportunityEmailSent(redis, userId) {
   }
 }
 
+/** Hour bucket key — prevents duplicate opportunity sends in the same window (legacy name retained). */
 function legacyAlertBlockRedisKey(userId, assetType, symbol, date = new Date()) {
   const bucket = floorTimeBucketUtc(date, 60);
   return `oppmail:legacy-block:${userId}:${String(assetType).toLowerCase()}:${String(symbol).toUpperCase()}:${bucket}`;
@@ -113,23 +114,12 @@ async function markLegacyAlertBlocked(redis, userId, assetType, symbol, ttlSec =
   }
 }
 
-async function isLegacyAlertBlocked(redis, userId, assetType, symbol) {
-  if (!redis?.isOpen) return false;
-  try {
-    const v = await redis.get(legacyAlertBlockRedisKey(userId, assetType, symbol));
-    return v != null;
-  } catch (_e) {
-    return false;
-  }
-}
-
 module.exports = {
   logOpportunityEmailEvent,
   isOpportunityQuietHours,
   isOpportunityDailyEmailCapReached,
   recordOpportunityEmailSent,
   markLegacyAlertBlocked,
-  isLegacyAlertBlocked,
   legacyAlertBlockRedisKey,
   dailyCountRedisKey
 };

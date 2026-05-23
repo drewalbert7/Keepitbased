@@ -129,7 +129,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Initialize services
 const priceMonitor = new PriceMonitor(io);
-const alertService = new AlertService(io);
+const alertService = new AlertService();
 
 // Routes
 app.use('/api/webhooks/ses-delivery', sesDeliveryWebhook);
@@ -181,7 +181,6 @@ io.on('connection', (socket) => {
 cron.schedule('*/1 * * * *', async () => {
   try {
     await priceMonitor.checkAllPrices();
-    await alertService.processAlerts();
   } catch (error) {
     logger.error('Error in scheduled price check:', error);
   }

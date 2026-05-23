@@ -144,7 +144,6 @@ router.get('/config', async (req, res) => {
     hasRedisUrl: !!config.REDIS_URL,
     smtpConfigured: emailService.isConfigured(),
     emailSendBudget: emailBudget,
-    legacyThresholdAlertEmails: !!config.ENABLE_LEGACY_THRESHOLD_ALERT_EMAILS,
     dailyWatchlistDigestCronEnabled: !!config.ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL,
     dipInsightGloballyEnabled:
       !!config.ENABLE_DIP_INSIGHT_EMAIL && !config.DISABLE_DIP_INSIGHT_EMAIL,

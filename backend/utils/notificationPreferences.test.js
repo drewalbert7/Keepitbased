@@ -11,7 +11,7 @@ describe('mergeNotificationPreferences', () => {
     assert.equal(p.opportunityEmailNotifyLevel, 'overreaction_only');
     assert.equal(p.opportunityMaxEmailsPerDay, 5);
     assert.equal(p.opportunityEmailDeliveryMode, 'hourly_digest');
-    assert.equal(p.thresholdAlertEmail, false);
+    assert.equal(p.thresholdAlertEmail, false); // legacy path removed
     assert.equal(p.dailyWatchlistDigestEmail, true);
     assert.equal(mergeNotificationPreferences({ dailyWatchlistDigestEmail: false }).dailyWatchlistDigestEmail, false);
     assert.equal(p.opportunityNotifyLevel, 'overreaction_only');

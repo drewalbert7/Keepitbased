@@ -170,14 +170,7 @@ const config = {
   MAX_ALERTS_PER_USER: parseInt(process.env.MAX_ALERTS_PER_USER) || 50,
 
   /**
-   * Legacy 5/10/15% threshold "BUY SIGNAL" emails (alertService). Default off — use opportunity
-   * emails (overreaction/capitulation) for watchlist dip alerts instead; saves SES quota.
-   */
-  ENABLE_LEGACY_THRESHOLD_ALERT_EMAILS:
-    process.env.ENABLE_LEGACY_THRESHOLD_ALERT_EMAILS === 'true',
-
-  /**
-   * Marketing SMTP budget (opportunity, digest, legacy alerts). Transactional auth mail bypasses.
+   * Marketing SMTP budget (opportunity, digest). Transactional auth mail bypasses.
    * Sandbox SES ≈200/day — default 80 leaves headroom; raise after production access.
    */
   SES_GLOBAL_DAILY_EMAIL_CAP: (() => {

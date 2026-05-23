@@ -29,10 +29,8 @@ function mergeNotificationPreferences(raw) {
     /** Matches dashboard agent slider default; used to cap suggestedTranchePct server-side. */
     agentMaxPositionSizePct: clampInt(p.agentMaxPositionSizePct, 1, 50, 10),
 
-    /**
-     * Legacy 5/10/15% threshold emails (small/medium/large). Opt-in only; opportunity emails are the default path.
-     */
-    thresholdAlertEmail: p.thresholdAlertEmail === true,
+    /** Deprecated: legacy 5/10/15% threshold emails removed; kept for stored JSON compatibility. */
+    thresholdAlertEmail: false,
 
     /** Critical watchlist dip emails (overreaction/capitulation per tier). Default on. */
     opportunityEmail: p.opportunityEmail !== false,
