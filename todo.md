@@ -2,7 +2,9 @@
 
 > **Single source of truth:** `keepitbased/todo.md` in this repo. When you or Cursor reference **`todo.md`**, use **this file only**. A stub at `/home/dstrad/todo.md` redirects here.
 
-Last updated: **2026-05-25** (legacy alert loop removed; SES production case reply sent; site/todo review).
+Last updated: **2026-05-23** (deploy list checkbox fix; session save).
+
+**Session checkpoint (2026-05-23) — Deploy list checkboxes + DL-1/DL-2 live:** **Shipped:** Capital **deploy list** (`2b5665eb`) — `user_deploy_list_items`, `/api/deploy-list` CRUD + **Optimize with Grok**, dashboard **Deploy** column + panel. **Fix (this session):** Checkbox state no longer stuck after uncheck (`af438ce5`) — `deployAlertIds` is source of truth after list loads; optimistic toggle + rollback; paused/TW/crypto disabled; omit `targetWeightPct: 0` (validation). **Deployed:** `npm run deploy` + `pm2 reload keepitbased-api`. **Uncommitted WIP (do not mix):** signup-admin (`is_signup_admin`, `ProfileAdminPage`, `seedAdminsFromEnv` in local `database.js` only). **Next ops:** SES production (us-east-1 case pending); SPF/DMARC (`npm run email:check-dns`). **Next engineering:** **DL-3** `DeployPlanV1` + approve UI; Quant rank → **`buildAgentWatchlistContext`**; broker (**DL-4**).
 
 **Session checkpoint (2026-05-25) — Legacy alerts removed + email diagnosis:** **Shipped:** Removed legacy **5/10/15%** threshold polling (`AlertService.processAlerts`), **`sendAlert`** emails, **`ENABLE_LEGACY_THRESHOLD_ALERT_EMAILS`**, and health **`legacyThresholdAlertEmails`**. Watchlist dip notifications are **only** via **`priceMonitor`** → opportunity tiers (`on_sale` / `overreaction` / `capitulation`). **`AlertService`** retained for **`user_alerts`** CRUD (watchlist + baselines). **Git:** `8fb10fbd` on **`main`**, deployed (`pm2 reload keepitbased-api`). **Email ops (verified on host):** SMTP login **OK** (`us-east-1`); opportunity test send **OK** to verified Gmail; **554** to unverified addresses → **SES sandbox** until **production access in us-east-1**. Replied to AWS Support (prior limit increase was **us-east-2** Ohio; production app uses **us-east-1** N. Virginia) — awaiting case response. **App suppressions (not SES):** weekend/RTH **morning_batch_queued**, Profile **`overreaction_only`**, quiet hours, hourly digest. **DNS still open:** SPF missing `include:amazonses.com`, no DMARC (`npm run email:check-dns`). **UX note:** landing **Open charts** → login (charts are protected). **Next ops:** SES production approval + DNS + SNS webhook. **Next engineering:** Quant rank → **`buildAgentWatchlistContext`**.
 
@@ -224,6 +226,7 @@ npm run email:test-opportunity
 
 - **API:** `GET/POST/DELETE /api/deploy-list`, `POST /api/deploy-list/optimize`
 - **UI:** Watchlist **Deploy** column; panel below table with total target weight %, **Optimize with Grok**, remove
+- **Checkbox UX (2026-05-23):** After `GET /api/deploy-list`, checked state = deploy list IDs only (not stale `onDeployList` on watchlist rows); optimistic toggle; paused rows disabled; `targetWeightPct` omitted when sizing is 0%
 - **Optimize prompt:** Scan watchlist (US stocks), rank ideal dips vs baseline, suggest % within Profile max position % cap
 - **Fields:** `target_weight_pct`, `source` (`manual` \| `grok_optimize`), `grok_rationale`, `suggested_limit_min/max`, `last_optimized_at`
 

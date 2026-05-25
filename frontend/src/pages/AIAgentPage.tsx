@@ -100,11 +100,25 @@ export const AIAgentPage: React.FC = () => {
   const [deployItems, setDeployItems] = useState<DeployListItem[]>([]);
   const [deployTotalPct, setDeployTotalPct] = useState(0);
   const [deployLoading, setDeployLoading] = useState(false);
+  const [deployListLoaded, setDeployListLoaded] = useState(false);
   const [deployOptimizing, setDeployOptimizing] = useState(false);
+  const [deployTogglingIds, setDeployTogglingIds] = useState<Set<number>>(() => new Set());
   const deployAlertIds = useMemo(
     () => new Set(deployItems.map((d) => d.userAlertId)),
     [deployItems]
   );
+
+  const patchWatchlistDeployFlag = useCallback((alertId: number, onDeployList: boolean) => {
+    setWatchlistCtx((prev) => {
+      if (!prev?.items?.length) return prev;
+      return {
+        ...prev,
+        items: prev.items.map((item) =>
+          item.alertId === alertId ? { ...item, onDeployList } : item
+        )
+      };
+    });
+  }, []);
 
   const [assistantMode, setAssistantMode] = useState<AssistantIntentMode>('smart');
   /** Progressive character reveal after the full reply arrives (not live token streaming). */
@@ -130,6 +144,7 @@ export const AIAgentPage: React.FC = () => {
       const data = await fetchDeployList();
       setDeployItems(data.items);
       setDeployTotalPct(data.totalTargetWeightPct);
+      setDeployListLoaded(true);
     } catch {
       /* non-fatal */
     } finally {
@@ -432,10 +447,51 @@ export const AIAgentPage: React.FC = () => {
   };
 
   const handleToggleDeploy = async (row: WatchlistContextItem, checked: boolean) => {
-    if (!isDeploySelectableRow(row.assetType, row.symbol)) return;
+    if (!isDeploySelectableRow(row.assetType, row.symbol, row.active)) return;
+    if (deployTogglingIds.has(row.alertId)) return;
+
+    const priorItems = deployItems;
+    const priorOnDeploy = deployListLoaded
+      ? deployAlertIds.has(row.alertId)
+      : row.onDeployList === true;
+
+    setDeployTogglingIds((prev) => new Set(prev).add(row.alertId));
+    patchWatchlistDeployFlag(row.alertId, checked);
+    if (checked) {
+      const pct = row.sizing?.suggestedPortfolioPct;
+      const weight = pct != null && pct > 0 ? pct : null;
+      setDeployItems((prev) => {
+        if (prev.some((d) => d.userAlertId === row.alertId)) return prev;
+        return [
+          ...prev,
+          {
+            id: 0,
+            userAlertId: row.alertId,
+            symbol: row.symbol,
+            assetType: row.assetType,
+            baselinePrice: row.baselinePrice,
+            targetWeightPct: weight,
+            suggestedLimitMin: null,
+            suggestedLimitMax: null,
+            source: 'manual',
+            grokRationale: null,
+            status: 'active',
+            lastOptimizedAt: null,
+            updatedAt: new Date().toISOString()
+          }
+        ];
+      });
+    } else {
+      setDeployItems((prev) => prev.filter((d) => d.userAlertId !== row.alertId));
+    }
+
     try {
       if (checked) {
-        await addDeployListItem(row.alertId, row.sizing?.suggestedPortfolioPct ?? undefined);
+        const pct = row.sizing?.suggestedPortfolioPct;
+        await addDeployListItem(
+          row.alertId,
+          pct != null && pct > 0 ? pct : undefined
+        );
         toast.success(`${row.symbol} added to deploy list`);
       } else {
         await removeDeployListItem(row.alertId);
@@ -443,10 +499,18 @@ export const AIAgentPage: React.FC = () => {
       }
       await loadDeployList();
     } catch (error: unknown) {
+      patchWatchlistDeployFlag(row.alertId, priorOnDeploy);
+      setDeployItems(priorItems);
       const msg = axios.isAxiosError(error)
         ? String(error.response?.data?.message || '') || error.message
         : 'Deploy list update failed';
       toast.error(msg);
+    } finally {
+      setDeployTogglingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(row.alertId);
+        return next;
+      });
     }
   };
 
@@ -474,6 +538,13 @@ export const AIAgentPage: React.FC = () => {
       await clearDeployList();
       setDeployItems([]);
       setDeployTotalPct(0);
+      setWatchlistCtx((prev) => {
+        if (!prev?.items?.length) return prev;
+        return {
+          ...prev,
+          items: prev.items.map((item) => ({ ...item, onDeployList: false }))
+        };
+      });
       toast.success('Deploy list cleared');
       await loadWatchlist();
     } catch {
@@ -841,9 +912,14 @@ export const AIAgentPage: React.FC = () => {
                       <tbody className="divide-y divide-white/[0.06]">
                         {filteredWatchlistItems.map((row) => {
                           const pct = row.sizing.suggestedPortfolioPct;
-                          const canDeploy = isDeploySelectableRow(row.assetType, row.symbol);
-                          const onDeploy =
-                            row.onDeployList === true || deployAlertIds.has(row.alertId);
+                          const canDeploy = isDeploySelectableRow(
+                            row.assetType,
+                            row.symbol,
+                            row.active
+                          );
+                          const onDeploy = deployListLoaded
+                            ? deployAlertIds.has(row.alertId)
+                            : row.onDeployList === true;
                           return (
                             <tr
                               key={`${row.assetType}:${row.alertId}:${row.symbol}`}
@@ -856,11 +932,17 @@ export const AIAgentPage: React.FC = () => {
                                   type="checkbox"
                                   className="rounded border-white/20 bg-kib-bg disabled:opacity-30"
                                   checked={onDeploy}
-                                  disabled={!canDeploy || watchlistLoading}
+                                  disabled={
+                                    !canDeploy ||
+                                    watchlistLoading ||
+                                    deployTogglingIds.has(row.alertId)
+                                  }
                                   title={
-                                    canDeploy
-                                      ? 'Include on capital deploy list'
-                                      : 'US stocks only for deploy list'
+                                    !row.active
+                                      ? 'Paused watchlist rows cannot be on the deploy list'
+                                      : canDeploy
+                                        ? 'Include on capital deploy list'
+                                        : 'US stocks only for deploy list'
                                   }
                                   onChange={(e) => void handleToggleDeploy(row, e.target.checked)}
                                 />

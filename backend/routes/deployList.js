@@ -68,7 +68,10 @@ router.post(
   '/items',
   auth,
   deployListLimiter,
-  [body('alertId').isInt({ min: 1 }), body('targetWeightPct').optional().isFloat({ min: 0.1, max: 50 })],
+  [
+    body('alertId').isInt({ min: 1 }),
+    body('targetWeightPct').optional({ checkFalsy: true }).isFloat({ min: 0.1, max: 50 })
+  ],
   async (req, res) => {
     try {
       const errors = validationResult(req);

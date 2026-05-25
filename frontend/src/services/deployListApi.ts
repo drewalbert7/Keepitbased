@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { isTwStockSymbol } from './watchlistApi';
 
 export interface DeployListItem {
   id: number;
@@ -60,8 +61,13 @@ export async function optimizeDeployList(): Promise<DeployListOptimizeResponse> 
   return data;
 }
 
-/** US stocks only for capital deploy v1 */
-export function isDeploySelectableRow(assetType: string, symbol: string): boolean {
+/** US stocks only for capital deploy v1 (must be active on watchlist). */
+export function isDeploySelectableRow(
+  assetType: string,
+  symbol: string,
+  active = true
+): boolean {
+  if (!active) return false;
   if (String(assetType).toLowerCase() !== 'stock') return false;
-  return !/^TW:\d{4,6}$/i.test(String(symbol || '').trim());
+  return !isTwStockSymbol(symbol);
 }
