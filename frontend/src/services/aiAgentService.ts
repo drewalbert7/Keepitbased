@@ -243,6 +243,8 @@ export interface WatchlistContextItem {
   symbol: string;
   assetType: string;
   active: boolean;
+  /** On capital deploy list (broker execution later) */
+  onDeployList?: boolean;
   thresholds: { small: number; medium: number; large: number };
   baselinePrice: number | null;
   currentPrice: number | null;

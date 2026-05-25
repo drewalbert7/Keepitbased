@@ -1,6 +1,7 @@
 const { getRedisClient } = require('../utils/redis');
 const logger = require('../utils/logger');
 const { watchlistService } = require('./watchlistService');
+const { getDeployAlertIdSet } = require('../utils/deployListIds');
 const PriceMonitor = require('./priceMonitor');
 const { getOpportunityTechnicalBundle } = require('./dailyAtrService');
 const { parseTwAlertSymbol, getTwPrimaryEnglishAlias } = require('../utils/stockMarketIdentity');
@@ -155,6 +156,7 @@ async function buildAgentWatchlistContext({ alertService, userId, maxPositionPct
   const redis = getRedisClient();
   const alerts = await alertService.getUserAlerts(userId);
   const allowedKeys = await watchlistService.getAllowedAlertKeys(userId);
+  const deployAlertIds = await getDeployAlertIdSet(userId);
 
   const items = [];
 
@@ -259,6 +261,7 @@ async function buildAgentWatchlistContext({ alertService, userId, maxPositionPct
       symbol,
       assetType,
       active,
+      onDeployList: deployAlertIds.has(row.id),
       thresholds: {
         small: smallTh,
         medium: mediumTh,

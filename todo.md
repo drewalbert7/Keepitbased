@@ -2,13 +2,15 @@
 
 > **Single source of truth:** `keepitbased/todo.md` in this repo. When you or Cursor reference **`todo.md`**, use **this file only**. A stub at `/home/dstrad/todo.md` redirects here.
 
-Last updated: **2026-05-17** (deliverability one-click unsub + TW watchlist English aliases; DNS ops still open).
+Last updated: **2026-05-25** (legacy alert loop removed; SES production case reply sent; site/todo review).
+
+**Session checkpoint (2026-05-25) — Legacy alerts removed + email diagnosis:** **Shipped:** Removed legacy **5/10/15%** threshold polling (`AlertService.processAlerts`), **`sendAlert`** emails, **`ENABLE_LEGACY_THRESHOLD_ALERT_EMAILS`**, and health **`legacyThresholdAlertEmails`**. Watchlist dip notifications are **only** via **`priceMonitor`** → opportunity tiers (`on_sale` / `overreaction` / `capitulation`). **`AlertService`** retained for **`user_alerts`** CRUD (watchlist + baselines). **Git:** `8fb10fbd` on **`main`**, deployed (`pm2 reload keepitbased-api`). **Email ops (verified on host):** SMTP login **OK** (`us-east-1`); opportunity test send **OK** to verified Gmail; **554** to unverified addresses → **SES sandbox** until **production access in us-east-1**. Replied to AWS Support (prior limit increase was **us-east-2** Ohio; production app uses **us-east-1** N. Virginia) — awaiting case response. **App suppressions (not SES):** weekend/RTH **morning_batch_queued**, Profile **`overreaction_only`**, quiet hours, hourly digest. **DNS still open:** SPF missing `include:amazonses.com`, no DMARC (`npm run email:check-dns`). **UX note:** landing **Open charts** → login (charts are protected). **Next ops:** SES production approval + DNS + SNS webhook. **Next engineering:** Quant rank → **`buildAgentWatchlistContext`**.
 
 **Session checkpoint (2026-05-17) — Deliverability (inbox / spam):** **Shipped:** RFC **8058** one-click — `List-Unsubscribe-Post`, signed **`GET/POST /api/email/unsubscribe?token=…`** (`emailUnsubscribeToken.js`, `marketingEmailUnsubscribe.js`); SNS **SubscriptionConfirmation** auto-confirm on webhook (amazonaws.com URLs only). **Docs:** **`docs/DELIVERABILITY_DNS.md`**; **`npm run email:check-dns`**. **Git:** `d315f3f7`. **Ops still required (Namecheap + SES console):** DKIM CNAMEs, SPF merge `include:amazonses.com`, DMARC `_dmarc` TXT, production access, bounce/complaint SNS → webhook with **`SES_WEBHOOK_SECRET`**.
 
 **Session checkpoint (2026-05-17) — Taiwan watchlist UX:** Dashboard shows **English alias** + `TW:code` subtitle (`getTwPrimaryEnglishAlias`, `agentWatchlistContext` **`englishAlias`**). **Git:** `45539662`.
 
-**Session checkpoint (2026-05-17) — Email efficiency & Grok digest:** Hit SES **`454 Daily message quota exceeded`** from legacy threshold blast + uncapped sends. **Shipped:** **`emailSendBudget.js`** — global opportunity pool (**80/day**, **12/hr**), separate **digest pool** (**150/day**), per-recipient cooldown, auto-pause on 454; legacy **`ENABLE_LEGACY_THRESHOLD_ALERT_EMAILS=false`**; **`opportunityEmailDeliveryMode`** default **`hourly_digest`**; outbox honest on budget block. **Daily Grok watchlist briefing** re-enabled: **`ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL=true`** (PM2 + config default on), Profile **`dailyWatchlistDigestEmail`** opt-out; digest **does not** increment **`opportunityMaxEmailsPerDay`**. **Per-user dip cap** default **5** (was 3; Profile aligned). **Health:** `GET /api/health/config` → **`emailSendBudget`** (+ **`digestDayCount`**). **Git:** `f6f8cd9b`, `3bc62cfe`, `5931a83f` on **`main`**, deployed. **Manual test:** `cd backend && npm run digest:run-once`. **Still open:** SES production access; SPF/DMARC/DKIM; users who saved **`opportunityMaxEmailsPerDay: 3`** keep 3 until Profile edit.
+**Session checkpoint (2026-05-17) — Email efficiency & Grok digest:** Hit SES **`454 Daily message quota exceeded`** from legacy threshold blast + uncapped sends (legacy loop **removed 2026-05-25**, see above). **Shipped:** **`emailSendBudget.js`** — global opportunity pool (**80/day**, **12/hr**), separate **digest pool** (**150/day**), per-recipient cooldown, auto-pause on 454; **`opportunityEmailDeliveryMode`** default **`hourly_digest`**; outbox honest on budget block. **Daily Grok watchlist briefing** re-enabled: **`ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL=true`** (PM2 + config default on), Profile **`dailyWatchlistDigestEmail`** opt-out; digest **does not** increment **`opportunityMaxEmailsPerDay`**. **Per-user dip cap** default **5** (was 3; Profile aligned). **Health:** `GET /api/health/config` → **`emailSendBudget`** (+ **`digestDayCount`**). **Git:** `f6f8cd9b`, `3bc62cfe`, `5931a83f` on **`main`**, deployed. **Manual test:** `cd backend && npm run digest:run-once`. **Still open:** SES production access; SPF/DMARC/DKIM; users who saved **`opportunityMaxEmailsPerDay: 3`** keep 3 until Profile edit.
 
 **Session checkpoint (2026-05-17) — Taiwan watchlist (iTick):** **`ITICK_API_TOKEN`**; symbols **`STOCK:TW:2330`** / **`TW:2330`**; **`itickClient.js`**, **`stockMarketIdentity.js`**, FOCI search + **`twEnglishAliases.json`** (~1.9k). **Git:** `34c3bcdb`, `fb06fad0`. **Open:** TW charts on dashboard (quotes only today).
 
@@ -36,7 +38,7 @@ Last updated: **2026-05-17** (deliverability one-click unsub + TW watchlist Engl
 | **§11 Phase B** — Ingestion | **🟡 MVP shipped** | `research_artifacts` + Polygon `/v2/reference/news` + cron worker; all-watchlist tickers; dedupe `content_hash`. **Open:** dedicated queue worker, X + EDGAR (see §11). |
 | **§11 Phase D** — Fusion gate | **🟡 MVP shipped** | `researchFusionGate` + `correlationRuleV1` on dip-insight path when **`researchDigestEmail`** true → else plain opportunity email. **Open:** digest dedupe keys, async queue, full `ResearchAlertEvaluator`. |
 | **§11 Phase C** — Agent context | **🟡 MVP shipped** | Internal **`/research/artifacts`** + **`research_context_loader`** + reply digest + **`opportunity_scout`** scoring/LLM (**`news_context`**, risk bumps). **Open:** **`signal_fusion_scorer`**, vol from history, filing rows. |
-| **AWS SES (transactional mail)** | **🟡 SMTP working; sandbox** | Budgets + **one-click unsub** shipped. **Open:** production access, **DNS** (`docs/DELIVERABILITY_DNS.md`), SNS bounce/complaint webhook with secret. |
+| **AWS SES (transactional mail)** | **🟡 SMTP working; sandbox** | Budgets + **one-click unsub** shipped; legacy % mail **removed** (`8fb10fbd`). **Open:** **us-east-1** production access (Support case replied 2026-05-23), **DNS**, SNS webhook. |
 | **§9 Go-live checklist** | Open | Hard gates before declaring “launch”: queues, DR, etc. |
 | **Situation room** — global awareness / “major events” | **Planned** | In-house feed (no reliance on monitor-the-situation.com); **dashboard UI directly under watchlist**; doubles as **live context for AI agents**. Full plan: **§ Situation room / global monitor** below. |
 
@@ -83,7 +85,7 @@ Last updated: **2026-05-17** (deliverability one-click unsub + TW watchlist Engl
 
 **Reference:** [Rotate SMTP credentials (AWS)](https://repost.aws/knowledge-center/ses-rotate-smtp-access-keys)
 
-### Current status (2026-05-17)
+### Current status (2026-05-25; was 2026-05-17)
 
 | Item | Status |
 |------|--------|
@@ -93,7 +95,7 @@ Last updated: **2026-05-17** (deliverability one-click unsub + TW watchlist Engl
 | **Account mode** | **Sandbox** — 200 emails/24h, 1/sec; recipients must be **verified** in SES until production access |
 | **Send budgets (app)** | **✅** Opportunity mail **80/day** + **12/hr**; daily Grok digest **150/day** (separate pool); per-user dip cap default **5** (Profile 1–50); digest does not count toward dip cap |
 | **Daily Grok briefing** | **✅ Cron on** — `DAILY_WATCHLIST_DIGEST_CRON` default `0 7 * * *` UTC; opt-out via Profile |
-| **Production access** | **Pending** — console showed **“More information needed”**; limits increase previously **denied** until account issues cleared |
+| **Production access** | **Pending** — AWS Support asked why not **us-east-2** (Ohio had prior limit increase); **replied 2026-05-23** requesting **us-east-1** (verified domain + live `SMTP_HOST`); await case |
 | **DNS** | **Open** — run `npm run email:check-dns`; follow **`docs/DELIVERABILITY_DNS.md`** (DKIM CNAMEs, SPF merge, DMARC) |
 | **One-click unsubscribe** | **✅ Shipped** — `List-Unsubscribe-Post` + `POST/GET /api/email/unsubscribe?token=…` |
 
@@ -113,12 +115,12 @@ npm run email:test-opportunity
 
 **Goal:** Fewer low-signal emails, better send timing, no duplicate templates per dip, SES-safe volume.
 
-**Architecture today:** Every **1 min**, `PriceMonitor.checkAllPrices` → quotes → `emitWatchlistOpportunitySignals` (requires **`user_alerts` + `baseline_price`**). Separate **`AlertService.processAlerts`** can still send legacy **`sendAlert`** emails (small/medium/large %). Optional **Grok dip-insight** on opportunity path. **Quiet hours were removed from send path (2026-05-06)** — restoring in Phase 1.
+**Architecture today:** Every **1 min**, `PriceMonitor.checkAllPrices` → quotes → `emitWatchlistOpportunitySignals` (requires **`user_alerts` + `baseline_price`**). **`AlertService`** is watchlist CRUD only (no legacy 5/10/15% polling; removed **2026-05-25**). Optional **Grok dip-insight** on opportunity path. Quiet hours + daily caps + RTH morning batch + outbox/digest shipped (Phases 1–6).
 
 | Pain point | Mitigation |
 |------------|------------|
-| Default email tier `all` → noisy inbox | Default **`overreaction_only`** for new merges; Profile unchanged options |
-| Legacy + opportunity double email | Suppress legacy email when opportunity mail sent same user/symbol/hour |
+| Default email tier `all` → noisy inbox | Code default **`overreaction_only`** for new/unspecified prefs (`notificationPreferences.js`); Profile UI may show broader options |
+| ~~Legacy + opportunity double email~~ | **Removed** — legacy threshold loop deleted (`8fb10fbd`) |
 | No daily cap on opportunity mail | **`opportunityMaxEmailsPerDay`** (per user, Redis; default **5**; hourly digest batches symbols) |
 | No quiet hours | **`timezone` + quiet window** + `opportunityRespectQuietHours` |
 | Grok on every fire | Phase 4: tier-gate dip insight (not Phase 1) |
@@ -133,8 +135,8 @@ npm run email:test-opportunity
 
 - [x] **`backend/utils/opportunityEmailPolicy.js`** — quiet hours, daily cap, legacy-alert block key, event logger
 - [x] **`notificationPreferences.js`** — default email tier `overreaction_only`, `opportunityMaxEmailsPerDay`, quiet-hour fields
-- [x] **`priceMonitor.js`** — enforce cap + quiet hours before send; block legacy alert after opportunity email
-- [x] **`alertService.js`** — skip legacy email when block key set
+- [x] **`priceMonitor.js`** — enforce cap + quiet hours before send; hour-bucket block keys after opportunity send
+- [x] ~~**`alertService.js`** legacy skip~~ — legacy path **removed 2026-05-25**
 - [x] **`database.js`** default JSON for new users
 - [x] **Profile** — quiet hours + max emails/day + baseline copy; persist new pref keys
 - [x] **Tests** — `backend/utils/notificationPreferences.test.js`, `opportunityEmailPolicy.test.js` (`node --test utils/*.test.js`)
@@ -183,13 +185,51 @@ npm run email:test-opportunity
 
 ## Resume Here Next Session
 
-### Session save spot (2026-05-17) — continue here next time
+### Session save spot (2026-05-25) — continue here next time
 
-**Email / AWS:** SMTP works in **us-east-1**; app budgets deployed (`emailSendBudget`, digest cron on, dip cap default **5**). Finish **SES production access**; **SPF** + **DMARC** + **DKIM**. Monitor **`/api/health/config`** → `emailSendBudget` (watch for `paused: true` after 454). Optional: one-off **`npm run digest:run-once`** smoke. Users with saved cap **3** need Profile bump if desired.
+**Email / AWS:** Opportunity-only mail path (legacy 5/10/15% loop removed, `8fb10fbd`). **Sandbox:** unverified recipients get **554**; verified test sends OK. **Awaiting** SES **production access in us-east-1** (Support case replied — Ohio vs Virginia). **DNS (Namecheap):** DKIM CNAMEs, SPF `include:amazonses.com`, DMARC — **`docs/DELIVERABILITY_DNS.md`**, **`npm run email:check-dns`**. Then SNS bounce/complaint → **`POST /api/webhooks/ses-delivery`** + **`SES_WEBHOOK_SECRET`**. Post-approval smoke: `TEST_USER_ID=4 npm run email:test-opportunity` (must not 554). Monitor **`/api/health/config`** → `emailSendBudget`.
 
-**Opportunity emails:** Phases 1–4 shipped. Verify: `dip_insight_async` queue, `via: outbox_dip_insight`, tier skips for `on_sale`-only.
+**Opportunity emails:** Phases 1–6 shipped. Remember app gates: RTH morning batch, tier filters, quiet hours, digest mode — not SES failures.
 
-**Product (unchanged next):** Wire **`/diag/market-universe-rank`** (all three strategies) + fundamentals/macro/news/X into **`buildAgentWatchlistContext`** — § [Quant AGI — unified stock selection](#quant-agi--unified-stock-selection-for-dashboard-langgraph).
+**Product (next engineering):** Quant **`/diag/market-universe-rank`** (all three strategies) + fundamentals/macro/news/X → **`buildAgentWatchlistContext`** — § [Quant AGI — unified stock selection](#quant-agi--unified-stock-selection-for-dashboard-langgraph).
+
+**Parallel / polish:** TW charts; landing **Open charts** CTA vs login-only `/charts`; Situation room; §9 go-live.
+
+## Deploy list / capital deployment (plan — started 2026-05-25)
+
+**Product:** One **deploy list** per user — symbols authorized for **capital deployment**. The **watchlist** is the wide monitoring universe; the deploy list is a **Grok-curated short list** (ideal dips + how much to deploy), later executed via **brokerage API**. Mechanical opportunity tiers still own **when** a dip fires; Grok + policy own **how much** and **which names** make the deploy list.
+
+**Non-negotiables:** Deploy list ⊆ watchlist (must have `user_alerts` + Main watchlist token). Numbers from tools/quotes/baselines, not model recall. **No live orders** until broker phase. v1 deploy symbols: **US stocks only** (no `TW:*`, no crypto until broker supports).
+
+### Architecture
+
+| Layer | Storage / path | Role |
+|-------|----------------|------|
+| Watchlist | `user_watchlists` + `user_alerts` | Monitor + baselines + opportunity engine |
+| Deploy list | `user_deploy_list_items` → FK `user_alerts.id` | Capital-ready subset |
+| Grok optimize | `POST /api/deploy-list/optimize` → LangGraph scan | Rank + size % + limit bands |
+| Broker (later) | `executionService` + paper/live flag | Place orders from approved list only |
+
+### Phased delivery
+
+| Phase | Scope | Status |
+|-------|--------|--------|
+| **DL-1** | DB `user_deploy_list_items`, CRUD API, dashboard checkbox + **Deploy list** panel, `onDeployList` on watchlist context | **✅ Shipped** (`user_deploy_list_items`, `/api/deploy-list`, dashboard) |
+| **DL-2** | **Optimize with Grok** — replace list from `topCandidates` + persist rationale / `suggestedLimitBand` / `target_weight_pct` | **✅ Shipped** (`POST /api/deploy-list/optimize` → LangGraph scan) |
+| **DL-3** | `DeployPlanV1` schema, user approve/dismiss, audit in `agent_runs` | Planned |
+| **DL-4** | Broker paper (Alpaca/IBKR/etc.), `executionService`, Profile kill switch | Planned |
+| **DL-5** | Optional auto-deploy on tier + hard caps | Planned |
+
+### DL-1 / DL-2 implementation notes
+
+- **API:** `GET/POST/DELETE /api/deploy-list`, `POST /api/deploy-list/optimize`
+- **UI:** Watchlist **Deploy** column; panel below table with total target weight %, **Optimize with Grok**, remove
+- **Optimize prompt:** Scan watchlist (US stocks), rank ideal dips vs baseline, suggest % within Profile max position % cap
+- **Fields:** `target_weight_pct`, `source` (`manual` \| `grok_optimize`), `grok_rationale`, `suggested_limit_min/max`, `last_optimized_at`
+
+### Session save spot (2026-05-17) — prior
+
+**Email / AWS:** Code path complete through Phase 6 (budgets, digest, one-click unsub). DNS + production access were open (see **2026-05-25** checkpoint). Taiwan watchlist: English aliases live; **TW charts** still open.
 
 ### Session save spot (2026-05-11)
 
@@ -376,7 +416,7 @@ npm run email:test-opportunity
 
 ## Production ops (smoke & recovery)
 
-**Last verified healthy: 2026-05-17** — `keepitbased.com` landing **200**; `app.keepitbased.com/` **200**; `/api/health` **200**; `/quant-agi-terminal/` **200**; `/quant-sidecar/health` **200**; **`npm run email:verify-smtp`** **OK** (us-east-1); test opportunity email sent via SES.
+**Last verified healthy: 2026-05-25** — `keepitbased.com` + `app.keepitbased.com` `/api/health` **200**; **`npm run email:verify-smtp`** **OK** (us-east-1); opportunity test to verified Gmail **OK**; unverified recipient **554** (sandbox); legacy alert log spam **gone** after `8fb10fbd`; DNS DMARC/SES-SPF still open.
 
 **Historical incident (2026-05-08):** App returned **403/502** when `frontend/build` missing/unreadable, PM2 down, or nginx perms blocked `www-data`. Use this runbook if it recurs:
 
@@ -908,16 +948,17 @@ npm run golden:dip-insight | npm run golden:opportunity | npm run test:charts
 
 **Missing / wanted:** OpenAPI specs, Storybook, DB schema doc, troubleshooting one-pager.
 
-### Status snapshot (2026-05-17)
+### Status snapshot (2026-05-25)
 
 | Area | Status |
 |------|--------|
 | Security | 🟢 Production-ready |
 | Charts / watchlist | 🟢 MVP complete |
-| LangGraph agent + dip email | 🟢 Core shipped |
-| AWS SES SMTP | 🟡 Auth + test send OK; **sandbox**; production access + DNS open |
+| LangGraph agent + dip email | 🟢 Core shipped (opportunity path only; legacy % alerts **removed**) |
+| AWS SES SMTP | 🟡 Auth OK; **sandbox** (554 unverified); **us-east-1** production case pending; DNS open |
 | §11 research fusion | 🟡 MVP; queue/EDGAR open |
-| Quant → dashboard context | 🟠 **Next product priority** |
+| Quant → dashboard context | 🟠 **Next** (parallel to deploy list DL-3+) |
+| Deploy list / Grok sizing | **✅ DL-1/DL-2** — broker + `DeployPlanV1` next (DL-3) |
 | §9 go-live gates | Open |
 
-*Consolidated 2026-05-17. Prior split files redirect here.*
+*Consolidated 2026-05-17; refreshed 2026-05-25. Prior split files redirect here.*

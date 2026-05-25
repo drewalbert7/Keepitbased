@@ -28,7 +28,17 @@ import { WatchlistTwStockSearchInput } from '../components/WatchlistTwStockSearc
 import { WatchlistCryptoSearchInput } from '../components/WatchlistCryptoSearchInput';
 import { Watchlist52WeekRange } from '../components/Watchlist52WeekRange';
 import { StockFundamentalsModal } from '../components/StockFundamentalsModal';
+import { DeployListPanel } from '../components/DeployListPanel';
 import { secIssuerBrowseUrl } from '../services/fundamentalsApi';
+import {
+  addDeployListItem,
+  clearDeployList,
+  fetchDeployList,
+  isDeploySelectableRow,
+  optimizeDeployList,
+  removeDeployListItem,
+  type DeployListItem
+} from '../services/deployListApi';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 
 const seedMessages: AgentMessage[] = [
@@ -87,6 +97,15 @@ export const AIAgentPage: React.FC = () => {
   /** Watchlist row → fundamentals + SEC filings (stocks only) */
   const [wlFundamentalsSymbol, setWlFundamentalsSymbol] = useState<string | null>(null);
 
+  const [deployItems, setDeployItems] = useState<DeployListItem[]>([]);
+  const [deployTotalPct, setDeployTotalPct] = useState(0);
+  const [deployLoading, setDeployLoading] = useState(false);
+  const [deployOptimizing, setDeployOptimizing] = useState(false);
+  const deployAlertIds = useMemo(
+    () => new Set(deployItems.map((d) => d.userAlertId)),
+    [deployItems]
+  );
+
   const [assistantMode, setAssistantMode] = useState<AssistantIntentMode>('smart');
   /** Progressive character reveal after the full reply arrives (not live token streaming). */
   const [streamReplyDisplay, setStreamReplyDisplay] = useState(true);
@@ -104,6 +123,19 @@ export const AIAgentPage: React.FC = () => {
       .sort()
       .join(',');
   }, [watchlistCtx?.items]);
+
+  const loadDeployList = useCallback(async () => {
+    setDeployLoading(true);
+    try {
+      const data = await fetchDeployList();
+      setDeployItems(data.items);
+      setDeployTotalPct(data.totalTargetWeightPct);
+    } catch {
+      /* non-fatal */
+    } finally {
+      setDeployLoading(false);
+    }
+  }, []);
 
   const loadWatchlist = useCallback(async () => {
     const gen = ++watchlistLoadGenRef.current;
@@ -250,10 +282,11 @@ export const AIAgentPage: React.FC = () => {
 
   useEffect(() => {
     void loadWatchlist();
+    void loadDeployList();
     /** Reconcile with server (baselines, new rows); live quotes also merge via Socket `priceUpdate`. */
     const id = window.setInterval(() => void loadWatchlist(), 90_000);
     return () => window.clearInterval(id);
-  }, [loadWatchlist]);
+  }, [loadWatchlist, loadDeployList]);
 
   useEffect(() => {
     if (!socket) return;
@@ -398,11 +431,62 @@ export const AIAgentPage: React.FC = () => {
     return 'text-slate-300';
   };
 
+  const handleToggleDeploy = async (row: WatchlistContextItem, checked: boolean) => {
+    if (!isDeploySelectableRow(row.assetType, row.symbol)) return;
+    try {
+      if (checked) {
+        await addDeployListItem(row.alertId, row.sizing?.suggestedPortfolioPct ?? undefined);
+        toast.success(`${row.symbol} added to deploy list`);
+      } else {
+        await removeDeployListItem(row.alertId);
+        toast.success(`${row.symbol} removed from deploy list`);
+      }
+      await loadDeployList();
+    } catch (error: unknown) {
+      const msg = axios.isAxiosError(error)
+        ? String(error.response?.data?.message || '') || error.message
+        : 'Deploy list update failed';
+      toast.error(msg);
+    }
+  };
+
+  const handleOptimizeDeployList = async () => {
+    setDeployOptimizing(true);
+    try {
+      const result = await optimizeDeployList();
+      setDeployItems(result.items);
+      const total = result.items.reduce((s, it) => s + (it.targetWeightPct || 0), 0);
+      setDeployTotalPct(Number(total.toFixed(2)));
+      toast.success(result.message);
+      await loadWatchlist();
+    } catch (error: unknown) {
+      const msg = axios.isAxiosError(error)
+        ? String(error.response?.data?.message || '') || error.message
+        : 'Grok optimization failed';
+      toast.error(msg);
+    } finally {
+      setDeployOptimizing(false);
+    }
+  };
+
+  const handleClearDeployList = async () => {
+    try {
+      await clearDeployList();
+      setDeployItems([]);
+      setDeployTotalPct(0);
+      toast.success('Deploy list cleared');
+      await loadWatchlist();
+    } catch {
+      toast.error('Could not clear deploy list');
+    }
+  };
+
   const handleRemoveTicker = async (symbol: string, assetType: 'stock' | 'crypto' = 'stock') => {
     try {
       await removeWatchlistSymbol(symbol, assetType);
       toast.success(`${symbol} removed from watchlist`);
       await loadWatchlist();
+      await loadDeployList();
     } catch (error: unknown) {
       const msg = axios.isAxiosError(error)
         ? String(error.response?.data?.message || '') || error.message
@@ -689,10 +773,16 @@ export const AIAgentPage: React.FC = () => {
                 </p>
                 <div className="-mx-1 overflow-x-auto rounded-lg border border-white/[0.06] bg-kib-surface px-1 sm:mx-0 sm:px-0">
                   <div className="max-h-[min(70vh,560px)] overflow-y-auto overscroll-x-contain sm:max-h-[min(520px,65vh)]">
-                    <table className="w-full min-w-[1380px] text-[13px] sm:min-w-[1480px] sm:text-sm">
+                    <table className="w-full min-w-[1420px] text-[13px] sm:min-w-[1520px] sm:text-sm">
                       <thead className="sticky top-0 z-20 border-b border-white/[0.06] bg-kib-surface/95 backdrop-blur-sm">
                         <tr className="text-left text-[10px] font-medium uppercase tracking-wide text-kib-muted sm:text-[11px]">
-                          <th className="sticky left-0 top-0 z-30 border-r border-white/[0.06] bg-kib-surface/95 px-2 py-2.5 pl-3 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.5)] lg:static lg:top-auto lg:z-auto lg:border-0 lg:bg-transparent lg:px-3 lg:py-3 lg:pl-4 lg:shadow-none">
+                          <th
+                            className="sticky left-0 top-0 z-30 w-12 border-r border-white/[0.06] bg-kib-surface/95 px-1 py-2.5 text-center lg:static lg:z-auto lg:w-14 lg:border-0 lg:bg-transparent lg:px-2 lg:py-3"
+                            title="Capital deploy list (US stocks)"
+                          >
+                            Deploy
+                          </th>
+                          <th className="sticky left-12 top-0 z-30 border-r border-white/[0.06] bg-kib-surface/95 px-2 py-2.5 pl-2 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.5)] lg:static lg:left-auto lg:top-auto lg:z-auto lg:border-0 lg:bg-transparent lg:px-3 lg:py-3 lg:pl-4 lg:shadow-none">
                             <button
                               type="button"
                               onClick={() => toggleWlSort('symbol')}
@@ -751,14 +841,31 @@ export const AIAgentPage: React.FC = () => {
                       <tbody className="divide-y divide-white/[0.06]">
                         {filteredWatchlistItems.map((row) => {
                           const pct = row.sizing.suggestedPortfolioPct;
+                          const canDeploy = isDeploySelectableRow(row.assetType, row.symbol);
+                          const onDeploy =
+                            row.onDeployList === true || deployAlertIds.has(row.alertId);
                           return (
                             <tr
                               key={`${row.assetType}:${row.alertId}:${row.symbol}`}
                               className={`group transition-colors hover:bg-white/[0.03] ${
                                 row.active ? '' : 'opacity-80'
-                              }`}
+                              } ${onDeploy ? 'bg-emerald-500/[0.04]' : ''}`}
                             >
-                              <td className="sticky left-0 z-10 border-r border-white/[0.06] bg-kib-surface px-2 py-2 align-top shadow-[4px_0_12px_-4px_rgba(0,0,0,0.35)] transition-colors group-hover:bg-white/[0.03] lg:static lg:z-auto lg:border-0 lg:bg-transparent lg:px-3 lg:py-2.5 lg:pl-4 lg:shadow-none">
+                              <td className="sticky left-0 z-10 border-r border-white/[0.06] bg-kib-surface px-1 py-2 text-center align-top lg:static lg:z-auto lg:border-0 lg:bg-transparent lg:px-2 lg:py-2.5">
+                                <input
+                                  type="checkbox"
+                                  className="rounded border-white/20 bg-kib-bg disabled:opacity-30"
+                                  checked={onDeploy}
+                                  disabled={!canDeploy || watchlistLoading}
+                                  title={
+                                    canDeploy
+                                      ? 'Include on capital deploy list'
+                                      : 'US stocks only for deploy list'
+                                  }
+                                  onChange={(e) => void handleToggleDeploy(row, e.target.checked)}
+                                />
+                              </td>
+                              <td className="sticky left-12 z-10 border-r border-white/[0.06] bg-kib-surface px-2 py-2 align-top shadow-[4px_0_12px_-4px_rgba(0,0,0,0.35)] transition-colors group-hover:bg-white/[0.03] lg:static lg:left-auto lg:z-auto lg:border-0 lg:bg-transparent lg:px-3 lg:py-2.5 lg:pl-4 lg:shadow-none">
                                 <div className="flex flex-col gap-0.5">
                                   {row.assetType === 'stock' ? (
                                     isTwStockSymbol(row.symbol) ? (
@@ -974,6 +1081,26 @@ export const AIAgentPage: React.FC = () => {
               <OpportunityPolicyPanel embedInPanel />
             </div>
               }
+            />
+
+            <DeployListPanel
+              items={deployItems}
+              totalTargetWeightPct={deployTotalPct}
+              loading={deployLoading}
+              optimizing={deployOptimizing}
+              onOptimize={() => void handleOptimizeDeployList()}
+              onClear={() => void handleClearDeployList()}
+              onRemove={(alertId) => {
+                void (async () => {
+                  try {
+                    await removeDeployListItem(alertId);
+                    await loadDeployList();
+                    await loadWatchlist();
+                  } catch {
+                    toast.error('Could not remove');
+                  }
+                })();
+              }}
             />
 
             </div>

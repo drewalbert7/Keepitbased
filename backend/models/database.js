@@ -133,6 +133,30 @@ async function runInitializeDatabase() {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_user_watchlists_user_name ON user_watchlists(user_id, name)
     `);
 
+    // Capital deploy list (subset of user_alerts authorized for future brokerage execution)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_deploy_list_items (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        user_alert_id INTEGER NOT NULL REFERENCES user_alerts(id) ON DELETE CASCADE,
+        target_weight_pct DECIMAL(5,2),
+        suggested_limit_min DECIMAL(15,8),
+        suggested_limit_max DECIMAL(15,8),
+        source VARCHAR(32) NOT NULL DEFAULT 'manual',
+        grok_rationale TEXT,
+        status VARCHAR(16) NOT NULL DEFAULT 'active'
+          CHECK (status IN ('active', 'paused')),
+        last_optimized_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(user_id, user_alert_id)
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_deploy_list_user_id ON user_deploy_list_items(user_id)
+    `);
+
     // Price history table (for charts)
     await client.query(`
       CREATE TABLE IF NOT EXISTS price_history (
