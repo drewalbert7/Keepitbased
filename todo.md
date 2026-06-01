@@ -2,7 +2,9 @@
 
 > **Single source of truth:** `keepitbased/todo.md` in this repo. When you or Cursor reference **`todo.md`**, use **this file only**. A stub at `/home/dstrad/todo.md` redirects here.
 
-Last updated: **2026-05-23** (deploy list checkbox fix; session save).
+Last updated: **2026-06-01** (site outage recovery — PM2 + Hetzner firewall + SSH/Cursor; session save).
+
+**Session checkpoint (2026-06-01) — Site unreachable / API 502 + external timeout:** **Symptoms:** `https://keepitbased.com` and `https://app.keepitbased.com` static shell could load from server-side checks, but **`/api/health` → 502**; external clients (Mac private browser, off-host fetch) saw **`curl` timeout** to `:443` even though DNS resolved correctly (`keepitbased.com` → **`178.156.206.27`**). **Root causes (two layers):** (1) **PM2 empty** — no processes on `3001/5001/3010/8844`; nginx upstream to API failed. (2) **Hetzner cloud firewall** — host **UFW already allowed** `80/443` (v4+v6); **`nft`/iptables** matched UFW; traffic still dropped at **provider edge** until firewall was removed/reconfigured. **Fix applied:** **`pm2 resurrect`** (restored `keepitbased-api`, `stock-service`, `quant-agi-api`, `quant-agi-frontend`) → local **`curl http://127.0.0.1:3001/api/health`** **200** → **`pm2 save`**. **Hetzner `firewall-1` inbound rules (re-applied):** TCP **`22`** from admin **`66.190.174.124/32`** only; TCP **`80`** + **`443`** from **Any IPv4 + Any IPv6** (required — rules with only SSH/ICMP block the public site). Apply firewall to server resource. **Cursor / SSH:** Reverted **Remote SSH extension in Cursor** to an **older version** to regain reliable shell access; then fixed underlying **Mac SSH** (see § [Admin SSH + Cursor](#admin-ssh--cursor-2026-06-01) — new **`id_ed25519`**, Keychain persistence, direct IP **`178.156.206.27`**, no flaky ProxyJump). **Verified:** `curl -4 -I https://keepitbased.com` → **`HTTP/2 200`** from admin Mac; `app.keepitbased.com/api/health` **200**. **If site “not loading” recurs:** § [Production ops](#production-ops-smoke--recovery) — check **`pm2 status`** first, then **`curl -4 -I --max-time 10 https://keepitbased.com`** from off-host; if DNS OK but TCP timeout → **Hetzner firewall** (must include **443**, not SSH-only). **Next engineering unchanged:** Quant rank → **`buildAgentWatchlistContext`**; SES/DNS ops still open.
 
 **Session checkpoint (2026-05-23) — Deploy list checkboxes + DL-1/DL-2 live:** **Shipped:** Capital **deploy list** (`2b5665eb`) — `user_deploy_list_items`, `/api/deploy-list` CRUD + **Optimize with Grok**, dashboard **Deploy** column + panel. **Fix (this session):** Checkbox state no longer stuck after uncheck (`756eba80`) — `deployAlertIds` is source of truth after list loads; optimistic toggle + rollback; paused/TW/crypto disabled; omit `targetWeightPct: 0` (validation). **Deployed:** `npm run deploy` + `pm2 reload keepitbased-api`. **Uncommitted WIP (do not mix):** signup-admin (`is_signup_admin`, `ProfileAdminPage`, `seedAdminsFromEnv` in local `database.js` only). **Next ops:** SES production (us-east-1 case pending); SPF/DMARC (`npm run email:check-dns`). **Next engineering:** **DL-3** `DeployPlanV1` + approve UI; Quant rank → **`buildAgentWatchlistContext`**; broker (**DL-4**).
 
@@ -186,6 +188,12 @@ npm run email:test-opportunity
 - **Phases 2–5 & §9:** deferred until fusion + observability justify broader tooling and launch gates.
 
 ## Resume Here Next Session
+
+### Session save spot (2026-06-01) — continue here next time
+
+**Ops (just fixed):** Site outage was **PM2 down** + **Hetzner firewall** missing public **80/443**. Recovery: **`pm2 resurrect && pm2 save`**; Hetzner inbound **22** from **`66.190.174.124/32`**, **80/443** from anywhere. Host UFW was already correct — do not assume UFW is the blocker if external `curl` times out. **SSH + Cursor (daily breaker fixed):** new **`id_ed25519`**, **`ssh-add --apple-use-keychain`**, **`UseKeychain yes`**, direct IP **`178.156.206.27`** (not domain), removed flaky ProxyJump, **`ssh-copy-id`** on both servers, cleaned broken configs; Cursor Remote SSH reverted to older extension until local SSH stable. Full notes: § [Admin SSH + Cursor](#admin-ssh--cursor-2026-06-01). Smoke from laptop: **`curl -4 -I --max-time 10 https://keepitbased.com`**. Full runbook: § [Production ops](#production-ops-smoke--recovery).
+
+**Product (next engineering):** Quant rank → **`buildAgentWatchlistContext`**; SES/DNS — unchanged from 2026-05-25 notes below.
 
 ### Session save spot (2026-05-25) — continue here next time
 
@@ -419,7 +427,61 @@ npm run email:test-opportunity
 
 ## Production ops (smoke & recovery)
 
-**Last verified healthy: 2026-05-25** — `keepitbased.com` + `app.keepitbased.com` `/api/health` **200**; **`npm run email:verify-smtp`** **OK** (us-east-1); opportunity test to verified Gmail **OK**; unverified recipient **554** (sandbox); legacy alert log spam **gone** after `8fb10fbd`; DNS DMARC/SES-SPF still open.
+**Last verified healthy: 2026-06-01** — `keepitbased.com` + `app.keepitbased.com` **200**; `/api/health` **200** after **`pm2 resurrect`**; external **`curl -4 -I https://keepitbased.com`** **200** after Hetzner firewall rules fixed (see **2026-06-01** checkpoint). SES/DNS items unchanged from 2026-05-25.
+
+**Incident (2026-06-01) — “Site not loading” / API 502 / external timeout**
+
+| Symptom | Likely cause | Fix |
+|--------|--------------|-----|
+| `/api/health` **502**, nothing on `:3001` | PM2 processes not running | `cd /home/dstrad/keepitbased && pm2 resurrect` (or `pm2 start ecosystem.config.js`); verify **`pm2 status`** all online; **`pm2 save`** |
+| Static pages OK on server, **502** on `/api/*` | Same — API down | Same as above |
+| DNS resolves (`178.156.206.27`) but **`curl -4/-6` timeout** to `:443` from laptop | **Hetzner cloud firewall** (host UFW can still be open) | Hetzner Console → Firewalls → inbound: **TCP 80 + 443** Any IPv4/IPv6; **TCP 22** from admin IP only (`66.190.174.124/32` as of 2026-06-01); apply to server |
+| Cannot SSH to fix | Cursor Remote SSH extension issue | Revert Remote SSH extension to last known-good version; or use provider web console / out-of-band shell |
+
+**Recovery sequence (use in order):**
+
+1. `pm2 status` — expect **`keepitbased-api`**, **`stock-service`**, **`quant-agi-api`**, **`quant-agi-frontend`** online
+2. If empty: `pm2 resurrect` → `curl -sf http://127.0.0.1:3001/api/health` → `pm2 save`
+3. From **off-host** (not SSH session on server): `curl -4 -I --max-time 10 https://keepitbased.com` — must be **200**, not timeout
+4. If step 3 times out: check **Hetzner firewall** rules (must include **443**, not SSH-only); host `sudo ufw status verbose` should already show **80/443 ALLOW**
+5. Re-smoke: `https://app.keepitbased.com/api/health`, quant sidecar `/quant-sidecar/health`
+
+**Hetzner firewall reference (2026-06-01):** firewall name **`firewall-1`** — inbound **3× TCP**: `22` ← `66.190.174.124/32`; `80` ← Anywhere; `443` ← Anywhere. ICMP optional. **Do not** leave only SSH + ICMP — website will not load.
+
+### Admin SSH + Cursor (2026-06-01)
+
+**Why it broke every day (root causes):**
+
+- Old SSH key (**`id_rsa`**) was missing or not working.
+- **macOS was not keeping the SSH key loaded** after reboot/sleep — had to re-enter or re-add key daily.
+- **ProxyJump** through Hetzner + DNS hostname (**`keepitbased.com`**) was flaky and slow.
+- **SSH config syntax errors or wrong paths** on Mac and on servers (Hetzner + Keepitbased/Erebor).
+- **Cursor Remote SSH depends on local SSH** — if Terminal/`ssh` is unreliable, Cursor remote sessions fail too.
+
+**What we fixed:**
+
+| Area | Change |
+|------|--------|
+| **New key** | Created **`id_ed25519`** on Mac (modern, more reliable than old **`id_rsa`**) |
+| **Key persistence (#1 daily fix)** | **`ssh-add --apple-use-keychain`** + **`UseKeychain yes`** in **`~/.ssh/config`** — key survives reboot |
+| **Simpler SSH config** | **`keepitbased`** host uses **direct IP `178.156.206.27`** instead of domain; **removed ProxyJump** for main connection; added sensible **timeouts + ServerAlive** keepalives |
+| **Server trust** | **`ssh-copy-id`** installed public key on **both servers** (Hetzner + Keepitbased) |
+| **Config cleanup** | Fixed broken **`~/.ssh/config`** and server-side **`authorized_keys`** / paths |
+| **Cursor** | Reverted **Remote SSH extension** to older known-good version while stabilizing local SSH |
+
+**Current status (Mac admin setup):**
+
+- Fresh **ed25519** key in use
+- **Direct IP** to Keepitbased server (**`178.156.206.27`**, not hostname, for SSH)
+- **macOS Keychain** integration — no daily key/password re-prompt loop
+- Hetzner firewall allows SSH from **`66.190.174.124/32`** only
+
+**If SSH/Cursor breaks again:**
+
+1. Terminal: **`ssh -v keepitbased`** (or whatever **`Host`** alias is in config) — fix auth before Cursor
+2. **`ssh-add -l`** — if empty: **`ssh-add --apple-use-keychain ~/.ssh/id_ed25519`**
+3. Confirm Hetzner firewall still allows **your current public IP** on port **22** (home IP can change)
+4. Cursor: check Remote SSH extension version; revert if updates regress
 
 **Historical incident (2026-05-08):** App returned **403/502** when `frontend/build` missing/unreadable, PM2 down, or nginx perms blocked `www-data`. Use this runbook if it recurs:
 
@@ -951,17 +1013,18 @@ npm run golden:dip-insight | npm run golden:opportunity | npm run test:charts
 
 **Missing / wanted:** OpenAPI specs, Storybook, DB schema doc, troubleshooting one-pager.
 
-### Status snapshot (2026-05-25)
+### Status snapshot (2026-06-01)
 
 | Area | Status |
 |------|--------|
 | Security | 🟢 Production-ready |
 | Charts / watchlist | 🟢 MVP complete |
 | LangGraph agent + dip email | 🟢 Core shipped (opportunity path only; legacy % alerts **removed**) |
+| **Production uptime / firewall** | **🟢 Recovered 2026-06-01** — PM2 resurrect + Hetzner **80/443** rules; SSH/Cursor stabilized (**ed25519**, Keychain, direct IP); see § Production ops |
 | AWS SES SMTP | 🟡 Auth OK; **sandbox** (554 unverified); **us-east-1** production case pending; DNS open |
 | §11 research fusion | 🟡 MVP; queue/EDGAR open |
 | Quant → dashboard context | 🟠 **Next** (parallel to deploy list DL-3+) |
 | Deploy list / Grok sizing | **✅ DL-1/DL-2** — broker + `DeployPlanV1` next (DL-3) |
 | §9 go-live gates | Open |
 
-*Consolidated 2026-05-17; refreshed 2026-05-25. Prior split files redirect here.*
+*Consolidated 2026-05-17; refreshed 2026-06-01. Prior split files redirect here.*
