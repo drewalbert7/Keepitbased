@@ -107,7 +107,11 @@ export function StreamBootstrap() {
           const rankedPayload = await rankedRes.json();
           const rawStrat = String(rankedPayload.strategy || "");
           const sid: RankStrategyId =
-            rawStrat === "photonics_chokepoint" || rawStrat === "rule_breaker_gardner" ? rawStrat : "momentum_liquidity";
+            rawStrat === "photonics_chokepoint" ||
+            rawStrat === "rule_breaker_gardner" ||
+            rawStrat === "rule_breaker_gardner_early"
+              ? rawStrat
+              : "momentum_liquidity";
           setRankStrategyMeta({
             id: sid,
             label: String(rankedPayload.strategy_label || sid),

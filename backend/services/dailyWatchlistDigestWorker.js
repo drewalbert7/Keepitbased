@@ -7,6 +7,7 @@ const emailService = require('./emailService');
 const { mergeNotificationPreferences } = require('../utils/notificationPreferences');
 const { buildAgentWatchlistContext } = require('./agentWatchlistContext');
 const { getResearchArtifactsForUser } = require('./researchArtifactsReader');
+const { fetchDailyQuantAgiSuggestions } = require('./quantAgiDailySuggestions');
 
 let running = false;
 
@@ -91,6 +92,16 @@ async function runDailyWatchlistDigestTick(alertService) {
         logger.warn(`Daily digest: research artifacts skipped user ${row.id}: ${re.message}`);
       }
 
+      const symList = watchlistContext.items.map((it) =>
+        String(it.symbol || '').toUpperCase().trim()
+      );
+      let quantAgiPack = { suggestions: [], meta: {} };
+      try {
+        quantAgiPack = await fetchDailyQuantAgiSuggestions({ watchlistSymbols: symList });
+      } catch (qe) {
+        logger.warn(`Daily digest: Quant AGI suggestions skipped user ${row.id}: ${qe.message}`);
+      }
+
       let digest;
       let pyMeta = {};
       try {
@@ -126,7 +137,10 @@ async function runDailyWatchlistDigestTick(alertService) {
         await emailService.sendDailyWatchlistDigestEmail(row.email, {
           digest,
           runMetadata: pyMeta,
-          userId: row.id
+          userId: row.id,
+          quantAgiSuggestions: quantAgiPack.suggestions,
+          quantAgiSections: quantAgiPack.sections,
+          quantAgiMeta: quantAgiPack.meta
         });
         sent += 1;
       } catch (e) {

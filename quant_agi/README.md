@@ -1,5 +1,7 @@
 # Quant AGI
 
+> **Next-session review:** [`docs/REVIEW_FOR_NEXT_SESSION.md`](docs/REVIEW_FOR_NEXT_SESSION.md) (2026-05-24 architecture/product notes).
+
 Self-contained **research + swarm simulation** sidecar for KeepItBased. It adds **probability-style forecasts and reflexivity tags** on top of your existing deterministic alerts **without changing the production UI** (enrichment is opt-in via CLI, HTTP, or future Node bridge).
 
 > **Disclaimer:** Educational / research software. Not investment advice. Swarm outputs are **heuristic simulations**, not exchange-traded forecasts.

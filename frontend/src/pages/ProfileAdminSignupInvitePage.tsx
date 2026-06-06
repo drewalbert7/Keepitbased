@@ -82,8 +82,12 @@ const ProfileAdminSignupInvitePage: React.FC = () => {
   return (
     <div className="mx-auto max-w-xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
       <nav className="mb-6 text-sm text-kib-muted">
-        <Link to="/profile" className="text-kib-cyber hover:text-kib-glow">
-          ← Profile
+        <Link to="/profile/admin" className="text-kib-cyber hover:text-kib-glow">
+          ← Admin
+        </Link>
+        <span className="mx-2 text-kib-line">·</span>
+        <Link to="/profile" className="text-kib-muted hover:text-kib-fg">
+          Profile
         </Link>
       </nav>
 

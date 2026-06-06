@@ -21,9 +21,12 @@ from keepitbased_integration.data_fetcher import KeepItBasedDataFetcher
 from keepitbased_integration.massive_aggs import effective_market_api_key
 from keepitbased_integration.fundamentals_bridge import fetch_fundamentals_via_python_service
 from keepitbased_integration.quant_strategies import (
+    GARDNER_EARLY_STOCK_UNIVERSE,
     PHOTONICS_CHOKEPOINT_UNIVERSE,
+    gardner_early_market_cap_band_ok,
     photonics_chokepoint_scores,
     photonics_serenity_market_cap_band_ok,
+    rule_breaker_gardner_early_composite,
     rule_breaker_gardner_scores,
     _valuation_score_from_fundamentals,
 )
@@ -162,7 +165,12 @@ def _avg_dollar_volume_20d(hist: Any) -> Optional[float]:
     return val if math.isfinite(val) and val > 0 else None
 
 
-RankStrategyId = Literal["momentum_liquidity", "photonics_chokepoint", "rule_breaker_gardner"]
+RankStrategyId = Literal[
+    "momentum_liquidity",
+    "photonics_chokepoint",
+    "rule_breaker_gardner",
+    "rule_breaker_gardner_early",
+]
 
 
 def _blend_momentum_with_valuation(tape_score: float, fundamentals_weight: float, valuation_pts: float) -> float:
@@ -445,6 +453,181 @@ def _rank_rule_breaker_payload(
     }
 
 
+def _rank_rule_breaker_early_payload(
+    fb: KeepItBasedDataFetcher,
+    key: Optional[str],
+    lim: int,
+    min_px: float,
+    min_adv: float,
+    now: float,
+) -> dict[str, Any]:
+    """
+    Gardner Rule Breaker on a mid/small-cap growth universe — market cap band ~$150M–$25B,
+    composite tilt toward revenue growth + upside room (find winners earlier).
+    """
+    ranked: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    excluded_counts: dict[str, int] = {
+        "price_below_min": 0,
+        "liquidity_below_min": 0,
+        "insufficient_history": 0,
+        "market_cap_band": 0,
+        "inactive_reference": 0,
+    }
+    for sym in GARDNER_EARLY_STOCK_UNIVERSE:
+        ref = fetch_ticker_reference(sym, api_key=key, refresh=False) if key else None
+        if ref is not None and ref.get("active") is False:
+            excluded_counts["inactive_reference"] += 1
+            rejected.append({"symbol": sym, "reason": "inactive_reference"})
+            continue
+
+        mc: Optional[float] = None
+        mc_reason = "mc_unknown"
+        if ref:
+            raw_mc = ref.get("market_cap")
+            if isinstance(raw_mc, (int, float)) and math.isfinite(float(raw_mc)):
+                mc = float(raw_mc)
+                ok_band, mc_reason = gardner_early_market_cap_band_ok(mc)
+                if not ok_band:
+                    excluded_counts["market_cap_band"] += 1
+                    rejected.append({"symbol": sym, "reason": "market_cap_band", "detail": mc_reason, "market_cap": mc})
+                    continue
+
+        hist = fb.load_history(sym, refresh=False, asset_type="stock")
+        src = fb.last_history_source
+        if ("volume" not in hist.columns or hist.volume.dropna().empty) and key:
+            hist = fb.load_history(sym, refresh=True, asset_type="stock")
+            src = fb.last_history_source
+        if len(hist.index) < 40:
+            excluded_counts["insufficient_history"] += 1
+            rejected.append({"symbol": sym, "reason": "insufficient_history"})
+            continue
+
+        fu = fetch_fundamentals_via_python_service(sym, refresh=False)
+        rb = rule_breaker_gardner_scores(hist, fu)
+        composite = rule_breaker_gardner_early_composite(rb, mc, hist)
+        tape_score, momentum_pct, vol_pct, drawdown_pct = _rank_symbol(hist)
+
+        last_close = float(hist.close.iloc[-1]) if len(hist.index) else None
+        prev_close = float(hist.close.iloc[-2]) if len(hist.index) > 1 else None
+        adv20 = _avg_dollar_volume_20d(hist)
+        if last_close is None or last_close < min_px:
+            excluded_counts["price_below_min"] += 1
+            rejected.append(
+                {"symbol": sym, "reason": "price_below_min", "last_close": last_close, "avg_dollar_vol_20d": adv20}
+            )
+            continue
+        if adv20 is None or adv20 < min_adv:
+            excluded_counts["liquidity_below_min"] += 1
+            rejected.append(
+                {"symbol": sym, "reason": "liquidity_below_min", "last_close": last_close, "avg_dollar_vol_20d": adv20}
+            )
+            continue
+
+        day_change_pct = (
+            round((last_close - prev_close) / abs(prev_close) * 100.0, 4)
+            if last_close is not None and prev_close not in (None, 0.0)
+            else None
+        )
+
+        bd = rb.get("breakdown") or []
+        bd_line = "; ".join(
+            f"{item.get('element_key')}={float(item.get('score_0_100', 0)):.0f}"
+            for item in bd
+            if isinstance(item, dict)
+        )
+        if len(bd_line) > 420:
+            bd_line = bd_line[:417] + "…"
+        mc_line = (
+            f"Market cap USD {mc:,.0f} ({mc_reason})"
+            if isinstance(mc, (int, float)) and math.isfinite(mc)
+            else f"Market cap unknown ({mc_reason}) — upside bonus muted"
+        )
+        inp = rb.get("inputs") if isinstance(rb.get("inputs"), dict) else {}
+        rev = inp.get("revenueGrowth")
+        rev_line = (
+            f"Revenue growth proxy {float(rev) * 100:.1f}% YoY — early-upside tilt applied."
+            if isinstance(rev, (int, float)) and math.isfinite(float(rev))
+            else "Revenue growth unavailable — base Gardner legs only."
+        )
+        why = [
+            (
+                f"Gardner Early composite {composite:.1f}/100 — six Rule Breaker legs + smaller-cap / upside-room bonus "
+                f"(base Gardner {float(rb['composite']):.1f}/100; band ≤ ~$25B when cap known)."
+            ),
+            rev_line,
+            f"Leg scores (0–100 × weight): {bd_line}" if bd_line else "Leg breakdown unavailable.",
+            mc_line,
+            "live Massive aggregates" if src == "massive_live" else "cached/synthetic history",
+        ]
+
+        ranked.append(
+            {
+                "symbol": sym,
+                "asset_type": "stock",
+                "score": composite,
+                "strategy_factors": {
+                    "kind": "rule_breaker_gardner_early",
+                    "composite": composite,
+                    "gardner_base_composite": float(rb["composite"]),
+                    "market_cap_usd": mc,
+                    "mc_band_status": mc_reason,
+                    "breakdown": rb.get("breakdown"),
+                    "fundamentals_inputs": inp,
+                    "enterpriseToRevenue": fu.get("enterpriseToRevenue") if fu else None,
+                    "companyName": fu.get("companyName") if fu else None,
+                },
+                "last_close": last_close,
+                "day_change_pct": day_change_pct,
+                "momentum_20d_pct": momentum_pct,
+                "vol_20d_pct": vol_pct,
+                "drawdown_60d_pct": drawdown_pct,
+                "avg_dollar_vol_20d": round(adv20, 2) if adv20 is not None else None,
+                "history_source": src,
+                "is_live_massive": src == "massive_live",
+                "as_of": str(hist.index[-1])[:10] if len(hist.index) else None,
+                "why": why,
+                "position_hint": (
+                    "early rule breaker focus"
+                    if composite >= 72.0
+                    else "early watch candidate"
+                    if composite >= 58.0
+                    else "exploratory only"
+                ),
+            }
+        )
+
+    ranked.sort(key=lambda r: float(r.get("score", 0.0)), reverse=True)
+    return {
+        "ok": True,
+        "strategy": "rule_breaker_gardner_early",
+        "strategy_label": "Rule Breaker Early (Gardner — lower cap / upside)",
+        "strategy_disclaimer": (
+            "Educational **David Gardner Rule Breakers**-inspired screen on a **mid/small-cap growth universe** "
+            "(~$150M–$25B when market cap is known). Same six scored legs as the main Gardner preset, plus bonuses "
+            "for revenue growth, valuation harmony, and 52-week upside room — aimed at **finding winners earlier**, "
+            "not mega-cap names. Quantitative proxies only; **not affiliated with Motley Fool.** Not investment advice."
+        ),
+        "market_data_api_url": settings.market_data_api_url,
+        "api_key_present": bool(key),
+        "synthetic_forced": settings.quant_agi_synthetic_history_only,
+        "universe_size": len(GARDNER_EARLY_STOCK_UNIVERSE),
+        "liquidity_gate": {"min_price": min_px, "min_avg_dollar_vol_20d": min_adv},
+        "market_cap_band": {
+            "min_usd": 150_000_000,
+            "max_usd": 25_000_000_000,
+            "unknown_cap_policy": "fail_open_with_muted_upside_bonus",
+        },
+        "accepted_count": len(ranked),
+        "excluded_count": sum(excluded_counts.values()),
+        "excluded_counts": excluded_counts,
+        "excluded_examples": rejected[:12],
+        "returned": lim,
+        "as_of_epoch_ms": int(now * 1000),
+        "positions": ranked[:lim],
+    }
+
+
 def _rank_photonics_payload(
     fb: KeepItBasedDataFetcher,
     key: Optional[str],
@@ -613,7 +796,7 @@ def _rank_photonics_payload(
         "strategy": "photonics_chokepoint",
         "strategy_label": "Serenity — AI photonics chokepoint hunter",
         "strategy_disclaimer": (
-            "Rules-based screen ~$50M–$5B market cap when reference data has it (looser vs $100M so niche/OTC optics "
+            "Rules-based screen ~$50M–$25B market cap when reference data has it (looser vs $100M so niche/OTC optics "
             "suppliers qualify), issuer keyword proxies, curated chokepoint priors, OHLCV tape, default ~$125k 20D "
             "ADV (lower than mega-cap scanners — illiquid names slip through easier), plus yfinance valuation. "
             "Optional SEC filing keyword scan off by default. Tradeoff: thinner liquidity / more volatility vs stricter gates. "
@@ -980,6 +1163,8 @@ def create_app() -> FastAPI:
           fundamentals tilt when ``QUANT_AGI_MOMENTUM_FUNDAMENTALS_WEIGHT`` > 0 (python-service; default ~0.22).
         - ``rule_breaker_gardner``: same default universe as momentum; **six 0–100 legs** (Gardner Rule Breaker
           themes as quantitative proxies) + composite; always uses python-service fundamentals when available.
+        - ``rule_breaker_gardner_early``: mid/small-cap growth universe (~$150M–$25B when cap known); same six
+          Gardner legs plus early-upside bonus (revenue growth, 52w room) to **find winners earlier**.
 
         Per-strategy default liquidity gates apply when query params are omitted.
         Cache is keyed by strategy + gates + top_n + momentum fundamentals weight.
@@ -995,6 +1180,9 @@ def create_app() -> FastAPI:
             min_px = max(1.0, float(min_price if min_price is not None else 2.0))
             # Default ~$125k ADV20: thin OTC/ADR (e.g. SIVEF) rarely clears $400k; still blocks obvious dust.
             min_adv = max(80_000.0, float(min_avg_dollar_vol_20d if min_avg_dollar_vol_20d is not None else 125_000.0))
+        elif strategy == "rule_breaker_gardner_early":
+            min_px = max(1.0, float(min_price if min_price is not None else 3.0))
+            min_adv = max(80_000.0, float(min_avg_dollar_vol_20d if min_avg_dollar_vol_20d is not None else 400_000.0))
         else:
             min_px = max(1.0, float(min_price if min_price is not None else 5.0))
             min_adv = max(100_000.0, float(min_avg_dollar_vol_20d if min_avg_dollar_vol_20d is not None else 8_000_000.0))
@@ -1009,6 +1197,8 @@ def create_app() -> FastAPI:
             payload = _rank_photonics_payload(fb, key, lim, min_px, min_adv, now)
         elif strategy == "rule_breaker_gardner":
             payload = _rank_rule_breaker_payload(fb, key, lim, min_px, min_adv, now)
+        elif strategy == "rule_breaker_gardner_early":
+            payload = _rank_rule_breaker_early_payload(fb, key, lim, min_px, min_adv, now)
         else:
             payload = _rank_momentum_payload(fb, key, lim, min_px, min_adv, mom_fw, now)
 

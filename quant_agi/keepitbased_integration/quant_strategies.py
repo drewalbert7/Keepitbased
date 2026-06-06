@@ -1,6 +1,6 @@
 """Rules-based scanner presets for `/diag/market-universe-rank`.
 
-`photonics_chokepoint` (Serenity-style chokepoint hunter): Polygon reference **market-cap band (~$50M–$5B
+`photonics_chokepoint` (Serenity-style chokepoint hunter): Polygon reference **market-cap band (~$50M–$25B
 when known; see constants below)**, issuer **theme / hyperscaler-NLP proxies**, fundamentals-backed **valuation**
 leg (via Python service/yfinance), optional **SEC filing keywords** (`sec_filing_scan`), merged with OHLC priors.
 Liquidity thresholds on the preset are OTC-aware (see API defaults).
@@ -20,6 +20,8 @@ SERENITY_MAX_MARKET_CAP = 5_000_000_000.0
 
 # Photonics preset only: allow smaller niche/OTC optics suppliers when Massive returns a cap (e.g. Sivers-class).
 PHOTONICS_SERENITY_MIN_MARKET_CAP = 50_000_000.0  # USD
+# Raised from $5B so mid-cap optics leaders (e.g. AAOI) can rank while still excluding mega-caps.
+PHOTONICS_SERENITY_MAX_MARKET_CAP = 25_000_000_000.0  # USD
 
 
 PHOTONICS_THEME_NEEDLES = (
@@ -536,6 +538,115 @@ def rule_breaker_gardner_scores(
     }
 
 
+# Gardner "find them earlier" — smaller-cap band + upside tilt on the same six-leg model.
+GARDNER_EARLY_MIN_MARKET_CAP = 150_000_000.0  # USD
+GARDNER_EARLY_MAX_MARKET_CAP = 25_000_000_000.0  # exclude mega-cap; hunt mid/small growth earlier
+
+GARDNER_EARLY_STOCK_UNIVERSE: tuple[str, ...] = tuple(
+    sorted(
+        {
+            # Mid / small growth & platform names (curated; expand over time)
+            "AFRM",
+            "APP",
+            "BILL",
+            "CELH",
+            "CRWD",
+            "DDOG",
+            "DUOL",
+            "FROG",
+            "GTLB",
+            "HUBS",
+            "IONQ",
+            "MDB",
+            "MELI",
+            "NET",
+            "OKTA",
+            "PATH",
+            "RBLX",
+            "RKLB",
+            "ROKU",
+            "SE",
+            "SHOP",
+            "SMCI",
+            "SNOW",
+            "TEAM",
+            "TTD",
+            "U",
+            "UPST",
+            "ZS",
+            # Liquid mid-cap from default universe that can still pass the band
+            "AMD",
+            "ARM",
+            "LULU",
+            "MU",
+            "NFLX",
+            "PANW",
+            "PLTR",
+            "UBER",
+            # Photonics / AI supply-chain smaller names (overlap ok)
+            *PHOTONICS_CHOKEPOINT_UNIVERSE,
+        }
+    )
+)
+
+
+def gardner_early_market_cap_band_ok(mc: Optional[float]) -> tuple[bool, str]:
+    """Reject known mega-caps; allow unknown cap (fail-open) with weaker upside bonus."""
+    if mc is None or not math.isfinite(float(mc)):
+        return True, "mc_unknown"
+    if mc < GARDNER_EARLY_MIN_MARKET_CAP:
+        return False, "below_band"
+    if mc > GARDNER_EARLY_MAX_MARKET_CAP:
+        return False, "above_band"
+    return True, "in_band"
+
+
+def rule_breaker_gardner_early_composite(
+    rb: dict[str, Any],
+    market_cap: Optional[float],
+    hist: Any,
+) -> float:
+    """
+    Same six Gardner legs as ``rule_breaker_gardner_scores``, with bonus for revenue growth,
+    valuation harmony, smaller market cap, and 52-week upside room (find winners earlier).
+    """
+    base = float(rb.get("composite", 0.0))
+    bonus = 0.0
+    inp = rb.get("inputs") if isinstance(rb.get("inputs"), dict) else {}
+    rev = inp.get("revenueGrowth")
+    if isinstance(rev, (int, float)) and math.isfinite(float(rev)):
+        rev_f = float(rev)
+        if rev_f >= 0.40:
+            bonus += 10.0
+        elif rev_f >= 0.25:
+            bonus += 6.0
+        elif rev_f >= 0.15:
+            bonus += 3.0
+
+    gv = rb.get("growth_valuation_harmony")
+    if isinstance(gv, (int, float)) and float(gv) >= 65.0:
+        bonus += 4.0
+
+    td = rb.get("top_dog_first_mover")
+    if isinstance(td, (int, float)) and float(td) >= 70.0:
+        bonus += 2.0
+
+    if market_cap is not None and math.isfinite(float(market_cap)):
+        mc = float(market_cap)
+        if mc <= 3_000_000_000:
+            bonus += 8.0
+        elif mc <= 8_000_000_000:
+            bonus += 4.0
+
+    try:
+        asym = _week52_band_position(hist.close)
+        bonus += (1.0 - asym) * 5.0
+    except Exception:
+        pass
+
+    return round(max(0.0, min(100.0, base + bonus)), 4)
+
+
 def serenity_market_cap_band_ok(mc: Optional[float]) -> tuple[bool, str]:
     if mc is None or not math.isfinite(float(mc)):
         return True, "mc_unknown"
@@ -547,11 +658,11 @@ def serenity_market_cap_band_ok(mc: Optional[float]) -> tuple[bool, str]:
 
 
 def photonics_serenity_market_cap_band_ok(mc: Optional[float]) -> tuple[bool, str]:
-    """Looser floor ($50M) so curated OTC/ADR photonics names are not dropped vs the $100M legacy band."""
+    """Looser floor ($50M) and raised ceiling ($25B) for mid-cap optics leaders."""
     if mc is None or not math.isfinite(float(mc)):
         return True, "mc_unknown"
     if mc < PHOTONICS_SERENITY_MIN_MARKET_CAP:
         return False, "below_band"
-    if mc > SERENITY_MAX_MARKET_CAP:
+    if mc > PHOTONICS_SERENITY_MAX_MARKET_CAP:
         return False, "above_band"
     return True, "in_band"

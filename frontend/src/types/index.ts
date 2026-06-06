@@ -58,6 +58,46 @@ export interface User {
   isSignupInviteAdmin?: boolean;
 }
 
+export interface AdminGlobalInvite {
+  kind: 'host';
+  active: boolean;
+  updatedAt: string | null;
+  note: string;
+}
+
+export interface AdminPersonalPasscode {
+  kind: 'personal';
+  userId: number;
+  username: string | null;
+  email: string;
+  active: boolean;
+  updatedAt: string | null;
+}
+
+export interface AdminInvitesOverview {
+  globalInvite: AdminGlobalInvite;
+  personalPasscodes: AdminPersonalPasscode[];
+}
+
+export interface AdminUserRow {
+  id: number;
+  username: string | null;
+  email: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+  invitedByUserId: number | null;
+  invitedByUsername: string | null;
+  invitedByEmail: string | null;
+  personalPasscodeActive: boolean;
+  inviteesCount: number;
+  isSignupInviteAdmin: boolean;
+}
+
+export interface AdminUsersList {
+  users: AdminUserRow[];
+  limit: number;
+}
+
 export interface AuthState {
   user: User | null;
   token: string | null;

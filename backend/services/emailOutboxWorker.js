@@ -17,6 +17,7 @@ const {
 const { markOpportunityEmailSentThisHour } = require('../utils/opportunityEmailConfirmation');
 const { getRedisClient } = require('../utils/redis');
 const emailSendBudget = require('../utils/emailSendBudget');
+const { isOpportunityEmailUnlimited } = require('../utils/notificationPreferences');
 const { sendDipInsightForOpportunity } = require('./dipInsightEmailService');
 const { recordDipInsightEmailSent } = require('../utils/dipInsightEmailPolicy');
 
@@ -50,14 +51,17 @@ async function deliverOpportunityOutboxRow(priceMonitor, row) {
   }
 
   const redis = getRedisClient();
-  await markOpportunityEmailSentThisHour(
-    redis,
-    row.user_id,
-    deliverCtx.assetType,
-    deliverCtx.symbol,
-    config.OPPORTUNITY_DEDUPE_TTL_SEC
-  );
-  await recordOpportunityEmailSent(redis, row.user_id);
+  const unlimited = isOpportunityEmailUnlimited(deliverCtx.prefs);
+  if (!unlimited) {
+    await markOpportunityEmailSentThisHour(
+      redis,
+      row.user_id,
+      deliverCtx.assetType,
+      deliverCtx.symbol,
+      config.OPPORTUNITY_DEDUPE_TTL_SEC
+    );
+    await recordOpportunityEmailSent(redis, row.user_id);
+  }
   await markLegacyAlertBlocked(redis, row.user_id, deliverCtx.assetType, deliverCtx.symbol);
 
   logOpportunityEmailEvent({
@@ -176,28 +180,35 @@ async function processDigestBatches(priceMonitor) {
     const items = opportunityRows.map((r) => r.payload?.opportunity || r.payload?.deliverCtx?.payload).filter(Boolean);
 
     try {
+      const prefs = opportunityRows[0].payload?.deliverCtx?.prefs;
       const ok = await emailService.sendOpportunityHourlyDigestEmail(toEmail, items, {
-        userId: opportunityRows[0].user_id
+        userId: opportunityRows[0].user_id,
+        budgetExempt: isOpportunityEmailUnlimited(prefs)
       });
       if (!ok) {
         throw new Error('digest SMTP send returned false');
       }
 
       const redis = getRedisClient();
+      const unlimited = isOpportunityEmailUnlimited(opportunityRows[0].payload?.deliverCtx?.prefs);
       for (const row of opportunityRows) {
         const dc = row.payload?.deliverCtx;
         if (dc?.assetType && dc?.symbol) {
-          await markOpportunityEmailSentThisHour(
-            redis,
-            row.user_id,
-            dc.assetType,
-            dc.symbol,
-            config.OPPORTUNITY_DEDUPE_TTL_SEC
-          );
+          if (!unlimited) {
+            await markOpportunityEmailSentThisHour(
+              redis,
+              row.user_id,
+              dc.assetType,
+              dc.symbol,
+              config.OPPORTUNITY_DEDUPE_TTL_SEC
+            );
+          }
           await markLegacyAlertBlocked(redis, row.user_id, dc.assetType, dc.symbol);
         }
       }
-      await recordOpportunityEmailSent(redis, opportunityRows[0].user_id);
+      if (!unlimited) {
+        await recordOpportunityEmailSent(redis, opportunityRows[0].user_id);
+      }
 
       await markOutboxSent(opportunityRows.map((r) => r.id));
 

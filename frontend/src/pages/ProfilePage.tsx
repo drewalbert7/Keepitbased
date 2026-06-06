@@ -413,13 +413,14 @@ const ProfilePage: React.FC = () => {
               <div className="pt-4 border-t border-kib-line mt-4">
                 <p className="text-sm font-medium text-kib-fg">Administration</p>
                 <p className="text-xs text-kib-muted mt-1 mb-2">
-                  Invite-only signup: rotate the shared invitation code. This panel is omitted for other accounts.
+                  View active invite codes, all users, and rotate the host invitation code. Only visible to
+                  operator accounts.
                 </p>
                 <Link
-                  to="/profile/signup-invite-admin"
+                  to="/profile/admin"
                   className="inline-flex items-center rounded-md border border-white/15 bg-white/[0.04] px-3 py-2 text-sm font-medium text-kib-fg hover:border-kib-cyber/50 hover:bg-white/[0.07]"
                 >
-                  Manage signup invitation code →
+                  Open admin panel →
                 </Link>
               </div>
             ) : null}

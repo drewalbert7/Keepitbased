@@ -19,6 +19,12 @@ describe('mergeNotificationPreferences', () => {
     assert.equal(p.quietHoursStart, '22:00');
     assert.equal(p.quietHoursEnd, '08:00');
     assert.equal(p.opportunityRespectQuietHours, true);
+    assert.equal(p.opportunityEmailUnlimited, false);
+  });
+
+  it('honors opportunityEmailUnlimited when set', () => {
+    const p = mergeNotificationPreferences({ opportunityEmailUnlimited: true });
+    assert.equal(p.opportunityEmailUnlimited, true);
   });
 
   it('preserves explicit all tier and quiet hours', () => {

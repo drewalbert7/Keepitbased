@@ -124,7 +124,11 @@ async function tryReserveDigestSendSlot({ kind, userId }) {
   return { ok: true, dayCount };
 }
 
-async function tryReserveSendSlot({ kind, toEmail, userId }) {
+async function tryReserveSendSlot({ kind, toEmail, userId, budgetExempt = false }) {
+  if (budgetExempt) {
+    return { ok: true, reason: 'budget_exempt' };
+  }
+
   if (kind === DIGEST_KIND) {
     return tryReserveDigestSendSlot({ kind, userId });
   }

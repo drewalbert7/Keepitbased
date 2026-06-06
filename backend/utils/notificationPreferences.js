@@ -56,6 +56,12 @@ function mergeNotificationPreferences(raw) {
     /** Max opportunity (plain + dip-insight) emails per user per UTC day. */
     opportunityMaxEmailsPerDay: clampInt(p.opportunityMaxEmailsPerDay, 1, 50, 5),
 
+    /**
+     * When true, skip per-user caps, quiet hours, confirmation polls, symbol/hour dedupe,
+     * and global SES budget slots for opportunity mail (other users unchanged).
+     */
+    opportunityEmailUnlimited: p.opportunityEmailUnlimited === true,
+
     /** IANA timezone for quiet hours (e.g. America/New_York). */
     timezone:
       typeof p.timezone === 'string' && p.timezone.trim().length > 0
@@ -115,7 +121,12 @@ function passesOpportunityEmailTierFilter(flags, level) {
   return true;
 }
 
+function isOpportunityEmailUnlimited(prefs) {
+  return prefs?.opportunityEmailUnlimited === true;
+}
+
 module.exports = {
   mergeNotificationPreferences,
-  passesOpportunityEmailTierFilter
+  passesOpportunityEmailTierFilter,
+  isOpportunityEmailUnlimited
 };

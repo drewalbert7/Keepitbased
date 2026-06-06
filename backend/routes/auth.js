@@ -20,7 +20,7 @@ const emailService = require('../services/emailService');
 const { mergeNotificationPreferences } = require('../utils/notificationPreferences');
 const signupInviteCodeService = require('../services/signupInviteCodeService');
 const userSignupPasscodeService = require('../services/userSignupPasscodeService');
-const { isSignupInviteAdmin } = require('../utils/signupInviteAdmin');
+const { isSignupInviteAdminFromRow } = require('../utils/signupInviteAdmin');
 const cryptoSecurity = require('../utils/cryptoSecurity');
 
 function serializeUserSafe(userRow) {
@@ -31,7 +31,7 @@ function serializeUserSafe(userRow) {
     firstName: userRow.first_name,
     lastName: userRow.last_name,
     notificationPreferences: mergeNotificationPreferences(userRow.notification_preferences),
-    isSignupInviteAdmin: isSignupInviteAdmin(userRow.email)
+    isSignupInviteAdmin: isSignupInviteAdminFromRow(userRow)
   };
 }
 
@@ -179,7 +179,8 @@ router.post('/login', sanitizeInput, authRateLimit, [
       // Try database first
       const result = await db.query(
         `
-        SELECT id, email, password_hash, username, first_name, last_name, notification_preferences
+        SELECT id, email, password_hash, username, first_name, last_name, notification_preferences,
+               COALESCE(is_signup_admin, false) AS is_signup_admin
         FROM users WHERE email = $1
       `,
         [email]
@@ -239,7 +240,8 @@ router.get('/me', auth, async (req, res) => {
   try {
     const result = await db.query(
       `
-      SELECT id, email, username, first_name, last_name, notification_preferences, created_at
+      SELECT id, email, username, first_name, last_name, notification_preferences, created_at,
+             COALESCE(is_signup_admin, false) AS is_signup_admin
       FROM users WHERE id = $1
     `,
       [req.user.id]

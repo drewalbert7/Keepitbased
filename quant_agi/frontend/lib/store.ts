@@ -38,7 +38,11 @@ export type MarketSymbolSnapshot = {
   is_live_massive: boolean;
 };
 
-export type RankStrategyId = "momentum_liquidity" | "photonics_chokepoint" | "rule_breaker_gardner";
+export type RankStrategyId =
+  | "momentum_liquidity"
+  | "photonics_chokepoint"
+  | "rule_breaker_gardner"
+  | "rule_breaker_gardner_early";
 
 export type RuleBreakerBreakdownRow = {
   element_key: string;

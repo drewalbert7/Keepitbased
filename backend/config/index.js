@@ -45,6 +45,33 @@ const config = {
     const n = parseInt(process.env.QUANT_AGI_TIMEOUT_MS, 10);
     return Number.isFinite(n) && n > 200 ? n : 3500;
   })(),
+  /** Optional override for rank API base (defaults to QUANT_AGI_ENHANCE_URL host or :8844). */
+  QUANT_AGI_RANK_URL: (process.env.QUANT_AGI_RANK_URL || '').trim(),
+  QUANT_AGI_RANK_TIMEOUT_MS: (() => {
+    const n = parseInt(process.env.QUANT_AGI_RANK_TIMEOUT_MS, 10);
+    return Number.isFinite(n) && n > 1000 ? Math.min(n, 120000) : 45000;
+  })(),
+  /** Daily digest: include Quant AGI Gardner + chokepoint stock suggestions (default on). */
+  DAILY_DIGEST_QUANT_AGI_SUGGESTIONS: process.env.DAILY_DIGEST_QUANT_AGI_SUGGESTIONS !== 'false',
+  /** Picks shown per Quant AGI strategy in daily digest (Gardner, Gardner Early, chokepoint). */
+  DAILY_DIGEST_QUANT_AGI_PER_STRATEGY: (() => {
+    const n = parseInt(process.env.DAILY_DIGEST_QUANT_AGI_PER_STRATEGY, 10);
+    if (Number.isFinite(n) && n >= 1 && n <= 8) return n;
+    const legacy = parseInt(process.env.DAILY_DIGEST_QUANT_AGI_MIN_SUGGESTIONS, 10);
+    if (Number.isFinite(legacy) && legacy >= 1 && legacy <= 8) return legacy;
+    return 3;
+  })(),
+  /** @deprecated use DAILY_DIGEST_QUANT_AGI_PER_STRATEGY */
+  DAILY_DIGEST_QUANT_AGI_MIN_SUGGESTIONS: (() => {
+    const n = parseInt(process.env.DAILY_DIGEST_QUANT_AGI_PER_STRATEGY, 10);
+    if (Number.isFinite(n) && n >= 1 && n <= 8) return n;
+    const legacy = parseInt(process.env.DAILY_DIGEST_QUANT_AGI_MIN_SUGGESTIONS, 10);
+    return Number.isFinite(legacy) && legacy >= 1 && legacy <= 8 ? legacy : 3;
+  })(),
+  DAILY_DIGEST_QUANT_AGI_RANK_TOP_N: (() => {
+    const n = parseInt(process.env.DAILY_DIGEST_QUANT_AGI_RANK_TOP_N, 10);
+    return Number.isFinite(n) && n >= 5 && n <= 50 ? n : 20;
+  })(),
 
   // JWT - CRITICAL: Always have a fallback secret
   JWT_SECRET: process.env.JWT_SECRET || 'fallback-jwt-secret-change-in-production-' + Date.now(),

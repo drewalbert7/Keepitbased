@@ -1,6 +1,8 @@
 # Agent AGI — roadmap, UX reference & build prompts
 
 > **Product roadmap:** [`../../todo.md`](../../todo.md) — canonical KeepItBased `todo.md` (Quant/LangGraph, deploy, §11). This file is **subproject UX/build prompts only**.
+>
+> **Saved review (2026-05-24):** [`../docs/REVIEW_FOR_NEXT_SESSION.md`](../docs/REVIEW_FOR_NEXT_SESSION.md) — architecture/product review to resume next session.
 
 This folder holds **Agent AGI** planning artifacts: roadmap, UX inspiration, and reusable prompts for implementing the **MiroFish Terminal** frontend against `quant_agi/`.
 

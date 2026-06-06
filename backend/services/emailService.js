@@ -126,11 +126,12 @@ function sanitizeXPostUrl(raw) {
  * @param {() => Promise<void>} params.sendFn
  * @returns {Promise<{ sent: boolean, reason?: string }>}
  */
-async function deliverMarketingMail({ to, kind, userId, sendFn }) {
+async function deliverMarketingMail({ to, kind, userId, sendFn, budgetExempt = false }) {
   const budget = await emailSendBudget.tryReserveSendSlot({
     kind,
     toEmail: to,
-    userId
+    userId,
+    budgetExempt
   });
   if (!budget.ok) {
     return { sent: false, reason: budget.reason };
@@ -481,6 +482,7 @@ class EmailService {
         to: toAddress,
         kind: 'opportunity_signal',
         userId: options.userId,
+        budgetExempt: options.budgetExempt === true,
         sendFn: () =>
           this.transporter.sendMail({
             from: smtpFromHeader(),
@@ -589,6 +591,7 @@ class EmailService {
         to: toAddress,
         kind: 'opportunity_digest',
         userId: options?.userId,
+        budgetExempt: options?.budgetExempt === true,
         sendFn: () =>
           this.transporter.sendMail({
             from: smtpFromHeader(),
@@ -675,6 +678,79 @@ class EmailService {
           })
           .join('');
 
+      const quantSuggestions = Array.isArray(payload.quantAgiSuggestions)
+        ? payload.quantAgiSuggestions
+        : [];
+      const quantSections = Array.isArray(payload.quantAgiSections) ? payload.quantAgiSections : [];
+
+      const renderQuantPick = (p) => {
+        const sym = escapeHtml(String(p.symbol || '').toUpperCase());
+        const strategy = escapeHtml(String(p.strategyLabel || p.strategy || 'Quant AGI'));
+        const score =
+          p.score != null && Number.isFinite(Number(p.score))
+            ? `<span style="font-size:12px;color:#475569;margin-left:8px;">Score ${Number(p.score).toFixed(1)}/100</span>`
+            : '';
+        const company =
+          p.companyName && String(p.companyName).trim()
+            ? `<span style="font-size:13px;color:#64748b;margin-left:6px;">${escapeHtml(String(p.companyName).trim())}</span>`
+            : '';
+        const mc =
+          p.marketCapUsd != null && Number.isFinite(Number(p.marketCapUsd))
+            ? `<span style="font-size:12px;color:#64748b;margin-left:6px;">MCap $${(Number(p.marketCapUsd) / 1e9).toFixed(2)}B</span>`
+            : '';
+        const px =
+          p.lastClose != null && Number.isFinite(Number(p.lastClose))
+            ? `$${Number(p.lastClose).toFixed(2)}`
+            : null;
+        const ch =
+          p.dayChangePct != null && Number.isFinite(Number(p.dayChangePct))
+            ? `${Number(p.dayChangePct) >= 0 ? '+' : ''}${Number(p.dayChangePct).toFixed(2)}% today`
+            : null;
+        const tapeBits = [px, ch].filter(Boolean).join(' · ');
+        const tapeLine = tapeBits
+          ? `<p style="margin:0 0 10px;font-size:13px;color:#475569;">${escapeHtml(tapeBits)}</p>`
+          : '';
+        const hint =
+          p.positionHint && String(p.positionHint).trim()
+            ? `<p style="margin:0 0 10px;font-size:12px;color:#0f766e;"><strong>Quant AGI stance:</strong> ${escapeHtml(String(p.positionHint).trim())}</p>`
+            : '';
+        const expl = (Array.isArray(p.explanations) ? p.explanations : [])
+          .slice(0, 5)
+          .map((line) => `<li style="margin:0 0 8px;line-height:1.5;">${prose(line)}</li>`)
+          .join('');
+        const breakdown = (Array.isArray(p.breakdownLines) ? p.breakdownLines : [])
+          .slice(0, 6)
+          .map((line) => `<li style="margin:0 0 4px;font-size:12px;color:#64748b;">${escapeHtml(line)}</li>`)
+          .join('');
+        const themes =
+          Array.isArray(p.themeHits) && p.themeHits.length
+            ? `<p style="margin:8px 0 0;font-size:12px;color:#64748b;"><strong>Theme hits:</strong> ${escapeHtml(p.themeHits.slice(0, 6).join(', '))}</p>`
+            : '';
+        return `
+            <div style="border: 1px solid #1e3a5f33; border-radius: 10px; padding: 16px; margin-bottom: 14px; background: linear-gradient(180deg,#f8fbff 0%,#f8fafc 100%);">
+              <p style="margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #1e3a5f;">${strategy}</p>
+              <p style="margin: 0 0 8px; font-size: 17px; font-weight: 800; color: #0f172a;">${sym}${company}${mc}${score}</p>
+              ${tapeLine}
+              ${hint}
+              <ul style="margin: 0; padding-left: 18px; font-size: 14px; color: #334155;">${expl || '<li>Ranked by Quant AGI preset screen.</li>'}</ul>
+              ${breakdown ? `<ul style="margin: 10px 0 0; padding-left: 18px;">${breakdown}</ul>` : ''}
+              ${themes}
+            </div>`;
+      };
+
+      const quantSectionBlocks = quantSections.length
+        ? quantSections
+            .map((sec) => {
+              const picks = Array.isArray(sec.picks) ? sec.picks : [];
+              if (!picks.length) return '';
+              const title = escapeHtml(String(sec.sectionTitle || sec.strategy || 'Quant AGI'));
+              return `
+            <h3 style="font-size: 14px; color: #1e3a5f; margin: 18px 0 10px;">${title}</h3>
+            ${picks.map(renderQuantPick).join('')}`;
+            })
+            .join('')
+        : quantSuggestions.map(renderQuantPick).join('');
+
       let topPicks = Array.isArray(digest.topStockPicks) ? digest.topStockPicks : [];
       if (!topPicks.length && Array.isArray(digest.suggestedAdditions)) {
         topPicks = digest.suggestedAdditions.slice(0, 2).map((s) => ({
@@ -740,7 +816,16 @@ class EmailService {
             <h2 style="font-size: 15px; color: #0f172a; margin: 0 0 10px;">Your watchlist positions</h2>
             <p style="font-size: 15px; color: #334155; line-height: 1.55; margin: 0 0 22px;">${holdings}</p>
 
-            <h2 style="font-size: 15px; color: #0f172a; margin: 0 0 10px;">Pertinent headlines (ingested feeds)</h2>
+            <h2 style="font-size: 15px; color: #0f172a; margin: 0 0 10px;">Quant AGI stock ideas</h2>
+            <p style="font-size: 12px; color: #64748b; margin: 0 0 14px;">
+              Tool-backed ranks from KeepItBased Quant AGI — up to <strong>3 picks per strategy</strong>:
+              <strong>David Gardner Rule Breaker</strong> (large-cap quality),
+              <strong>Gardner Early</strong> (lower market cap / find winners earlier),
+              and <strong>AI &amp; photonics chokepoint</strong>. No momentum-only screen. Educational only.
+            </p>
+            ${quantSectionBlocks || '<p style="color: #64748b; font-size: 14px;">Quant AGI ranks unavailable this run (sidecar offline or data gap).</p>'}
+
+            <h2 style="font-size: 15px; color: #0f172a; margin: 22px 0 10px;">Pertinent headlines (ingested feeds)</h2>
             <p style="font-size: 12px; color: #64748b; margin: 0 0 12px;">Wire/vendor headlines stored for your symbols — verify originals before trading.</p>
             ${newsBlocks || '<p style="color: #64748b; font-size: 14px;">No recent headlines matched this snapshot.</p>'}
 
@@ -778,6 +863,12 @@ class EmailService {
       const digestPlain = [
         'KeepItBased — Daily market briefing',
         dateLabel,
+        quantSuggestions.length
+          ? `Quant AGI ideas (${quantSuggestions.length}): ${quantSuggestions
+              .slice(0, 12)
+              .map((p) => `${p.symbol} (${p.strategyShortLabel || p.strategy})`)
+              .join(', ')}`
+          : 'Quant AGI ideas: unavailable this run',
         `Open app: ${baseUrl}/`,
         `Manage or unsubscribe: ${profilePreferencesUrl()}`
       ].join('\n\n');
@@ -983,6 +1074,7 @@ class EmailService {
         to: toAddress,
         kind: 'dip_insight',
         userId: params.userId,
+        budgetExempt: params.budgetExempt === true,
         sendFn: () =>
           this.transporter.sendMail({
             from: smtpFromHeader(),

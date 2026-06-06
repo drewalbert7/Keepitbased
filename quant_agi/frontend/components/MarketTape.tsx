@@ -4,7 +4,7 @@ import { useState } from "react";
 import { type RankStrategyId, type RuleBreakerBreakdownRow, useQuantStore } from "../lib/store";
 
 function ruleBreakerBreakdown(factors: Record<string, unknown> | undefined): RuleBreakerBreakdownRow[] {
-  if (!factors || factors.kind !== "rule_breaker_gardner") return [];
+  if (!factors || (factors.kind !== "rule_breaker_gardner" && factors.kind !== "rule_breaker_gardner_early")) return [];
   const raw = factors.breakdown;
   if (!Array.isArray(raw)) return [];
   const out: RuleBreakerBreakdownRow[] = [];
@@ -115,6 +115,17 @@ export function MarketTape() {
             }`}
           >
             AI photonics chokepoint
+          </button>
+          <button
+            type="button"
+            onClick={() => onStrategyChange("rule_breaker_gardner_early")}
+            className={`rounded-lg border px-2.5 py-1 text-[11px] font-medium transition ${
+              rankStrategyId === "rule_breaker_gardner_early"
+                ? "border-emerald-500/70 bg-emerald-500/15 text-emerald-100"
+                : "border-white/15 bg-black/25 text-white/70 hover:bg-white/5"
+            }`}
+          >
+            Gardner Early (lower cap)
           </button>
           <button
             type="button"

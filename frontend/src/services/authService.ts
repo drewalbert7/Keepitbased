@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { User } from '../types';
+import { User, type AdminInvitesOverview, type AdminUsersList } from '../types';
 import { getApiBaseUrl } from '../config/apiBase';
 
 function sleep(ms: number): Promise<void> {
@@ -198,6 +198,27 @@ class AuthService {
       token,
       newPassword
     });
+    return response.data;
+  }
+
+  async getAdminInvites(): Promise<AdminInvitesOverview> {
+    const response = await axios.get<AdminInvitesOverview>('/admin/invites');
+    return response.data;
+  }
+
+  async getAdminUsers(): Promise<AdminUsersList> {
+    const response = await axios.get<AdminUsersList>('/admin/users');
+    return response.data;
+  }
+
+  async setUserSignupAdmin(
+    userId: number,
+    admin: boolean
+  ): Promise<{ message: string; user: { userId: number; email: string; isSignupInviteAdmin: boolean } }> {
+    const response = await axios.put<{
+      message: string;
+      user: { userId: number; email: string; isSignupInviteAdmin: boolean };
+    }>(`/admin/users/${userId}/signup-admin`, { admin });
     return response.data;
   }
 

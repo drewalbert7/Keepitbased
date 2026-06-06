@@ -2,6 +2,7 @@ const axios = require('axios');
 const config = require('../config');
 const logger = require('../utils/logger');
 const emailService = require('./emailService');
+const { isOpportunityEmailUnlimited } = require('../utils/notificationPreferences');
 const { persistDipInsightEmailRun } = require('./agentPersistence');
 const { updateOpportunitySignalAiAssessment } = require('./opportunitySignalsPersistence');
 const { computeDipConfluenceScore } = require('../utils/dipConfluenceScore');
@@ -118,7 +119,9 @@ async function sendDipInsightForOpportunity(params) {
       dipContext,
       insight,
       maxAllocationPct,
-      citationUrls
+      citationUrls,
+      userId,
+      budgetExempt: isOpportunityEmailUnlimited(prefs)
     });
     emailSent = true;
   } else {
@@ -140,7 +143,10 @@ async function sendDipInsightForOpportunity(params) {
       price: priceData.price,
       timestamp: dipContext.timestamp
     };
-    await emailService.sendOpportunitySignalEmail(email, oppPayload, { userId: ctx.userId });
+    await emailService.sendOpportunitySignalEmail(email, oppPayload, {
+      userId,
+      budgetExempt: isOpportunityEmailUnlimited(prefs)
+    });
     plainOpportunityEmailSent = true;
     logger.info(
       `Plain opportunity email sent (dip insight rich email suppressed) user=${userId} ${assetType}:${symbol}`

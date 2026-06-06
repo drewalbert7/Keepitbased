@@ -9,7 +9,8 @@ const {
 } = require('./watchlistOpportunityEvaluator');
 const {
   mergeNotificationPreferences,
-  passesOpportunityEmailTierFilter
+  passesOpportunityEmailTierFilter,
+  isOpportunityEmailUnlimited
 } = require('../utils/notificationPreferences');
 const {
   logOpportunityEmailEvent,
@@ -540,7 +541,12 @@ class PriceMonitor {
         row.email &&
         emailService.isConfigured();
 
-      if (passesEmailTierEarly && emailChannelReady && config.OPPORTUNITY_EMAIL_CONFIRM_ENABLED) {
+      if (
+        passesEmailTierEarly &&
+        emailChannelReady &&
+        config.OPPORTUNITY_EMAIL_CONFIRM_ENABLED &&
+        !isOpportunityEmailUnlimited(prefs)
+      ) {
         await registerOpportunityEmailConfirmationPoll(this.redis, row.user_id, assetType, symbol, {
           requiredHits: config.OPPORTUNITY_EMAIL_CONFIRM_HITS,
           windowPolls: config.OPPORTUNITY_EMAIL_CONFIRM_POLLS
@@ -749,9 +755,11 @@ class PriceMonitor {
       config.OPPORTUNITY_EMAIL_CONFIRM_SKIP_CAPITULATION &&
       Array.isArray(evalResult.flags) &&
       evalResult.flags.includes('capitulation');
+    const unlimited = isOpportunityEmailUnlimited(prefs);
 
     if (
       !skipConfirmation &&
+      !unlimited &&
       config.OPPORTUNITY_EMAIL_CONFIRM_ENABLED &&
       !skipConfirmTier
     ) {
@@ -780,7 +788,7 @@ class PriceMonitor {
       }
     }
 
-    if (await isOpportunityEmailSentThisHour(this.redis, row.user_id, assetType, symbol)) {
+    if (!unlimited && (await isOpportunityEmailSentThisHour(this.redis, row.user_id, assetType, symbol))) {
       logOpportunityEmailEvent({
         action: 'suppressed',
         reason: 'email_already_sent_this_hour',
@@ -792,17 +800,19 @@ class PriceMonitor {
       return;
     }
 
-    const suppressReason = await this.getOpportunityEmailSuppressReason(row.user_id, prefs);
-    if (suppressReason) {
-      logOpportunityEmailEvent({
-        action: 'suppressed',
-        reason: suppressReason,
-        userId: row.user_id,
-        symbol,
-        assetType,
-        flags: evalResult.flags
-      });
-      return;
+    if (!unlimited) {
+      const suppressReason = await this.getOpportunityEmailSuppressReason(row.user_id, prefs);
+      if (suppressReason) {
+        logOpportunityEmailEvent({
+          action: 'suppressed',
+          reason: suppressReason,
+          userId: row.user_id,
+          symbol,
+          assetType,
+          flags: evalResult.flags
+        });
+        return;
+      }
     }
 
     const deliveryMode =
@@ -868,14 +878,16 @@ class PriceMonitor {
       });
       return;
     }
-    await markOpportunityEmailSentThisHour(
-      this.redis,
-      row.user_id,
-      assetType,
-      symbol,
-      config.OPPORTUNITY_DEDUPE_TTL_SEC
-    );
-    await recordOpportunityEmailSent(this.redis, row.user_id);
+    if (!unlimited) {
+      await markOpportunityEmailSentThisHour(
+        this.redis,
+        row.user_id,
+        assetType,
+        symbol,
+        config.OPPORTUNITY_DEDUPE_TTL_SEC
+      );
+      await recordOpportunityEmailSent(this.redis, row.user_id);
+    }
     await markLegacyAlertBlocked(this.redis, row.user_id, assetType, symbol);
     logOpportunityEmailEvent({
       action: 'sent',
@@ -979,7 +991,7 @@ class PriceMonitor {
       }
     }
 
-    if (runInsight) {
+    if (runInsight && !isOpportunityEmailUnlimited(prefs)) {
       const dipCap = await isDipInsightDailyCapReached(
         this.redis,
         row.user_id,
@@ -1036,6 +1048,8 @@ class PriceMonitor {
       return;
     }
 
+    const budgetExempt = isOpportunityEmailUnlimited(prefs);
+
     if (runInsight) {
       try {
         await tryDipInsightEmailOrThrow(dipInsightCtx);
@@ -1044,10 +1058,13 @@ class PriceMonitor {
         logger.warn(
           `Dip insight email failed for user ${row.user_id} ${assetType}:${symbol}, sending plain opportunity email: ${insightErr?.message || insightErr}`
         );
-        return emailService.sendOpportunitySignalEmail(email, payload, { userId: row.user_id });
+        return emailService.sendOpportunitySignalEmail(email, payload, {
+          userId: row.user_id,
+          budgetExempt
+        });
       }
     }
-    return emailService.sendOpportunitySignalEmail(email, payload, { userId: row.user_id });
+    return emailService.sendOpportunitySignalEmail(email, payload, { userId: row.user_id, budgetExempt });
   }
 
   async tryOpportunityDedupe(redisKey) {

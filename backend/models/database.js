@@ -350,6 +350,9 @@ async function runInitializeDatabase() {
     const signupInvite = require('../services/signupInviteCodeService');
     await signupInvite.seedFromEnvIfUnset();
 
+    const { seedAdminsFromEnv } = require('../utils/signupInviteAdmin');
+    await seedAdminsFromEnv();
+
     // Add migration for reset token columns (safely add if they don't exist)
     await client.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token VARCHAR(500);
@@ -376,6 +379,9 @@ async function runInitializeDatabase() {
     `);
     await client.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS email_last_seen_at TIMESTAMPTZ;
+    `);
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_signup_admin BOOLEAN NOT NULL DEFAULT false;
     `);
     await client.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_lower
