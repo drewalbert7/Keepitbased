@@ -10,7 +10,7 @@ class OpportunityState(TypedDict, total=False):
     run_id: str
 
     intent: str
-    # assistant_intent: UI hint scan_rank | ask_question | smart (Node → intent_router).
+    # assistant_intent: UI hint grok_chat | scan_rank (Node → intent_router).
     assistant_intent: str
     conversation_history: List[Dict[str, str]]
     qa_reply_body: str

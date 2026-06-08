@@ -46,7 +46,7 @@ const seedMessages: AgentMessage[] = [
     id: 'm-1',
     role: 'system',
     content:
-      'Choose a mode below: **Scan & rank** runs your watchlist through the opportunity scanner (scores + live context). **Ask a question** is for definitions and “why / how” explanations grounded in your list and recent headlines. **Smart** picks a path from your wording. Everything here is educational only — not personalized investment advice.',
+      '**Grok** answers any question quickly. **Watchlist analyst** scans your dashboard list with live quotes, scores, and dip-band context. Educational only — not investment advice.',
     timestamp: new Date().toISOString()
   }
 ];
@@ -120,7 +120,7 @@ export const AIAgentPage: React.FC = () => {
     });
   }, []);
 
-  const [assistantMode, setAssistantMode] = useState<AssistantIntentMode>('smart');
+  const [assistantMode, setAssistantMode] = useState<AssistantIntentMode>('grok_chat');
   /** Progressive character reveal after the full reply arrives (not live token streaming). */
   const [streamReplyDisplay, setStreamReplyDisplay] = useState(true);
   const revealRafRef = useRef<number | null>(null);
@@ -652,7 +652,7 @@ export const AIAgentPage: React.FC = () => {
       <div className="mb-6 sm:mb-8">
         <h1 className="text-2xl font-semibold tracking-tight text-kib-fg sm:text-3xl">Dashboard</h1>
         <p className="mt-2 max-w-2xl text-sm text-kib-muted sm:text-base">
-          Watchlist and alert policy first — then chat with the assistant.
+          Watchlist and alert policy first — then ask Grok anything, or run the watchlist analyst.
         </p>
       </div>
 
@@ -1203,17 +1203,15 @@ export const AIAgentPage: React.FC = () => {
           </div>
 
           <div className="border-b border-white/[0.06] bg-kib-surface px-3 py-2 sm:px-4">
-            <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-kib-muted">Mode</p>
             <div
-              className="inline-flex w-full max-w-xl flex-wrap gap-1 rounded-lg border border-white/[0.08] bg-black/25 p-1"
+              className="inline-flex w-full max-w-md gap-1 rounded-lg border border-white/[0.08] bg-black/25 p-1"
               role="tablist"
               aria-label="Assistant mode"
             >
               {(
                 [
-                  { id: 'scan_rank' as const, label: 'Scan & rank' },
-                  { id: 'ask_question' as const, label: 'Ask a question' },
-                  { id: 'smart' as const, label: 'Smart' }
+                  { id: 'grok_chat' as const, label: 'Grok' },
+                  { id: 'scan_rank' as const, label: 'Watchlist analyst' }
                 ] as const
               ).map((tab) => (
                 <button
@@ -1228,24 +1226,25 @@ export const AIAgentPage: React.FC = () => {
                 </button>
               ))}
             </div>
-            <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-kib-muted">
-              <input
-                type="checkbox"
-                className="rounded border-white/20 bg-kib-bg"
-                checked={streamReplyDisplay}
-                onChange={(e) => setStreamReplyDisplay(e.target.checked)}
-              />
-              Animate reply (progressive reveal after response arrives)
-            </label>
+            <p className="mt-2 text-[11px] leading-snug text-kib-muted">
+              {assistantMode === 'grok_chat'
+                ? 'Direct Grok — fast answers on any topic.'
+                : 'Scans your active watchlist with scores, quotes, and dip-band sizing.'}
+            </p>
           </div>
 
           {currentRunMetadata?.fallbackUsed ? (
             <div className="border-b border-amber-500/25 bg-amber-950/20 px-4 py-2.5 text-xs text-amber-100/95">
-              <span className="font-medium">Backup mode:</span> the live LangGraph / Grok path did not complete, so
-              this turn used the local template. Check Python service health,{' '}
-              <code className="rounded bg-black/30 px-1 font-mono text-[11px]">ENABLE_LANGGRAPH_AGENT</code>, and{' '}
-              <code className="rounded bg-black/30 px-1 font-mono text-[11px]">AGENT_PYTHON_TIMEOUT_MS</code> if scans
-              time out.
+              <span className="font-medium">Backup mode:</span> Grok / LangGraph did not complete — local template used.
+              Check <code className="rounded bg-black/30 px-1 font-mono text-[11px]">stock-service</code> health and{' '}
+              <code className="rounded bg-black/30 px-1 font-mono text-[11px]">GROK_API_KEY</code>.
+              {assistantMode === 'scan_rank' ? (
+                <>
+                  {' '}
+                  Watchlist scans may need a longer{' '}
+                  <code className="rounded bg-black/30 px-1 font-mono text-[11px]">AGENT_PYTHON_TIMEOUT_MS</code>.
+                </>
+              ) : null}
             </div>
           ) : null}
 
@@ -1271,31 +1270,47 @@ export const AIAgentPage: React.FC = () => {
 
           <div className="border-t border-white/[0.06] bg-kib-bg p-3 sm:p-4">
             <div className="mb-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setInput('Create a stock alert strategy for AAPL with 4% and 9% dip thresholds')}
-                className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-kib-fg hover:bg-white/[0.07]"
-              >
-                AAPL strategy
-              </button>
-              <button
-                type="button"
-                onClick={() => setInput('Monitor TSLA volatility and suggest safer thresholds')}
-                className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-kib-fg hover:bg-white/[0.07]"
-              >
-                TSLA volatility
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setInput(
-                    'Analyze my active dashboard watchlist: rank symbols with your scoring weights, use live quotes, and summarize the strongest dip-band opportunities vs baselines.'
-                  )
-                }
-                className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-kib-fg hover:bg-white/[0.07]"
-              >
-                Analyze watchlist
-              </button>
+              {assistantMode === 'grok_chat' ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setInput('What is RSI and when do dip buyers care about it?')}
+                    className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-kib-fg hover:bg-white/[0.07]"
+                  >
+                    What is RSI?
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInput('Explain market cap vs float in plain English')}
+                    className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-kib-fg hover:bg-white/[0.07]"
+                  >
+                    Market cap vs float
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setInput(
+                        'Rank my active watchlist: use live quotes, scoring weights, and summarize the strongest dip-band opportunities vs baselines.'
+                      )
+                    }
+                    className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-kib-fg hover:bg-white/[0.07]"
+                  >
+                    Rank watchlist
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setInput('Which watchlist names are closest to the overreaction tier today?')
+                    }
+                    className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-kib-fg hover:bg-white/[0.07]"
+                  >
+                    Near overreaction
+                  </button>
+                </>
+              )}
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch sm:gap-3">
               <input
@@ -1304,7 +1319,11 @@ export const AIAgentPage: React.FC = () => {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') void handleSend();
                 }}
-                placeholder="e.g. How much should I allocate to AAPL with $50k deployable given today’s signal tier?"
+                placeholder={
+                  assistantMode === 'grok_chat'
+                    ? 'Ask Grok anything…'
+                    : 'e.g. Rank my watchlist and highlight the best dip-band setups vs baselines'
+                }
                 className="input-field min-h-[44px] flex-1 sm:min-h-0"
               />
               <button

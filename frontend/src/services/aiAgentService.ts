@@ -75,7 +75,7 @@ export interface AgentOutputV1 {
   schemaVersion: 'v1';
   topCandidates: AgentCandidate[];
   /** Python: `scan` vs educational `qa` path. */
-  assistantPath?: 'scan' | 'qa';
+  assistantPath?: 'scan' | 'qa' | 'grok';
   /** Python LangGraph optional internal alert create (server-side only). */
   internalAlertResult?: Record<string, unknown>;
 }
@@ -159,7 +159,7 @@ export const createAgentReply = (prompt: string): string => {
   return `${plan.summary}\n\n${alertText}\n\nNext step: review and apply this plan to your live alerts.`;
 };
 
-export type AssistantIntentMode = 'scan_rank' | 'ask_question' | 'smart';
+export type AssistantIntentMode = 'grok_chat' | 'scan_rank';
 
 export interface ChatWithAgentOptions {
   assistantIntent?: AssistantIntentMode;

@@ -944,6 +944,31 @@ class LlmClient:
                 return text
         raise RuntimeError("No LLM provider configured for markdown chat")
 
+    def answer_grok_fast(self, prompt: str, conversation_block: str) -> str:
+        """Dashboard default: quick Grok answer to any question (no watchlist/research prefetch)."""
+        system = (
+            "You are Grok, a helpful assistant. Answer the user's question clearly and concisely in Markdown.\n"
+            "Rules:\n"
+            "- Be direct; prefer short sections or bullets when helpful.\n"
+            "- For finance or investing topics, stay educational — not personalized investment advice.\n"
+            "- Do not invent live stock prices, portfolio positions, or breaking news; "
+            "if the user needs real-time data, say to check their broker or the app watchlist.\n"
+        )
+        user = f"RECENT_CONVERSATION:\n{conversation_block}\n\nUSER_QUESTION:\n{prompt}\n"
+        try:
+            out = self._markdown_chat(system, user, timeout=45)
+            self.last_used_provider = self.provider or "template"
+            self.last_fallback_used = False
+            return out.strip()
+        except Exception as exc:
+            logger.warning("answer_grok_fast fallback: %s", exc)
+        self.last_used_provider = "template"
+        self.last_fallback_used = True
+        return (
+            "**Grok is unavailable** on the Python service right now.\n\n"
+            "Check `GROK_API_KEY` and `LLM_PROVIDER=grok` on **stock-service**, then retry."
+        )
+
     def answer_educational_qa(
         self,
         prompt: str,

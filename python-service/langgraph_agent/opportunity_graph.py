@@ -4,6 +4,7 @@ from .opportunity_nodes import (
     alert_creator,
     compose_scan_reply,
     context_loader,
+    grok_fast_advisor,
     intent_router,
     market_data_loader,
     opportunity_scout,
@@ -25,6 +26,8 @@ def _route_or_fail(state: OpportunityState, success_node: str) -> str:
 def _after_intent(state: OpportunityState) -> str:
     if state.get("error"):
         return "response_formatter"
+    if state.get("intent") == "grok_fast":
+        return "grok_fast_advisor"
     if state.get("intent") == "educational_qa":
         return "qa_advisor"
     return "context_loader"
@@ -33,6 +36,7 @@ def _after_intent(state: OpportunityState) -> str:
 def build_opportunity_graph():
     graph = StateGraph(OpportunityState)
     graph.add_node("intent_router", intent_router)
+    graph.add_node("grok_fast_advisor", grok_fast_advisor)
     graph.add_node("qa_advisor", qa_advisor)
     graph.add_node("context_loader", context_loader)
     graph.add_node("user_context_loader", user_context_loader)
@@ -49,11 +53,13 @@ def build_opportunity_graph():
         "intent_router",
         _after_intent,
         {
+            "grok_fast_advisor": "grok_fast_advisor",
             "qa_advisor": "qa_advisor",
             "context_loader": "context_loader",
             "response_formatter": "response_formatter",
         },
     )
+    graph.add_edge("grok_fast_advisor", "response_formatter")
     graph.add_edge("qa_advisor", "response_formatter")
     graph.add_conditional_edges(
         "context_loader",

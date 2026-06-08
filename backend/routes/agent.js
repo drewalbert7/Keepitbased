@@ -220,7 +220,7 @@ const proxyOpportunityScan = async ({
       preferences,
       userId,
       watchlistContext: watchlistContext || null,
-      assistantIntent: assistantIntent || 'smart',
+      assistantIntent: assistantIntent || 'grok_chat',
       conversationHistory: conversationHistory || []
     },
     { timeout: timeoutMs }
@@ -339,7 +339,7 @@ router.post('/chat', auth, agentRateLimiter, [
   body('prompt').isString().trim().isLength({ min: 3, max: 2000 }),
   body('mode').optional().isIn(['recommend_only', 'auto_apply_low_risk']),
   body('preferences').optional().isObject(),
-  body('assistantIntent').optional().isIn(['scan_rank', 'ask_question', 'smart']),
+  body('assistantIntent').optional().isIn(['grok_chat', 'scan_rank', 'ask_question', 'smart']),
   body('conversationHistory').optional().isArray({ max: 20 })
 ], async (req, res) => {
   try {
@@ -351,7 +351,10 @@ router.post('/chat', auth, agentRateLimiter, [
     const prompt = req.body.prompt.trim();
     const mode = req.body.mode || 'recommend_only';
     const preferencesUsed = normalizePreferences(req.body.preferences);
-    const assistantIntent = req.body.assistantIntent || 'smart';
+    let assistantIntent = req.body.assistantIntent || 'grok_chat';
+    if (assistantIntent === 'ask_question' || assistantIntent === 'smart') {
+      assistantIntent = 'grok_chat';
+    }
     const conversationHistory = sanitizeAgentConversationHistory(req.body.conversationHistory);
     const useLangGraph = String(process.env.ENABLE_LANGGRAPH_AGENT || '').toLowerCase() === 'true';
     let output;

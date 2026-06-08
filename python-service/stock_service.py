@@ -437,9 +437,11 @@ def get_opportunities():
         preferences = body.get("preferences", {})
         user_id = body.get("userId", 0)
         watchlist_context = body.get("watchlistContext")
-        assistant_intent = str(body.get("assistantIntent") or body.get("assistant_intent") or "smart").strip().lower()
-        if assistant_intent not in ("scan_rank", "ask_question", "smart"):
-            assistant_intent = "smart"
+        assistant_intent = str(body.get("assistantIntent") or body.get("assistant_intent") or "grok_chat").strip().lower()
+        if assistant_intent in ("ask_question", "smart"):
+            assistant_intent = "grok_chat"
+        if assistant_intent not in ("grok_chat", "scan_rank"):
+            assistant_intent = "grok_chat"
         conversation_history = _normalize_agent_conversation_history(
             body.get("conversationHistory") or body.get("conversation_history")
         )

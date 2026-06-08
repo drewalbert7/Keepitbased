@@ -199,25 +199,12 @@ _SCAN_HINTS = (
 
 
 def _resolve_intent_from_ui_and_prompt(state: OpportunityState) -> str:
-    """Return opportunity_scan or educational_qa."""
-    prompt = (state.get("prompt") or "").strip()
-    raw = str(state.get("assistant_intent") or "smart").strip().lower()
-    if raw == "ask_question":
-        return "educational_qa"
+    """Return opportunity_scan (watchlist analyst) or grok_fast (default Grok chat)."""
+    raw = str(state.get("assistant_intent") or "grok_chat").strip().lower()
     if raw == "scan_rank":
         return "opportunity_scan"
-    if raw not in ("smart", ""):
-        return "opportunity_scan"
-    pl = prompt.lower()
-    scan_score = sum(1 for h in _SCAN_HINTS if h in pl)
-    qa_score = sum(1 for h in _QA_HINTS if h in pl)
-    if qa_score > scan_score:
-        return "educational_qa"
-    if "?" in prompt and scan_score == 0:
-        return "educational_qa"
-    if scan_score > 0:
-        return "opportunity_scan"
-    return "opportunity_scan"
+    # grok_chat (default) + legacy ask_question / smart → fast Grok path
+    return "grok_fast"
 
 
 def _format_conversation_for_llm(history: Optional[Any], max_turns: int = 8) -> str:
@@ -246,6 +233,20 @@ def intent_router(state: OpportunityState) -> OpportunityState:
         return {"error": "prompt is required"}
     resolved = _resolve_intent_from_ui_and_prompt(state)
     return {"intent": resolved}
+
+
+def grok_fast_advisor(state: OpportunityState) -> OpportunityState:
+    """Fast Grok Q&A — conversation + user prompt only (no watchlist scan)."""
+    try:
+        prompt = (state.get("prompt") or "").strip()
+        conv = _format_conversation_for_llm(state.get("conversation_history"))
+        body = LLM_CLIENT.answer_grok_fast(prompt, conv)
+        return {"qa_reply_body": body}
+    except Exception as exc:
+        logger.warning("grok_fast_advisor: %s", exc)
+        return {
+            "qa_reply_body": f"Could not reach Grok ({exc}). Check Python service logs and API keys.",
+        }
 
 
 def qa_advisor(state: OpportunityState) -> OpportunityState:
@@ -650,16 +651,16 @@ def response_formatter(state: OpportunityState) -> OpportunityState:
             "reply": f"Agent error: {state['error']}",
         }
 
-    if state.get("intent") == "educational_qa":
+    if state.get("intent") in ("grok_fast", "educational_qa"):
         qa_body = str(state.get("qa_reply_body") or "").strip()
         if not qa_body:
             qa_body = (
-                "I could not generate a detailed answer (LLM unavailable). "
-                "Try again with **Ask a question** mode and Grok configured on the Python service."
+                "I could not generate an answer (Grok unavailable). "
+                "Check **GROK_API_KEY** on the Python service and retry."
             )
-        # Digests were already in the LLM context; reply is the model answer only (no duplicate blocks).
+        path = "grok" if state.get("intent") == "grok_fast" else "qa"
         return {
-            "output": {"schemaVersion": "v1", "topCandidates": [], "assistantPath": "qa"},
+            "output": {"schemaVersion": "v1", "topCandidates": [], "assistantPath": path},
             "reply": qa_body,
             "as_of": state.get("as_of") or datetime.now(timezone.utc).isoformat(),
         }
