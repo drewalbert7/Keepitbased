@@ -1,10 +1,26 @@
 # Agent AGI — roadmap, UX reference & build prompts
 
-> **Product roadmap:** [`../../todo.md`](../../todo.md) — canonical KeepItBased `todo.md` (Quant/LangGraph, deploy, §11). This file is **subproject UX/build prompts only**.
+> **Product roadmap:** [`../../todo.md`](../../todo.md) — canonical KeepItBased `todo.md` (Quant/LangGraph, deploy, §11, **agentic trading bot**). This file is **subproject UX/build prompts + bot loop detail**.
 >
 > **Saved review (2026-05-24):** [`../docs/REVIEW_FOR_NEXT_SESSION.md`](../docs/REVIEW_FOR_NEXT_SESSION.md) — architecture/product review to resume next session.
+>
+> **Resume here (2026-06-06):** Main app shipped **daily digest Quant AGI picks** + **Gardner Early** ranker (`410bd325`). **Next:** agentic trading bot Phases **0→1** below.
 
-This folder holds **Agent AGI** planning artifacts: roadmap, UX inspiration, and reusable prompts for implementing the **MiroFish Terminal** frontend against `quant_agi/`.
+This folder holds **Agent AGI** planning artifacts: roadmap, UX inspiration, and reusable prompts for implementing the **MiroFish Terminal** frontend and **agentic trading loop** against `quant_agi/`.
+
+## Progress (2026-06-06)
+
+| Delivered | Notes |
+|-----------|--------|
+| **4 rank strategies** | `momentum_liquidity`, `photonics_chokepoint`, `rule_breaker_gardner`, **`rule_breaker_gardner_early`** |
+| **Daily digest integration** | Node **`quantAgiDailySuggestions.js`** → main app daily email (3 picks × 3 strategies) |
+| **Market-cap gates** | Photonics + Gardner Early **$25B** max |
+| **Terminal preset** | Gardner Early on Quant tape / stream bootstrap |
+| **Ops cockpit** | `/diag/terminal-feed`, rank endpoint, autoresearch nightly (unchanged) |
+
+**Not done yet (bot track):** closed loop swarm → autoresearch → **paper P&L** → **policy-bounded allocator** → **live MiroFish graph** UI; WebSocket event projection; CI promotion gate for sandbox patches.
+
+**Canonical next steps:** [`../../todo.md` § Quant AGI agentic trading bot build-out](../../todo.md#quant-agi-agentic-trading-bot-build-out).
 
 ## UX reference (Marketing101 — BTC Polymarket terminal inspiration)
 
@@ -59,12 +75,14 @@ Self-improvement path: **Workspace A** prod image (immutable) vs **Workspace B**
 
 ### Mapping to existing `quant_agi`
 
-| Piece | Today | Next |
+| Piece | Today | Next (agentic trading bot) |
 |-------|--------|------|
-| Swarm | `SwarmManager`, `emergence`, KG | Feed portfolio / regime context |
-| Autoresearch | Grok JSON + sandbox commits | CI on patches; leaderboard in UI |
-| Market data | `massive_aggs.py`, `history_source` | Optional intraday feeds for graph motion |
-| Enrichment API | FastAPI webhook + diags | WebSocket projection of swarm snapshots |
+| Swarm | `SwarmManager`, `emergence`, KG | Feed portfolio / regime context; **WebSocket + event log** |
+| Autoresearch | Grok JSON + sandbox commits | CI on patches; **paper P&L** leaderboard in UI |
+| Market data | `massive_aggs.py`, `history_source` | Intraday feeds for graph motion; sim fills |
+| Rankers | 4 strategies + digest email | Allocator universe + paper holdings |
+| Enrichment API | FastAPI webhook + diags | **SSE/WebSocket** projection of swarm snapshots |
+| Terminal UI | Ops cockpit (tape, diff, metrics) | **MiroFish force-graph** + wallet/P&L panels (saved prompt below) |
 
 ---
 
@@ -142,4 +160,4 @@ Deliver the entire production-ready frontend codebase in one response. Make it v
 
 ## Maintainer note
 
-Keep this file as the single **Agent AGI** planning entry point under `quant_agi/agent_agi/`. When the Next.js app lands under `quant_agi/frontend/`, add a short link here to its README.
+Keep this file as the single **Agent AGI** planning entry point under `quant_agi/agent_agi/`. **Next session:** start **Phase 0** event schema + **MiroFishGraph** in `quant_agi/frontend/` (see saved prompt below). When components land, link their README here.

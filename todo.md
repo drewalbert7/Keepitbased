@@ -2,11 +2,13 @@
 
 > **Single source of truth:** `keepitbased/todo.md` in this repo. When you or Cursor reference **`todo.md`**, use **this file only**. A stub at `/home/dstrad/todo.md` redirects here.
 
-Last updated: **2026-06-01** (site outage recovery — PM2 + Hetzner firewall + SSH/Cursor; session save).
+Last updated: **2026-06-06** (Quant AGI daily digest + Gardner Early shipped; agentic trading bot is next).
+
+**Session checkpoint (2026-06-06) — Quant AGI digest, Gardner Early, email + admin:** **Shipped:** Daily Grok watchlist digest now includes **grouped Quant AGI sections** — **`quantAgiDailySuggestions.js`** pulls **`/diag/market-universe-rank`** for **`rule_breaker_gardner`**, **`rule_breaker_gardner_early`**, and **`photonics_chokepoint`** (**3 picks per strategy**, 9 total; config **`DAILY_DIGEST_QUANT_AGI_PER_STRATEGY`**, **`DAILY_DIGEST_QUANT_AGI_RANK_TOP_N`**). **`emailService.js`** renders score, market cap, position hint, breakdown bullets; momentum/tape lines stripped from explanations. **Quant sidecar:** Gardner Early universe + scoring in **`quant_strategies.py`** / **`api_client.py`**; terminal preset **`rule_breaker_gardner_early`** in **`MarketTape`** / **`StreamBootstrap`** / **`store.ts`**. **Market-cap gates:** photonics + Gardner Early max raised to **$25B** (AAOI and similar names no longer excluded). **Email ops:** SES IAM fixed for **us-east-1** identity + configuration set; opportunity sends working again. **Admin:** **`opportunityEmailUnlimited`** flag (test account **drewalbert7@gmail.com**); DB-backed signup admin (**`is_signup_admin`**, **`ProfileAdminPage`**, **`signupInviteAdmin.js`**) — was WIP since 2026-05-23, now committed. **Git / deploy:** **`410bd325`** on **`main`**, pushed + **`bash scripts/deploy-production.sh`** (`keepitbased-api`, **`quant-agi-api`**, **`quant-agi-frontend`** online). **Still not wired:** rank snapshots → dashboard **`buildAgentWatchlistContext`** / LangGraph (digest only today). **Next engineering (primary):** **Quant AGI agentic trading bot** build-out — § [Quant AGI agentic trading bot](#quant-agi-agentic-trading-bot-build-out) + **`quant_agi/agent_agi/todo.md`**. **Parallel:** rank → LangGraph context; **DL-3** **`DeployPlanV1`**; SES production + DNS.
 
 **Session checkpoint (2026-06-01) — Site unreachable / API 502 + external timeout:** **Symptoms:** `https://keepitbased.com` and `https://app.keepitbased.com` static shell could load from server-side checks, but **`/api/health` → 502**; external clients (Mac private browser, off-host fetch) saw **`curl` timeout** to `:443` even though DNS resolved correctly (`keepitbased.com` → **`178.156.206.27`**). **Root causes (two layers):** (1) **PM2 empty** — no processes on `3001/5001/3010/8844`; nginx upstream to API failed. (2) **Hetzner cloud firewall** — host **UFW already allowed** `80/443` (v4+v6); **`nft`/iptables** matched UFW; traffic still dropped at **provider edge** until firewall was removed/reconfigured. **Fix applied:** **`pm2 resurrect`** (restored `keepitbased-api`, `stock-service`, `quant-agi-api`, `quant-agi-frontend`) → local **`curl http://127.0.0.1:3001/api/health`** **200** → **`pm2 save`**. **Hetzner `firewall-1` inbound rules (re-applied):** TCP **`22`** from admin **`66.190.174.124/32`** only; TCP **`80`** + **`443`** from **Any IPv4 + Any IPv6** (required — rules with only SSH/ICMP block the public site). Apply firewall to server resource. **Cursor / SSH:** Reverted **Remote SSH extension in Cursor** to an **older version** to regain reliable shell access; then fixed underlying **Mac SSH** (see § [Admin SSH + Cursor](#admin-ssh--cursor-2026-06-01) — new **`id_ed25519`**, Keychain persistence, direct IP **`178.156.206.27`**, no flaky ProxyJump). **Verified:** `curl -4 -I https://keepitbased.com` → **`HTTP/2 200`** from admin Mac; `app.keepitbased.com/api/health` **200**. **If site “not loading” recurs:** § [Production ops](#production-ops-smoke--recovery) — check **`pm2 status`** first, then **`curl -4 -I --max-time 10 https://keepitbased.com`** from off-host; if DNS OK but TCP timeout → **Hetzner firewall** (must include **443**, not SSH-only). **Next engineering unchanged:** Quant rank → **`buildAgentWatchlistContext`**; SES/DNS ops still open.
 
-**Session checkpoint (2026-05-23) — Deploy list checkboxes + DL-1/DL-2 live:** **Shipped:** Capital **deploy list** (`2b5665eb`) — `user_deploy_list_items`, `/api/deploy-list` CRUD + **Optimize with Grok**, dashboard **Deploy** column + panel. **Fix (this session):** Checkbox state no longer stuck after uncheck (`756eba80`) — `deployAlertIds` is source of truth after list loads; optimistic toggle + rollback; paused/TW/crypto disabled; omit `targetWeightPct: 0` (validation). **Deployed:** `npm run deploy` + `pm2 reload keepitbased-api`. **Uncommitted WIP (do not mix):** signup-admin (`is_signup_admin`, `ProfileAdminPage`, `seedAdminsFromEnv` in local `database.js` only). **Next ops:** SES production (us-east-1 case pending); SPF/DMARC (`npm run email:check-dns`). **Next engineering:** **DL-3** `DeployPlanV1` + approve UI; Quant rank → **`buildAgentWatchlistContext`**; broker (**DL-4**).
+**Session checkpoint (2026-05-23) — Deploy list checkboxes + DL-1/DL-2 live:** **Shipped:** Capital **deploy list** (`2b5665eb`) — `user_deploy_list_items`, `/api/deploy-list` CRUD + **Optimize with Grok**, dashboard **Deploy** column + panel. **Fix (this session):** Checkbox state no longer stuck after uncheck (`756eba80`) — `deployAlertIds` is source of truth after list loads; optimistic toggle + rollback; paused/TW/crypto disabled; omit `targetWeightPct: 0` (validation). **Deployed:** `npm run deploy` + `pm2 reload keepitbased-api`. **Signup admin** (was WIP here) **shipped 2026-06-06** in **`410bd325`**. **Next ops:** SES production (us-east-1 case pending); SPF/DMARC (`npm run email:check-dns`). **Next engineering:** **DL-3** `DeployPlanV1` + approve UI; Quant rank → **`buildAgentWatchlistContext`**; broker (**DL-4**).
 
 **Session checkpoint (2026-05-25) — Legacy alerts removed + email diagnosis:** **Shipped:** Removed legacy **5/10/15%** threshold polling (`AlertService.processAlerts`), **`sendAlert`** emails, **`ENABLE_LEGACY_THRESHOLD_ALERT_EMAILS`**, and health **`legacyThresholdAlertEmails`**. Watchlist dip notifications are **only** via **`priceMonitor`** → opportunity tiers (`on_sale` / `overreaction` / `capitulation`). **`AlertService`** retained for **`user_alerts`** CRUD (watchlist + baselines). **Git:** `8fb10fbd` on **`main`**, deployed (`pm2 reload keepitbased-api`). **Email ops (verified on host):** SMTP login **OK** (`us-east-1`); opportunity test send **OK** to verified Gmail; **554** to unverified addresses → **SES sandbox** until **production access in us-east-1**. Replied to AWS Support (prior limit increase was **us-east-2** Ohio; production app uses **us-east-1** N. Virginia) — awaiting case response. **App suppressions (not SES):** weekend/RTH **morning_batch_queued**, Profile **`overreaction_only`**, quiet hours, hourly digest. **DNS still open:** SPF missing `include:amazonses.com`, no DMARC (`npm run email:check-dns`). **UX note:** landing **Open charts** → login (charts are protected). **Next ops:** SES production approval + DNS + SNS webhook. **Next engineering:** Quant rank → **`buildAgentWatchlistContext`**.
 
@@ -42,7 +44,8 @@ Last updated: **2026-06-01** (site outage recovery — PM2 + Hetzner firewall + 
 | **§11 Phase B** — Ingestion | **🟡 MVP shipped** | `research_artifacts` + Polygon `/v2/reference/news` + cron worker; all-watchlist tickers; dedupe `content_hash`. **Open:** dedicated queue worker, X + EDGAR (see §11). |
 | **§11 Phase D** — Fusion gate | **🟡 MVP shipped** | `researchFusionGate` + `correlationRuleV1` on dip-insight path when **`researchDigestEmail`** true → else plain opportunity email. **Open:** digest dedupe keys, async queue, full `ResearchAlertEvaluator`. |
 | **§11 Phase C** — Agent context | **🟡 MVP shipped** | Internal **`/research/artifacts`** + **`research_context_loader`** + reply digest + **`opportunity_scout`** scoring/LLM (**`news_context`**, risk bumps). **Open:** **`signal_fusion_scorer`**, vol from history, filing rows. |
-| **AWS SES (transactional mail)** | **🟡 SMTP working; sandbox** | Budgets + **one-click unsub** shipped; legacy % mail **removed** (`8fb10fbd`). **Open:** **us-east-1** production access (Support case replied 2026-05-23), **DNS**, SNS webhook. |
+| **AWS SES (transactional mail)** | **🟡 SMTP working; sandbox** | Budgets + **one-click unsub** shipped; legacy % mail **removed** (`8fb10fbd`). **SES send restored 2026-06-06** (IAM identity + config set). **Open:** **us-east-1** production access, **DNS**, SNS webhook. |
+| **Quant AGI rankers + digest** | **🟢 Shipped (email)** | 4 strategies; daily digest 3×/strategy via **`quantAgiDailySuggestions.js`**. **Open:** LangGraph context; **agentic trading bot** loop (§ below). |
 | **§9 Go-live checklist** | Open | Hard gates before declaring “launch”: queues, DR, etc. |
 | **Situation room** — global awareness / “major events” | **Planned** | In-house feed (no reliance on monitor-the-situation.com); **dashboard UI directly under watchlist**; doubles as **live context for AI agents**. Full plan: **§ Situation room / global monitor** below. |
 
@@ -184,16 +187,30 @@ npm run email:test-opportunity
 - **Phase 0** (charts / regression): **✅ MVP complete** — non-blocking polish only if regressions appear (§2).
 - **Phase 1** (LangGraph foundation): **✅ Core complete** — gateway, Opportunity Scout graph, dip-insight path, persistence, golden smoke tests.
 - **Now:** **§11 Phase C** (tail) — **`signal_fusion_scorer`** + history vol; **§11 Phase B** — queue worker, EDGAR; **§11 Phase D** — dedupe + async send; **Phase E** briefing card.
-- **Also (Quant AGI + dashboard LangGraph, 2026-05-11):** **`/diag/market-universe-rank`** now has **`momentum_liquidity`**, **`photonics_chokepoint`**, and **`rule_breaker_gardner`**; momentum rank still uses **`QUANT_AGI_MOMENTUM_FUNDAMENTALS_WEIGHT`**; **dashboard chat does not yet auto-ingest** any rank snapshot. Planned: inject all three + batched fundamentals + macro card + news + X sentiment into **`buildAgentWatchlistContext`** / agent→Python payloads, optional deterministic fusion before Grok narrative. See § [Quant AGI — unified stock selection for dashboard LangGraph](#quant-agi--unified-stock-selection-for-dashboard-langgraph).
+- **Quant AGI rankers (2026-06-06):** Four strategies on **`/diag/market-universe-rank`**: **`momentum_liquidity`**, **`photonics_chokepoint`**, **`rule_breaker_gardner`**, **`rule_breaker_gardner_early`** (Gardner Early + **$25B** cap). **Daily digest email** ingests top-3-per-strategy via **`quantAgiDailySuggestions.js`**. **Dashboard LangGraph still does not auto-ingest** rank snapshots — see § [Quant AGI — unified stock selection](#quant-agi--unified-stock-selection-for-dashboard-langgraph). **Primary next track:** § [Quant AGI agentic trading bot](#quant-agi-agentic-trading-bot-build-out).
 - **Phases 2–5 & §9:** deferred until fusion + observability justify broader tooling and launch gates.
 
 ## Resume Here Next Session
 
-### Session save spot (2026-06-01) — continue here next time
+### Session save spot (2026-06-06) — continue here next time
 
-**Ops (just fixed):** Site outage was **PM2 down** + **Hetzner firewall** missing public **80/443**. Recovery: **`pm2 resurrect && pm2 save`**; Hetzner inbound **22** from **`66.190.174.124/32`**, **80/443** from anywhere. Host UFW was already correct — do not assume UFW is the blocker if external `curl` times out. **SSH + Cursor (daily breaker fixed):** new **`id_ed25519`**, **`ssh-add --apple-use-keychain`**, **`UseKeychain yes`**, direct IP **`178.156.206.27`** (not domain), removed flaky ProxyJump, **`ssh-copy-id`** on both servers, cleaned broken configs; Cursor Remote SSH reverted to older extension until local SSH stable. Full notes: § [Admin SSH + Cursor](#admin-ssh--cursor-2026-06-01). Smoke from laptop: **`curl -4 -I --max-time 10 https://keepitbased.com`**. Full runbook: § [Production ops](#production-ops-smoke--recovery).
+**Just shipped (`410bd325`, deployed):** Daily digest **Quant AGI** sections (3× **`rule_breaker_gardner`**, **`rule_breaker_gardner_early`**, **`photonics_chokepoint`**); Gardner Early ranker + terminal preset; **$25B** market-cap gates; SES send path restored; signup admin + unlimited opportunity email for admin test user.
 
-**Product (next engineering):** Quant rank → **`buildAgentWatchlistContext`**; SES/DNS — unchanged from 2026-05-25 notes below.
+**Product (next engineering — start here):** **Quant AGI agentic trading bot** build-out — closed loop **market + portfolio → swarm → autoresearch → paper eval → policy-bounded allocator → UI**. Phase checklist in § [Quant AGI agentic trading bot](#quant-agi-agentic-trading-bot-build-out); strategic detail in **`quant_agi/agent_agi/todo.md`** and **`quant_agi/docs/REVIEW_FOR_NEXT_SESSION.md`**.
+
+**Suggested first slices (Phase 0 → 1):**
+1. **Event schema + replay** — swarm snapshots, autoresearch runs, allocator decisions → SQLite/Postgres event log + SSE/WebSocket feed.
+2. **MiroFish Terminal UI** — live swarm graph + experiment diff viewer wired to **`/diag/terminal-feed`** (ops cockpit exists; force-graph + portfolio panels are the gap).
+3. **Paper P&L simulator** — Massive daily closes on ranked universe; score autoresearch patches without live risk.
+4. **Policy envelope** — hard notional/drawdown caps + kill switch before any broker (**DL-4** shares constraints).
+
+**Parallel (do not block bot track):** rank → **`buildAgentWatchlistContext`**; **DL-3** **`DeployPlanV1`**; SES production + DNS (`npm run email:check-dns`).
+
+**Ops smoke:** **`pm2 status`**; **`curl -sf http://127.0.0.1:3001/api/health`**; **`curl -sf http://127.0.0.1:8844/health`**; off-host **`curl -4 -I --max-time 10 https://keepitbased.com`**. Digest one-shot: **`cd backend && npm run digest:run-once`**.
+
+### Session save spot (2026-06-01) — prior (outage recovery)
+
+**Ops (fixed):** Site outage was **PM2 down** + **Hetzner firewall** missing public **80/443**. Recovery: **`pm2 resurrect && pm2 save`**; Hetzner inbound **22** from **`66.190.174.124/32`**, **80/443** from anywhere. **SSH + Cursor:** § [Admin SSH + Cursor](#admin-ssh--cursor-2026-06-01). Full runbook: § [Production ops](#production-ops-smoke--recovery).
 
 ### Session save spot (2026-05-25) — continue here next time
 
@@ -265,9 +282,10 @@ npm run email:test-opportunity
 
 ### Quant AGI — unified stock selection for dashboard LangGraph
 
-**Goal:** Dashboard assistant (LangGraph / Grok) should synthesize “best stock options” using the **same signal stack** as the Quant tape — not heuristic ranks in isolation. Today **`QUANT_AGI_MOMENTUM_FUNDAMENTALS_WEIGHT`** etc. affect **`momentum_liquidity`** only; **`photonics_chokepoint`** and **`rule_breaker_gardner`** have their own composites — **chat does not auto-ingest** rank snapshots.
+**Goal:** Dashboard assistant (LangGraph / Grok) should synthesize “best stock options” using the **same signal stack** as the Quant tape — not heuristic ranks in isolation. **Daily digest email** already pulls rank snapshots (2026-06-06); **dashboard chat does not yet**.
 
-- [ ] **`agentWatchlistContext` / internal agent payload:** Inject latest **`market-universe-rank`** for **`momentum_liquidity`**, **`photonics_chokepoint`**, **`rule_breaker_gardner`** — include `tape_score_raw` / `strategy_factors`, blended `score`, `valuation_score`, liquidity gate, `why`, `history_source`, **`rule_breaker_gardner` `breakdown`** legs, timestamp.
+- [ ] **`agentWatchlistContext` / internal agent payload:** Inject latest **`market-universe-rank`** for **`momentum_liquidity`**, **`photonics_chokepoint`**, **`rule_breaker_gardner`**, **`rule_breaker_gardner_early`** — include `tape_score_raw` / `strategy_factors`, blended `score`, `valuation_score`, liquidity gate, `why`, `history_source`, Gardner **`breakdown`** legs, timestamp.
+- [x] **Daily digest (partial):** **`quantAgiDailySuggestions.js`** → grouped email sections (3 per strategy) — **not** LangGraph context yet.
 - [ ] **Fundamentals:** Batch + cache **EV/Revenue, P/S, margins** for watchlist symbols (python-service; avoid N+1).
 - [ ] **Macro regime:** Small **macro card** (rates / curve / risk proxy / VIX or FRED); cite source + as-of.
 - [ ] **News:** Ticker headlines (Polygon/Massive, OpenBB, research ingest) — bullets + URLs, max age, dedupe.
@@ -276,6 +294,48 @@ npm run email:test-opportunity
 - [ ] **Safety / product:** Educational, watchlist- and cap-bounded; log tool payloads; never a standalone “model price” as advice.
 
 **Honest limit:** Signals + LLM synthesis, not omniscient AGI; latency, OTC gaps, stale news remain risks.
+
+### Quant AGI agentic trading bot build-out
+
+**North star:** A **continuous, auditable loop** — ingest market + portfolio state → **MiroFish-style swarm** (`quant_agi/swarm/`) → beliefs / regime outputs → **autoresearch** proposes parameters or **patch artifacts** (`grok_artifacts/`, sandbox git only) → **synthetic / paper / gated live** evaluation → **capital allocator** adjusts exposure only through a **policy envelope** (caps, kill switch) → next-day feedback. UI makes the loop **watchable in real time** (logs, graph, diffs, experiment scores). Full strategic plan: **`quant_agi/agent_agi/todo.md`**.
+
+**Hard constraints (non-negotiable):**
+- Numbers shown to users from **tools / Massive / DB**, not model recall.
+- **No auto-import** of LLM-generated Python into live trading without CI + human/policy merge.
+- Every run logged: model id, prompt hash, swarm seed, `history_source`, experiment row, git SHA, allocator decision id.
+- Capital deployment via **your** broker integrations; educational disclaimers; ties to deploy list (**DL-3** / **DL-4**) when live sleeves arrive.
+
+**Architecture (target):**
+
+```text
+[ Massive / alerts / portfolio ] → [ Swarm + emergence ] → [ Evaluator / allocator policy ]
+        ↓                                    ↑
+[ Autoresearch (Grok proposals + artifacts) ]──┘
+        ↓
+[ Paper → (optional) small live sleeve ]     [ SSE/WebSocket + event log → MiroFish Terminal UI ]
+```
+
+| Phase | Focus | Status | Next actions |
+|-------|--------|--------|--------------|
+| **0** | Telemetry + “agent theater” UI | **🟡 Partial** | Ops cockpit shipped (`/diag/terminal-feed`, tape, diff panel). **Open:** event schema, replay, **MiroFish force-graph**, WebSocket projection of swarm snapshots. |
+| **1** | Daily improve, no live risk | **🟡 Partial** | Nightly **`npm run quant:autoresearch-nightly`** + sandbox commits. **Open:** paper P&L on Massive closes; leaderboard in UI; CI on patch promotion. |
+| **2** | Guided self-mod | Planned | Allowlisted edits (constants, evaluator weights, allocator caps); two-party rule (tests + reviewer). |
+| **3** | Small live sleeves | Planned | Hard notional/drawdown ceilings; kill switch; broker paper (**DL-4**). |
+| **4** | Broader autonomy | Planned | Constitutional test harness; expand patch scope only after Phase 2–3 are boring. |
+
+**Open product decisions:** Paper vs named broker for v1? Universe US equities only vs crypto? Agent merge without human approval? (**Recommended: PR-only until Phase 3+.**)
+
+**Mapping to existing code:**
+
+| Piece | Today | Bot build-out |
+|-------|--------|----------------|
+| Rankers | 4 strategies + digest email | Feed **allocator universe** + paper sim holdings |
+| Swarm | `SwarmManager`, `emergence`, webhook enrich | Portfolio/regime context in; **live graph** out |
+| Autoresearch | Grok JSON + sandbox git | CI + promotion gate + UI diff viewer |
+| Terminal UI | Next.js ops cockpit | **MiroFish Terminal** (see **`agent_agi/todo.md`** saved prompt) |
+| Main app | Deploy list **DL-1/2**, dip alerts | **DL-3/4** approve plan → execute within policy envelope |
+
+**Resume reading:** [`quant_agi/docs/REVIEW_FOR_NEXT_SESSION.md`](quant_agi/docs/REVIEW_FOR_NEXT_SESSION.md) — architecture review + skeptical notes before expanding autonomy.
 
 ### Recent session — Profile hub, landing page, notification defaults (2026-05-06, done)
 
@@ -1013,7 +1073,7 @@ npm run golden:dip-insight | npm run golden:opportunity | npm run test:charts
 
 **Missing / wanted:** OpenAPI specs, Storybook, DB schema doc, troubleshooting one-pager.
 
-### Status snapshot (2026-06-01)
+### Status snapshot (2026-06-06)
 
 | Area | Status |
 |------|--------|
@@ -1021,10 +1081,12 @@ npm run golden:dip-insight | npm run golden:opportunity | npm run test:charts
 | Charts / watchlist | 🟢 MVP complete |
 | LangGraph agent + dip email | 🟢 Core shipped (opportunity path only; legacy % alerts **removed**) |
 | **Production uptime / firewall** | **🟢 Recovered 2026-06-01** — PM2 resurrect + Hetzner **80/443** rules; SSH/Cursor stabilized (**ed25519**, Keychain, direct IP); see § Production ops |
-| AWS SES SMTP | 🟡 Auth OK; **sandbox** (554 unverified); **us-east-1** production case pending; DNS open |
+| AWS SES SMTP | 🟡 Auth OK; **sending restored**; **sandbox** (554 unverified); **us-east-1** production case pending; DNS open |
+| **Quant AGI digest + rankers** | **🟢 Shipped** — Gardner Early, $25B caps, 9 digest picks; terminal preset live |
+| **Quant AGI agentic trading bot** | **🟠 Primary next** — Phase 0–1: event log, MiroFish UI, paper sim, policy envelope |
 | §11 research fusion | 🟡 MVP; queue/EDGAR open |
-| Quant → dashboard context | 🟠 **Next** (parallel to deploy list DL-3+) |
-| Deploy list / Grok sizing | **✅ DL-1/DL-2** — broker + `DeployPlanV1` next (DL-3) |
+| Quant → dashboard context | 🟠 Parallel (digest wired; LangGraph not) |
+| Deploy list / Grok sizing | **✅ DL-1/DL-2** — **`DeployPlanV1`** + broker next (**DL-3/4**) |
 | §9 go-live gates | Open |
 
-*Consolidated 2026-05-17; refreshed 2026-06-01. Prior split files redirect here.*
+*Consolidated 2026-05-17; refreshed 2026-06-06. Prior split files redirect here.*
