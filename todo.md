@@ -2,7 +2,9 @@
 
 > **Single source of truth:** `keepitbased/todo.md` in this repo. When you or Cursor reference **`todo.md`**, use **this file only**. A stub at `/home/dstrad/todo.md` redirects here.
 
-Last updated: **2026-06-06** (Quant AGI daily digest + Gardner Early shipped; agentic trading bot is next).
+Last updated: **2026-06-08** (Grok paper trading bot plan + dashboard layout spec).
+
+**Session checkpoint (2026-06-08) — Dashboard Quant AGI suggestions (gate before terminal removal):** **`QuantAgiSuggestionsPanel`** on **`/dashboard`** under **Deploy list** — proxied via **`GET /api/quant-agi/market-universe-rank`** (auth), 4 strategies, 8s refresh, add-to-watchlist, Gardner breakdown. **Smoke:** `node backend/scripts/smokeQuantAgiDashboardRank.js` (all 4 strategies must return positions). **Do not remove** `MarketTape` from **`/quant-agi`** until dashboard smoke passes in prod + you confirm UI parity. **Next:** **`PaperTradingBotPanel`** below suggestions. Full bot plan: [`quant_agi/docs/GROK_PAPER_TRADING_BOT_PLAN.md`](quant_agi/docs/GROK_PAPER_TRADING_BOT_PLAN.md).
 
 **Session checkpoint (2026-06-06) — Quant AGI digest, Gardner Early, email + admin:** **Shipped:** Daily Grok watchlist digest now includes **grouped Quant AGI sections** — **`quantAgiDailySuggestions.js`** pulls **`/diag/market-universe-rank`** for **`rule_breaker_gardner`**, **`rule_breaker_gardner_early`**, and **`photonics_chokepoint`** (**3 picks per strategy**, 9 total; config **`DAILY_DIGEST_QUANT_AGI_PER_STRATEGY`**, **`DAILY_DIGEST_QUANT_AGI_RANK_TOP_N`**). **`emailService.js`** renders score, market cap, position hint, breakdown bullets; momentum/tape lines stripped from explanations. **Quant sidecar:** Gardner Early universe + scoring in **`quant_strategies.py`** / **`api_client.py`**; terminal preset **`rule_breaker_gardner_early`** in **`MarketTape`** / **`StreamBootstrap`** / **`store.ts`**. **Market-cap gates:** photonics + Gardner Early max raised to **$25B** (AAOI and similar names no longer excluded). **Email ops:** SES IAM fixed for **us-east-1** identity + configuration set; opportunity sends working again. **Admin:** **`opportunityEmailUnlimited`** flag (test account **drewalbert7@gmail.com**); DB-backed signup admin (**`is_signup_admin`**, **`ProfileAdminPage`**, **`signupInviteAdmin.js`**) — was WIP since 2026-05-23, now committed. **Git / deploy:** **`410bd325`** on **`main`**, pushed + **`bash scripts/deploy-production.sh`** (`keepitbased-api`, **`quant-agi-api`**, **`quant-agi-frontend`** online). **Still not wired:** rank snapshots → dashboard **`buildAgentWatchlistContext`** / LangGraph (digest only today). **Next engineering (primary):** **Quant AGI agentic trading bot** build-out — § [Quant AGI agentic trading bot](#quant-agi-agentic-trading-bot-build-out) + **`quant_agi/agent_agi/todo.md`**. **Parallel:** rank → LangGraph context; **DL-3** **`DeployPlanV1`**; SES production + DNS.
 
@@ -192,21 +194,22 @@ npm run email:test-opportunity
 
 ## Resume Here Next Session
 
-### Session save spot (2026-06-06) — continue here next time
+### Session save spot (2026-06-08) — continue here next time
 
-**Just shipped (`410bd325`, deployed):** Daily digest **Quant AGI** sections (3× **`rule_breaker_gardner`**, **`rule_breaker_gardner_early`**, **`photonics_chokepoint`**); Gardner Early ranker + terminal preset; **$25B** market-cap gates; SES send path restored; signup admin + unlimited opportunity email for admin test user.
+**Product (start here):** **Grok paper trading bot** — [`quant_agi/docs/GROK_PAPER_TRADING_BOT_PLAN.md`](quant_agi/docs/GROK_PAPER_TRADING_BOT_PLAN.md).
 
-**Product (next engineering — start here):** **Quant AGI agentic trading bot** build-out — closed loop **market + portfolio → swarm → autoresearch → paper eval → policy-bounded allocator → UI**. Phase checklist in § [Quant AGI agentic trading bot](#quant-agi-agentic-trading-bot-build-out); strategic detail in **`quant_agi/agent_agi/todo.md`** and **`quant_agi/docs/REVIEW_FOR_NEXT_SESSION.md`**.
+**Dashboard layout:**
+1. Watchlist + opportunity policy ✅
+2. **Deploy list** ✅
+3. **Quant AGI stock suggestions** ✅ (`QuantAgiSuggestionsPanel`)
+4. **Paper trading bot** — next (`PaperTradingBotPanel` + APIs)
+5. Assistant (Grok + Watchlist analyst) ✅
 
-**Suggested first slices (Phase 0 → 1):**
-1. **Event schema + replay** — swarm snapshots, autoresearch runs, allocator decisions → SQLite/Postgres event log + SSE/WebSocket feed.
-2. **MiroFish Terminal UI** — live swarm graph + experiment diff viewer wired to **`/diag/terminal-feed`** (ops cockpit exists; force-graph + portfolio panels are the gap).
-3. **Paper P&L simulator** — Massive daily closes on ranked universe; score autoresearch patches without live risk.
-4. **Policy envelope** — hard notional/drawdown caps + kill switch before any broker (**DL-4** shares constraints).
+**Next sprint:** `PaperTradingBotPanel` shell + `paper_bot_accounts` + `GET /api/paper-bot/state`. See § [Grok paper trading bot](#grok-paper-trading-bot).
 
-**Parallel (do not block bot track):** rank → **`buildAgentWatchlistContext`**; **DL-3** **`DeployPlanV1`**; SES production + DNS (`npm run email:check-dns`).
+**Parallel:** rank → **`buildAgentWatchlistContext`**; **DL-3**; SES/DNS.
 
-**Ops smoke:** **`pm2 status`**; **`curl -sf http://127.0.0.1:3001/api/health`**; **`curl -sf http://127.0.0.1:8844/health`**; off-host **`curl -4 -I --max-time 10 https://keepitbased.com`**. Digest one-shot: **`cd backend && npm run digest:run-once`**.
+**Prior shipped (`dae5c36d`):** Assistant simplified to **Grok** + **Watchlist analyst**.
 
 ### Session save spot (2026-06-01) — prior (outage recovery)
 
@@ -295,47 +298,59 @@ npm run email:test-opportunity
 
 **Honest limit:** Signals + LLM synthesis, not omniscient AGI; latency, OTC gaps, stale news remain risks.
 
-### Quant AGI agentic trading bot build-out
+### Grok paper trading bot
 
-**North star:** A **continuous, auditable loop** — ingest market + portfolio state → **MiroFish-style swarm** (`quant_agi/swarm/`) → beliefs / regime outputs → **autoresearch** proposes parameters or **patch artifacts** (`grok_artifacts/`, sandbox git only) → **synthetic / paper / gated live** evaluation → **capital allocator** adjusts exposure only through a **policy envelope** (caps, kill switch) → next-day feedback. UI makes the loop **watchable in real time** (logs, graph, diffs, experiment scores). Full strategic plan: **`quant_agi/agent_agi/todo.md`**.
+> **Full spec:** [`quant_agi/docs/GROK_PAPER_TRADING_BOT_PLAN.md`](quant_agi/docs/GROK_PAPER_TRADING_BOT_PLAN.md) · **UX reference:** [`quant_agi/agent_agi/todo.md`](quant_agi/agent_agi/todo.md)
 
-**Hard constraints (non-negotiable):**
-- Numbers shown to users from **tools / Massive / DB**, not model recall.
-- **No auto-import** of LLM-generated Python into live trading without CI + human/policy merge.
-- Every run logged: model id, prompt hash, swarm seed, `history_source`, experiment row, git SHA, allocator decision id.
-- Capital deployment via **your** broker integrations; educational disclaimers; ties to deploy list (**DL-3** / **DL-4**) when live sleeves arrive.
+**Product:** Grok-powered **paper trading bot** — **$10,000** simulated capital per user before any live broker sleeve. Users add **trading style notes**; Grok proposes **rules** (Quant strategy weights, sizing caps, dip-tier gates); bot proposes rules back daily. **Karpathy autoresearch** reviews **daily paper P&L** and suggests **code/strategy patches** in sandbox git only (human promote).
 
-**Architecture (target):**
+**Dashboard stack (`/dashboard` / `AIAgentPage.tsx`):**
+
+| # | Section | Status |
+|---|---------|--------|
+| 1 | Watchlist + opportunity policy | ✅ |
+| 2 | Deploy list | ✅ |
+| 3 | **Quant AGI stock suggestions** (`QuantAgiSuggestionsPanel`) | ✅ **2026-06-08** — verify with `smokeQuantAgiDashboardRank.js` before removing terminal `MarketTape` |
+| 4 | **Paper trading bot** + Karpathy autoresearch strip | 🔲 Next |
+| 5 | Assistant (Grok + Watchlist analyst) | ✅ |
+
+**Three Grok loops:**
+
+| Loop | Flow |
+|------|------|
+| **User → bot** | Free-text notes → Grok parses → `BotRuleProposal` cards (approve/dismiss) |
+| **Bot → user** | Daily: paper P&L + ranks + dip tiers + swarm regime → Grok suggests 2–4 rules |
+| **Autoresearch → code** | Nightly: paper metrics → extend `autoresearch/loop.py` → Grok patches in `grok_artifacts/` → diff in dashboard strip + full `/quant-agi` terminal |
+
+**Architecture:**
 
 ```text
-[ Massive / alerts / portfolio ] → [ Swarm + emergence ] → [ Evaluator / allocator policy ]
-        ↓                                    ↑
-[ Autoresearch (Grok proposals + artifacts) ]──┘
-        ↓
-[ Paper → (optional) small live sleeve ]     [ SSE/WebSocket + event log → MiroFish Terminal UI ]
+[ Deploy list / watchlist / dip tiers / rankers ] → [ Policy engine ] → [ Paper simulator $10k ]
+        ↑                    ↓                              ↓
+[ User + bot rule store ]   [ Swarm regime context ]   [ Daily P&L → autoresearch → Grok patches ]
 ```
 
-| Phase | Focus | Status | Next actions |
-|-------|--------|--------|--------------|
-| **0** | Telemetry + “agent theater” UI | **🟡 Partial** | Ops cockpit shipped (`/diag/terminal-feed`, tape, diff panel). **Open:** event schema, replay, **MiroFish force-graph**, WebSocket projection of swarm snapshots. |
-| **1** | Daily improve, no live risk | **🟡 Partial** | Nightly **`npm run quant:autoresearch-nightly`** + sandbox commits. **Open:** paper P&L on Massive closes; leaderboard in UI; CI on patch promotion. |
-| **2** | Guided self-mod | Planned | Allowlisted edits (constants, evaluator weights, allocator caps); two-party rule (tests + reviewer). |
-| **3** | Small live sleeves | Planned | Hard notional/drawdown ceilings; kill switch; broker paper (**DL-4**). |
-| **4** | Broader autonomy | Planned | Constitutional test harness; expand patch scope only after Phase 2–3 are boring. |
+**Hard constraints:** Kill switch **armed by default**; no LLM code auto-merge to prod; US equities v1; deploy-list-first universe; educational disclaimers; audit every trade (rule ids, `history_source`, policy version).
 
-**Open product decisions:** Paper vs named broker for v1? Universe US equities only vs crypto? Agent merge without human approval? (**Recommended: PR-only until Phase 3+.**)
+**Data model (Postgres — planned):** `paper_bot_accounts`, `paper_bot_positions`, `paper_bot_trades`, `paper_bot_rules`, `paper_bot_daily_snapshots`.
 
-**Mapping to existing code:**
+**API sketch:** Node `GET/POST /api/paper-bot/*` (state, notes, rules approve/dismiss, kill-switch); Quant `POST /bot/run-day`, `POST /bot/interpret-note`, `GET /diag/paper-bot/scorecard`.
 
-| Piece | Today | Bot build-out |
-|-------|--------|----------------|
-| Rankers | 4 strategies + digest email | Feed **allocator universe** + paper sim holdings |
-| Swarm | `SwarmManager`, `emergence`, webhook enrich | Portfolio/regime context in; **live graph** out |
-| Autoresearch | Grok JSON + sandbox git | CI + promotion gate + UI diff viewer |
-| Terminal UI | Next.js ops cockpit | **MiroFish Terminal** (see **`agent_agi/todo.md`** saved prompt) |
-| Main app | Deploy list **DL-1/2**, dip alerts | **DL-3/4** approve plan → execute within policy envelope |
+| Phase | Deliverable | Status |
+|-------|-------------|--------|
+| **0** | Dashboard layout + suggestions on dashboard | **🟡 Partial** — suggestions ✅; bot panel 🔲 |
+| **1** | Paper ledger + `paper_simulator.py` + P&L chart | Planned |
+| **2** | Grok rules inbox + policy engine | Planned |
+| **3** | Autoresearch fed by real paper P&L | Planned |
+| **4** | MiroFish SSE graph + shadow mode + broker (**DL-4**) | Planned |
 
-**Resume reading:** [`quant_agi/docs/REVIEW_FOR_NEXT_SESSION.md`](quant_agi/docs/REVIEW_FOR_NEXT_SESSION.md) — architecture review + skeptical notes before expanding autonomy.
+**Exists today:** 4 rank strategies, MiroFish swarm, autoresearch nightly (synthetic eval), terminal cockpit at `/quant-agi`. **Missing:** paper ledger, per-user bot policy, P&L-driven autoresearch.
+
+**Also see:** § legacy [Quant AGI agentic trading bot build-out notes](#quant-agi-agentic-trading-bot-build-out-notes) · [`REVIEW_FOR_NEXT_SESSION.md`](quant_agi/docs/REVIEW_FOR_NEXT_SESSION.md)
+
+### Quant AGI agentic trading bot build-out notes
+
+Alias for § [Grok paper trading bot](#grok-paper-trading-bot) — kept for older links. North star unchanged: **MiroFish swarm** → **autoresearch** → **paper** → **policy envelope** → UI. Terminal at `/quant-agi` remains **deep ops** (timeline, Jarvis, full diff); dashboard embeds compact panels.
 
 ### Recent session — Profile hub, landing page, notification defaults (2026-05-06, done)
 

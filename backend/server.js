@@ -43,6 +43,7 @@ const fundamentalsRoutes = require('./routes/fundamentals');
 const sesDeliveryWebhook = require('./routes/sesDeliveryWebhook');
 const emailUnsubscribeRoutes = require('./routes/emailUnsubscribe');
 const deployListRoutes = require('./routes/deployList');
+const quantAgiRoutes = require('./routes/quantAgi');
 
 const jwt = require('jsonwebtoken');
 const PriceMonitor = require('./services/priceMonitor');
@@ -148,6 +149,7 @@ app.use('/api/opportunity-signals', opportunitySignalsRoutes);
 app.use('/api/social', socialRoutes);
 app.use('/api/watchlist', watchlistRoutes);
 app.use('/api/deploy-list', deployListRoutes);
+app.use('/api/quant-agi', quantAgiRoutes);
 app.use('/api/internal/research', internalResearchRoutes);
 app.use('/api/admin', adminSignupInviteRoutes);
 app.use('/api/chat', chatRoutes);

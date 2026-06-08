@@ -20,7 +20,7 @@ This folder holds **Agent AGI** planning artifacts: roadmap, UX inspiration, and
 
 **Not done yet (bot track):** closed loop swarm → autoresearch → **paper P&L** → **policy-bounded allocator** → **live MiroFish graph** UI; WebSocket event projection; CI promotion gate for sandbox patches.
 
-**Canonical next steps:** [`../../todo.md` § Quant AGI agentic trading bot build-out](../../todo.md#quant-agi-agentic-trading-bot-build-out).
+**Canonical next steps:** [`../docs/GROK_PAPER_TRADING_BOT_PLAN.md`](../docs/GROK_PAPER_TRADING_BOT_PLAN.md) — Grok **$10k paper bot**, dashboard layout (Deploy → Suggestions → Bot), Karpathy autoresearch on daily P&amp;L. Also: [`../../todo.md` § Quant AGI agentic trading bot build-out](../../todo.md#quant-agi-agentic-trading-bot-build-out).
 
 ## UX reference (Marketing101 — BTC Polymarket terminal inspiration)
 

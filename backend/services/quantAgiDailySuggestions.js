@@ -1,6 +1,7 @@
 const axios = require('axios');
 const config = require('../config');
 const logger = require('../utils/logger');
+const { resolveQuantAgiBaseUrl } = require('../utils/quantAgiBaseUrl');
 
 /** Strategies included in daily digest Quant AGI section (order = email section order). */
 const DAILY_DIGEST_QUANT_STRATEGIES = [
@@ -29,24 +30,6 @@ const STRATEGY_META = {
     sectionTitle: 'AI & photonics chokepoint'
   }
 };
-
-/**
- * Base URL for Quant AGI sidecar (rank API lives here, not on /webhook/swarm-enhance).
- */
-function resolveQuantAgiBaseUrl(raw) {
-  const explicit = String(config.QUANT_AGI_RANK_URL || '').trim().replace(/\/$/, '');
-  if (explicit) return explicit;
-
-  const enhance = String(raw || config.QUANT_AGI_ENHANCE_URL || '').trim().replace(/\/$/, '');
-  if (enhance) {
-    if (enhance.endsWith('/webhook/swarm-enhance')) {
-      return enhance.slice(0, -'/webhook/swarm-enhance'.length);
-    }
-    return enhance;
-  }
-
-  return 'http://127.0.0.1:8844';
-}
 
 async function fetchMarketUniverseRank({ strategy, topN = 12, timeoutMs }) {
   const base = resolveQuantAgiBaseUrl();
