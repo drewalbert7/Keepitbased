@@ -219,7 +219,44 @@ def _blob_from_legacy_text(raw: str) -> Optional[Dict[str, Any]]:
     return blob if isinstance(blob, dict) else None
 
 
-def propose_with_optional_llm(iteration_seed: int) -> Proposal:
+def format_paper_bot_prompt_section(paper_bot_metrics: Optional[Dict[str, Any]]) -> str:
+    if not paper_bot_metrics:
+        return ""
+    nightly = paper_bot_metrics.get("nightly_context")
+    metrics = paper_bot_metrics.get("metrics") or paper_bot_metrics
+    walk_forward = paper_bot_metrics.get("walk_forward")
+    parts = [
+        "\n\n## Quant AGI Bot paper ledger (nightly context)",
+        "Parameter tunes → proposed rules only. Code patches → sandbox git + human promote.",
+    ]
+    if nightly and isinstance(nightly, dict):
+        parts.append(
+            f"Equity ${nightly.get('equity_usd')} · cum P&L ${nightly.get('cum_pnl_usd')} · "
+            f"win-rate days {nightly.get('win_rate_days')} · worst day {nightly.get('worst_day')}"
+        )
+        syms = nightly.get("symbols_traded") or []
+        if syms:
+            parts.append(f"Symbols traded: {syms[:8]}")
+        tags = nightly.get("top_reason_tags") or []
+        if tags:
+            parts.append(f"Rules/tags fired: {tags[:6]}")
+    try:
+        parts.append(json.dumps(metrics, indent=2)[:2500])
+    except TypeError:
+        pass
+    if walk_forward and isinstance(walk_forward, dict):
+        parts.append(
+            f"Walk-forward holdout Δ {walk_forward.get('avg_holdout_sharpe_delta')} "
+            f"({walk_forward.get('symbols_evaluated')} symbols)"
+        )
+    return "\n".join(parts)[:8000]
+
+
+def propose_with_optional_llm(
+    iteration_seed: int,
+    *,
+    paper_bot_metrics: Optional[Dict[str, Any]] = None,
+) -> Proposal:
     user = _PROMPT_BODY.format(
         max_agents=settings.swarm_max_agents,
         swarm=settings.swarm_default_agents,
@@ -227,7 +264,7 @@ def propose_with_optional_llm(iteration_seed: int) -> Proposal:
         seed=iteration_seed,
         _max_files=_MAX_ARTIFACT_FILES,
         _max_chars=_MAX_ARTIFACT_CHARS,
-    )
+    ) + format_paper_bot_prompt_section(paper_bot_metrics)
 
     blob: Optional[Dict[str, Any]] = None
 

@@ -1,0 +1,39 @@
+---
+description: Quant AGI Bot resume point — phase status and next sprint after session stops
+globs:
+  - keepitbased/todo.md
+  - keepitbased/quant_agi/docs/GROK_PAPER_TRADING_BOT_PLAN.md
+  - keepitbased/quant_agi/frontend/**
+  - keepitbased/backend/**/paperBot*
+---
+
+# Quant AGI Bot — resume here
+
+**Last stop:** 2026-06-09 (night). **Phases 0–3 shipped.** Phase 4 **split** — do not build as one monolith.
+
+## Next sprint: Phase 4a (P0 first)
+
+1. **Shadow mode** — hypothetical broker orders in `paper_bot_events` + UI; no external API; use existing `mode: shadow` on `paper_bot_accounts`.
+2. **Namespace isolation** — paper/shadow fills must not trigger opportunity emails or deploy-list side effects.
+
+Then: Socket bot events · proactive Grok daily rules (loop B) · nightly `paper_bot_daily_close` cron.
+
+## Later: Phase 4b
+
+**DL-3** `DeployPlanV1` approve UI **before** **DL-4** broker paper. Shadow vs broker parity check.
+
+## Defer
+
+- MiroFish force-graph (full panel) — v1.5+; regime badge in brain at most.
+- Live broker / real money — separate sign-off.
+
+## Canonical docs
+
+- Roadmap: `keepitbased/todo.md` § Resume Here + Quant AGI Bot
+- Full Phase 4 split: `quant_agi/docs/GROK_PAPER_TRADING_BOT_PLAN.md` § Phase 4
+
+## Ops
+
+- Bot UI: `/quant-agi` only (not dashboard)
+- After `quant_agi/frontend` changes: `npm run build:deploy`
+- Smoke: `npm run smoke:paper-bot`

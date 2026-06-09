@@ -1,15 +1,17 @@
-# Grok Paper Trading Bot — build plan
+# Quant AGI Bot — build plan
+
+> **Filename note:** `GROK_PAPER_TRADING_BOT_PLAN.md` is the legacy path; product name is **Quant AGI Bot**.
 
 **Date:** 2026-06-09  
-**Status:** Phase 0 in progress — dashboard bot shell + plan refinements in `todo.md`  
-**Canonical roadmap:** [`../../todo.md`](../../todo.md) § [Grok paper trading bot](../../todo.md#grok-paper-trading-bot) (Great + Amazing tier checklists)  
+**Status:** Phase 3 ✅ complete · **Phase 4 split** (4a → 4b) — see § Phase 4 below  
+**Canonical roadmap:** [`../../todo.md`](../../todo.md) § [Quant AGI Bot](../../todo.md#quant-agi-bot) (Great + Amazing tier checklists)  
 **Prerequisite review:** [`REVIEW_FOR_NEXT_SESSION.md`](./REVIEW_FOR_NEXT_SESSION.md)
 
 ---
 
 ## 1) Product summary
 
-Build a **Grok-powered paper trading bot** that:
+Build the **Quant AGI Bot** — a Grok-assisted **simulated** trading agent that:
 
 1. Starts with **$10,000 simulated capital** (per user) before any live broker sleeve.
 2. Accepts **user-written trading guidance** (“trade more photonics chokepoint names”, “max 5% per position”, “only buy on overreaction tier”).
@@ -27,9 +29,10 @@ Educational tooling only — not investment advice. Kill switch and policy envel
 |-------|---------|------------------|
 | **Quant rankers** | 4 strategies, `/diag/market-universe-rank`, daily digest email | Not wired to a portfolio or order simulator |
 | **MiroFish swarm** | `swarm/SwarmManager`, emergence, webhook enrich on dip alerts | No portfolio state in; no trade decisions out |
-| **Autoresearch** | Nightly loop, Grok JSON proposals, `grok_artifacts/` in sandbox git, SQLite `ExperimentRow`, `/diag/terminal-feed` | Evaluates **synthetic** swarm benchmarks — **not** paper bot P&amp;L on Massive closes |
+| **Autoresearch** | Nightly loop, Grok JSON proposals, `grok_artifacts/` in sandbox git, SQLite `ExperimentRow`, `/diag/terminal-feed` | Evaluates **synthetic** swarm benchmarks — **not** Quant AGI Bot simulated P&amp;L on Massive closes |
 | **Terminal UI** | Next.js ops cockpit: timeline, diff, Jarvis, metrics (no stock suggestions) | Deep ops only; suggestions on dashboard |
-| **Main dashboard** | Watchlist, **Deploy list** (DL-1/2), **`QuantAgiSuggestionsPanel`**, Grok assistant | **`PaperTradingBotPanel`** shell ✅; ledger Phase 1 🔲 |
+| **Main dashboard** | Watchlist, **Deploy list** (DL-1/2), **`QuantAgiSuggestionsPanel`**, Grok assistant | **No bot UI** — deploy list feeds bot universe |
+| **Quant AGI page** | **`PaperTradingBotPanel`** + autoresearch ops (Zone B + C) | Phase 1 ledger ✅; Phase 2 rules ✅; **2.5 brain** ✅ |
 | **Deploy list** | Grok-optimized capital-ready symbols | No execution; natural feeder for bot universe later |
 | **Dip engine** | Deterministic tiers (`on_sale` / `overreaction` / `capitulation`) | Bot should **read** tiers, not replace them |
 
@@ -37,40 +40,47 @@ Educational tooling only — not investment advice. Kill switch and policy envel
 
 ---
 
-## 3) Dashboard layout (required UX reorder)
+## 3) Quant AGI page layout (canonical — bot lives here only)
 
-Target stack on **`/dashboard`** (`AIAgentPage.tsx`) — top to bottom:
+**Do not add bot UI to `/dashboard`.** Dashboard keeps watchlist, deploy list, rank suggestions, and assistant only.
+
+Target stack on **`/quant-agi`** (`quant_agi/frontend`) — top to bottom:
 
 ```text
-┌─────────────────────────────────────────────┐
-│ 1. Watchlist (+ opportunity policy panel)   │
-├─────────────────────────────────────────────┤
-│ 2. Deploy list (capital-ready symbols)      │
-├─────────────────────────────────────────────┤
-│ 3. Quant AGI stock suggestions (`QuantAgiSuggestionsPanel`) │  ✅ dashboard
-├─────────────────────────────────────────────┤
-│ 4. Grok Paper Trading Bot (`PaperTradingBotPanel`)      │  🟡 shell live
-│    ├─ Paper account ($10k) + positions      │
-│    ├─ User trading notes / rules inbox      │
-│    ├─ Bot-suggested rules (approve/dismiss)  │
-│    ├─ Trade blotter + daily P&amp;L chart        │
-│    └─ Karpathy autoresearch strip           │
-│       (daily review, patch diff, promote)    │
-├─────────────────────────────────────────────┤
-│ 5. Assistant (Grok chat + Watchlist analyst)│
-└─────────────────────────────────────────────┘
+┌─ Chrome ─────────────────────────────────────────────┐
+│ MissionBanner · TerminalHeader (feed status + nav)   │
+└──────────────────────────────────────────────────────┘
+┌─ ZONE B: Quant AGI Bot ──────────────────────────────┐
+│ PaperTradingBotPanel                                 │
+│   BotHealthStrip · BotControls                       │
+│   BotRulesInbox (Phase 2) ✅                         │
+│   BotBrainPanel (Phase 2.5) — policy & dry-run ✅     │
+│   BotPerformanceChart · BotPositionsTable            │
+│   BotTradeBlotter (+ Explain this trade)             │
+│   AutoresearchDailyStrip (Phase 3 summary)           │
+└──────────────────────────────────────────────────────┘
+┌─ ZONE C: Autoresearch & engineering ops ─────────────┐
+│ EventTimeline │ JarvisCodingChat + CodeDiffPanel     │
+│               │ MetricsPanel (scorecard)             │
+└──────────────────────────────────────────────────────┘
 ```
 
-**`/quant-agi` terminal** becomes a **deep ops view** (full timeline, diff panel, Jarvis coding chat, scorecard) — link from bot section “Open full terminal”. Dashboard embeds **compact** versions of suggestions + bot + autoresearch summary.
+**Dashboard (`/dashboard`)** — unchanged product surface:
+
+```text
+Watchlist → Deploy list → QuantAgiSuggestionsPanel → Assistant
+```
+
+Bot **reads** deploy list / watchlist via API; user **edits** those lists on dashboard only.
 
 ### Implementation notes (layout)
 
 | Task | Approach |
 |------|----------|
-| Move Quant suggestions | ✅ **`QuantAgiSuggestionsPanel`** on dashboard — `/api/quant-agi/market-universe-rank` |
-| Bot section | ✅ **`PaperTradingBotPanel`** shell — `GET /api/paper-bot/state`; Phase 1 ledger next |
-| Styling | Match `kib-card` / dashboard tokens — do not iframe the black Next terminal into the middle of the dashboard. |
-| Deploy ↔ bot | Deploy list symbols = **preferred universe** for paper bot when user enables “trade deploy list only”. |
+| Rank suggestions | ✅ **`QuantAgiSuggestionsPanel`** on dashboard — `/api/quant-agi/market-universe-rank` |
+| Bot section | ✅ **`PaperTradingBotPanel`** on **`/quant-agi` only** — `/api/paper-bot/*` |
+| Autoresearch ops | ✅ Zone C on same page — timeline, diff, Jarvis, scorecard |
+| Deploy ↔ bot | Deploy list symbols = preferred universe when “trade deploy list only” |
 
 ---
 
@@ -125,8 +135,8 @@ Target stack on **`/dashboard`** (`AIAgentPage.tsx`) — top to bottom:
 
 ### C) Autoresearch — performance → code (Karpathy nightly)
 
-- **Input:** Daily paper bot metrics (Sharpe proxy, win rate, max drawdown, slippage model), git SHA of active `bot_policy` bundle, last 7d trade blotter summary.
-- **Grok job:** Extend existing `autoresearch/researcher.py` prompt with **paper bot section** — propose:
+- **Input:** Daily Quant AGI Bot metrics (Sharpe proxy, win rate, max drawdown, slippage model), git SHA of active `bot_policy` bundle, last 7d trade blotter summary.
+- **Grok job:** Extend existing `autoresearch/researcher.py` prompt with **Quant AGI Bot section** — propose:
   - parameter tweaks (swarm scale, evaluator weights),
   - **`generated_modules`** patches for `paper_simulator.py`, `bot_policy_engine.py`, ranker weights.
 - **Eval:** Run candidate on **walk-forward Massive closes** for symbols the bot actually traded (supplement synthetic audit).
@@ -202,7 +212,7 @@ paper_bot_daily_snapshots (
 
 **Exit criteria:** Dashboard order matches spec; suggestions work without visiting `/quant-agi`. ✅ Bot shell visible on `/dashboard`.
 
-> **Full UI + Great/Amazing tier checklists:** [`../../todo.md`](../../todo.md#grok-paper-trading-bot)
+> **Full UI + Great/Amazing tier checklists:** [`../../todo.md`](../../todo.md#quant-agi-bot)
 
 ### Phase 1 — Paper ledger + manual trades (2–3 weeks)
 
@@ -216,28 +226,101 @@ paper_bot_daily_snapshots (
 
 ### Phase 2 — Grok rules loop (2–3 weeks)
 
-- [ ] `grok_bot_advisor.py` — user note → proposed rules.
+- [x] `grok_bot_advisor.py` — user note → proposed rules.
 - [ ] Bot daily **suggested rules** job (Grok).
-- [ ] Approve/dismiss UI; active rules drive policy engine (deterministic execution).
+- [x] Approve/dismiss UI; active rules drive policy engine (deterministic execution).
 - [ ] Wire rankers + dip tiers into policy engine.
 
 **Exit criteria:** User adds “only trade overreaction tier”; bot respects it on next sim day.
 
+### Phase 2.5 — Bot brain (transparency) (1–2 weeks)
+
+**Goal:** Users can **read** what guides paper trades — deterministic policy + inputs — before and after simulate-day.
+
+- [x] **`BotBrainPanel.tsx`** — Zone B panel below rules inbox.
+- [x] **`GET /api/paper-bot/policy-snapshot`** — merged active policy, universe gates, input signal summary.
+- [x] **`POST /api/paper-bot/dry-run`** — `TradeIntent[]` without persisting fills (Quant sidecar).
+- [x] **`paper_bot_events`** tail in panel — skips (cap, tier, kill switch, universe).
+- [x] **Explain this trade** — blotter row expands `reason_json`.
+
+**`BotBrainPanel` sections (v1):**
+
+| Section | Contents |
+|---------|----------|
+| **Policy snapshot** | Merged caps from `bot_policy_engine`, active rule ids, `policy_version`, precedence line |
+| **Universe & gates** | Deploy-list-only, symbol count, kill switch, cash headroom |
+| **Input signals** | Top rank candidates (4 strategies), dip tier counts, swarm `regime_label` when available |
+| **Dry-run intents** | Per-symbol buy/skip/hold, target weight, rules fired, skip reason |
+| **Decision log** | Recent `paper_bot_events` (last N skips/blocks) |
+
+**Authority copy (non-negotiable in UI):** Grok proposes rules and journal text; **`bot_policy_engine` + approved rules** decide intents; simulator executes fills. Brain shows engine output, not raw LLM trade calls.
+
+**Exit criteria:** User opens brain → sees approved rule in snapshot → dry-run respects cap → simulate-day → blotter explain matches dry-run intent for that symbol.
+
 ### Phase 3 — Autoresearch on paper P&amp;L (3–4 weeks)
 
-- [ ] Extend `run_autoresearch_night` with `paper_bot_metrics` input.
-- [ ] Walk-forward eval on traded symbols (Massive).
-- [ ] Dashboard **Karpathy strip**: last night summary, Sharpe delta, diff preview, link to full terminal.
-- [ ] Promote flow: approve patch → copies to sandbox branch (still no auto-merge to prod).
+- [x] Extend `run_autoresearch_night` with optional `PAPER_BOT_METRICS_PATH` → Grok prompt context.
+- [x] `GET /api/paper-bot/autoresearch/latest` + `POST /diag/paper-bot/scorecard` + promotion gates.
+- [x] **Karpathy strip**: paper P&amp;L, latest experiment, gate checklist, link to Zone C ops.
+- [x] Walk-forward eval on traded symbols (Massive) — `POST /diag/paper-bot/walk-forward`.
+- [x] Promote flow: approve patch → `promoted/staging` sandbox branch (no auto-merge to prod).
+- [x] Rich nightly context — worst day, win rate, symbols, reason tags in strip + Grok prompt.
+- [x] 24h cooldown after account reset — `POST /api/paper-bot/reset` + gate enforcement.
 
 **Exit criteria:** Nightly run references real paper performance; at least one promoted parameter change logged.
 
-### Phase 4 — MiroFish visualization + semi-auto (future)
+### Phase 4 — split plan (2026-06-09 review)
 
-- [ ] SSE/WebSocket feed for swarm + bot events.
-- [ ] Optional force-graph panel (or scoped widget in bot section).
-- [ ] Shadow mode: log hypothetical live orders without sending.
-- [ ] Broker paper API (**DL-4**) behind kill switch + `DeployPlanV1` approval.
+Phase 3 closed the core loop (paper ledger → brain → autoresearch → human promote). Phase 4 was **split** so polish, bridge, and broker plumbing ship in the right order — not as one monolith.
+
+**Principle:** Make the bot **trustworthy at the boundary to real execution** before adding visualization theater or broker credentials.
+
+#### Phase 4a — Shadow + live feel (next sprint)
+
+**Goal:** “What would the broker see?” without sending orders or changing the ledger.
+
+| Item | Deliverable | Priority |
+|------|-------------|----------|
+| **Shadow mode** | `mode: shadow` on account; log hypothetical orders to `paper_bot_events` + shadow blotter UI; no external API | **P0** |
+| **Socket/SSE bot events** | Push `fill`, `rule_applied`, `kill_switch`, `autoresearch_promoted` via existing Socket.IO pattern (optional `paperBotUpdate`) | P1 |
+| **Proactive Grok rules (loop B)** | Daily 2–4 bot-suggested rules into `BotRulesInbox` from P&amp;L + rank context | P1 |
+| **Namespace isolation** | Paper/shadow fills must not trigger opportunity emails or deploy-list side effects | P0 |
+| **Nightly cron** | `paper_bot_daily_close` + export metrics JSON for `PAPER_BOT_METRICS_PATH` | P1 |
+| **Amazing-tier (pick 1–2)** | Daily bot journal strip in brain · chart day-replay · “Paper-test this deploy list” on dashboard | P2 |
+
+**Exit criteria (4a):** User runs simulate-day in shadow mode → shadow blotter shows intended broker orders; events appear in brain log without polling; no opportunity email from paper fill.
+
+**Explicitly defer in 4a:** MiroFish force-graph (full panel), broker API, live money.
+
+#### Phase 4b — Execution envelope (after DL-3)
+
+**Goal:** Broker **paper** account only — still no live money — with the same human-approve muscle memory as rules inbox.
+
+**Hard prerequisite:** **DL-3** `DeployPlanV1` (approve/dismiss deploy plan, audit in `agent_runs`) **before** DL-4.
+
+| Item | Deliverable | Priority |
+|------|-------------|----------|
+| **DL-3** | `DeployPlanV1` schema + approve/dismiss UI + audit trail | **P0** |
+| **Shadow vs broker parity** | Reconcile shadow log to broker paper confirmations | P0 |
+| **DL-4 broker paper** | Alpaca (or similar) paper API behind kill switch + approved deploy plan | P1 |
+| **Dual scorecards** | “Did approved rules help?” vs “Did code patch help in backtest?” | P2 |
+
+**Exit criteria (4b):** User approves deploy plan → disarms kill switch → shadow and broker paper fills match policy; zero live-money path.
+
+#### Phase 4 — defer / optional (v1.5+)
+
+- [ ] **MiroFish force-graph** — defer full panel; at most a small **regime badge** in `BotBrainPanel` (swarm is context only, not execution authority).
+- [ ] **Live broker / real money** — separate explicit sign-off; not part of Phase 4b.
+- [ ] **Dashboard** force-graph — remains deferred per Great tier explicit defer list.
+
+#### Phase 4 — original checklist (mapped)
+
+| Original item | Split |
+|---------------|-------|
+| SSE/WebSocket swarm + bot events | **4a** (bot events P1; swarm feed optional) |
+| Optional force-graph panel | **Defer** (v1.5+) |
+| Shadow mode | **4a P0** |
+| Broker paper API (**DL-4**) | **4b** (after **DL-3**) |
 
 ---
 
@@ -248,37 +331,52 @@ paper_bot_daily_snapshots (
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/api/paper-bot/state` | Account, positions, active rules, today P&amp;L |
+| GET | `/api/paper-bot/policy-snapshot` | Merged policy + universe gates + input signal summary (**brain**) |
+| POST | `/api/paper-bot/dry-run` | `TradeIntent[]` preview — no fills (**brain**) |
+| GET | `/api/paper-bot/events` | Paginated `paper_bot_events` for decision log (**brain**) |
 | GET | `/api/paper-bot/trades` | Paginated blotter |
 | POST | `/api/paper-bot/notes` | User trading suggestion (free text) |
 | POST | `/api/paper-bot/rules/:id/approve` | Activate proposed rule |
 | POST | `/api/paper-bot/rules/:id/dismiss` | Reject proposal |
 | POST | `/api/paper-bot/kill-switch` | Arm/disarm |
 | GET | `/api/paper-bot/autoresearch/latest` | Last nightly summary for dashboard strip |
+| POST | `/api/paper-bot/autoresearch/promote` | Human promote patch (gates + cooldown) |
+| POST | `/api/paper-bot/reset` | Reset paper ledger to $10k |
 
 ### Quant AGI (`keepitbased_integration/api_client.py`)
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | POST | `/bot/interpret-note` | Grok → rule proposals |
+| POST | `/bot/dry-run` | Policy engine → `TradeIntent[]` (no simulator persist) |
 | POST | `/bot/suggest-rules` | Grok daily proactive rules |
 | POST | `/bot/run-day` | Execute policy + simulator for user |
-| GET | `/diag/paper-bot/scorecard` | Metrics for autoresearch |
+| POST | `/diag/paper-bot/scorecard` | Metrics + promotion gates for autoresearch |
+| POST | `/diag/paper-bot/walk-forward` | Massive holdout Sharpe on traded symbols |
+| POST | `/diag/autoresearch/promote` | Copy experiment commit → `promoted/staging` |
 
 ---
 
-## 9) UI components (dashboard)
+## 9) UI components (Quant AGI Zone B — `/quant-agi` only)
 
 | Component | Contents |
 |-----------|----------|
-| **`QuantAgiSuggestionsPanel`** | Strategy tabs, top N cards, add-to-watchlist (port from `MarketTape`) |
-| **`PaperTradingBotPanel`** | Header: equity, cash, day P&amp;L, mode badge, kill switch |
+| **`PaperTradingBotPanel`** | Zone B shell: health, controls, chart, footer |
 | **`BotRulesInbox`** | User notes textarea; pending bot proposals with approve/dismiss |
+| **`BotBrainPanel`** | **Policy snapshot**, universe gates, rank/tier/swarm inputs, **dry-run intents**, decision log; daily Grok journal strip (Amazing tier) |
 | **`BotPositionsTable`** | Symbol, qty, cost, mkt value, unrealized P&amp;L |
-| **`BotTradeBlotter`** | Recent fills with reason tags (tier, rule, rank) |
+| **`BotTradeBlotter`** | Recent fills; expandable **Explain this trade** (`reason_json`, tier, rank, policy version) |
 | **`AutoresearchDailyStrip`** | Last run: improved Y/N, Sharpe Δ, one-line Grok rationale, “View diff” |
-| **`PaperTradingBotPanel` footer** | Link to `/quant-agi` full terminal |
 
-**Karpathy section** lives **inside** `PaperTradingBotPanel` (bottom third), not a separate page — user asked for autoresearch analysis **as part of** the bot block.
+**Dashboard (`/dashboard`)** — no bot UI; unchanged:
+
+| Component | Contents |
+|-----------|----------|
+| **`QuantAgiSuggestionsPanel`** | Strategy tabs, top N cards, add-to-watchlist |
+
+**Karpathy section** lives **inside** `PaperTradingBotPanel` via **`AutoresearchDailyStrip`** (bottom of Zone B), not a separate page.
+
+**Brain vs rules inbox:** `BotRulesInbox` is where users **approve** strategy; `BotBrainPanel` is where they **read** the merged policy and preview intents before simulate-day.
 
 ---
 

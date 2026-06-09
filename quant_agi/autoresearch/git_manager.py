@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from shutil import copy2
-from typing import Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, Optional
 
 from git import Repo
 
@@ -95,3 +98,72 @@ class GitExperimentManager:
         sha = str(commit.hexsha)
         _LOG.info("Committed experiment %s (files=%s)", sha[:8], ", ".join(staged[:12]) + ("…" if len(staged) > 12 else ""))
         return sha
+
+    def promote_commit(self, commit_sha: str, *, promoted_by: str = "operator") -> dict[str, Any]:
+        """
+        Human promote: copy files from an experiment commit onto ``promoted/staging``.
+        Does not merge to production — audit trail only until CI + manual deploy.
+        """
+        sha = str(commit_sha or "").strip()
+        if len(sha) < 7:
+            return {"ok": False, "error": "Invalid commit sha"}
+
+        show = subprocess.run(
+            ["git", "-C", str(self.path), "show", "--name-only", "--pretty=format:", sha],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if show.returncode != 0:
+            return {"ok": False, "error": f"Commit {sha[:8]} not found in sandbox"}
+
+        files = [ln.strip() for ln in show.stdout.splitlines() if ln.strip()]
+        if not files:
+            return {"ok": False, "error": "Commit has no files to promote"}
+
+        r = self.repo()
+        staging = "promoted/staging"
+        branches = [b.name for b in r.branches]
+        curr = getattr(r.active_branch, "name", branches[0] if branches else "master")
+
+        if staging not in branches:
+            base = curr if curr in branches else "master"
+            r.git.checkout("-b", staging, base)
+        else:
+            r.git.checkout(staging)
+
+        try:
+            r.git.checkout(sha, "--", *files)
+        except Exception as ex:  # noqa: BLE001
+            if curr in branches:
+                r.git.checkout(curr)
+            return {"ok": False, "error": f"Could not checkout files: {ex}"}
+
+        r.index.add(files)
+        msg = f"promote(autoresearch): {sha[:12]} by {promoted_by}"[:8000]
+        commit = r.index.commit(msg)
+        promoted_sha = str(commit.hexsha)
+
+        log_path = self.path / "PROMOTED_LOG.jsonl"
+        entry = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "source_sha": sha,
+            "promoted_sha": promoted_sha,
+            "branch": staging,
+            "files": files,
+            "promoted_by": promoted_by,
+        }
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry) + "\n")
+
+        if curr in branches:
+            r.git.checkout(curr)
+
+        _LOG.info("Promoted %s -> %s on %s", sha[:8], promoted_sha[:8], staging)
+        return {
+            "ok": True,
+            "source_sha": sha,
+            "promoted_sha": promoted_sha,
+            "branch": staging,
+            "files": files,
+        }

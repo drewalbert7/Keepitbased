@@ -18,7 +18,8 @@ export function MetricsPanel() {
 
   return (
     <section className="rounded-2xl border border-white/10 bg-panel/70 p-4">
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/70">Impact and risk</h2>
+      <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-white/70">Impact and risk</h2>
+      <p className="mb-3 text-[11px] text-white/45">Timeline rollups below; canonical eval stats in scorecard.</p>
       <div className="grid grid-cols-2 gap-3 text-sm">
         <div className="rounded-xl border border-white/10 bg-panelAlt/70 p-3">
           <p className="text-white/60">Sharpe delta</p>

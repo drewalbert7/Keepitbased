@@ -30,7 +30,6 @@ import { Watchlist52WeekRange } from '../components/Watchlist52WeekRange';
 import { StockFundamentalsModal } from '../components/StockFundamentalsModal';
 import { DeployListPanel } from '../components/DeployListPanel';
 import { QuantAgiSuggestionsPanel } from '../components/QuantAgiSuggestionsPanel';
-import { PaperTradingBotPanel } from '../components/PaperTradingBotPanel';
 import { secIssuerBrowseUrl } from '../services/fundamentalsApi';
 import {
   addDeployListItem,
@@ -1188,8 +1187,6 @@ export const AIAgentPage: React.FC = () => {
             />
 
             <QuantAgiSuggestionsPanel onSymbolAdded={() => void loadWatchlist()} />
-
-            <PaperTradingBotPanel />
 
             </div>
           </section>

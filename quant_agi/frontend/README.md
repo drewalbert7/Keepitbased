@@ -1,6 +1,19 @@
-# Quant AGI Frontend (Terminal MVP)
+# Quant AGI Frontend (Deep ops terminal)
 
-Phase-0 "operations cockpit" for visualizing Quant AGI autoresearch, daily code updates, promotion states, and risk posture.
+Operations cockpit at **`/quant-agi`** — **Quant AGI Bot** + autoresearch engineering tools.
+
+**Dashboard (`/dashboard`)** — watchlist, deploy list, rank suggestions, assistant only. **No bot UI on dashboard.**
+
+## Page layout
+
+```text
+Zone B — Quant AGI Bot (`PaperTradingBotPanel`)
+  components/bot/BotHealthStrip · BotControls · BotPerformanceChart
+  BotPositionsTable · BotTradeBlotter · AutoresearchDailyStrip
+
+Zone C — Autoresearch & engineering ops
+  EventTimeline · JarvisCodingChat · CodeDiffPanel · MetricsPanel
+```
 
 ## Run locally
 
@@ -10,52 +23,14 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+## Backend integration
 
-## What this MVP includes
+- **Quant AGI Bot:** `/api/paper-bot/*` (JWT from main app login)
+- **Autoresearch feed:** `/api/quant-agi/sidecar/diag/terminal-feed`, `diag/scorecard`
+- **Jarvis:** `POST /v1/coding-chat` via sidecar proxy
 
-- Live event timeline with promotion-state badges
-- Daily code update panel for diff visualization
-- Performance/risk impact cards
-- Mode selector (`paper`, `shadow`, `live`) and a visible kill switch
-- Synthetic stream bootstrap to simulate incoming backend events
+On `app.keepitbased.com` the terminal auto-uses `/api/quant-agi/sidecar` for sidecar routes.
 
-## Backend integration hooks
+## Embed mode
 
-`StreamBootstrap` now polls Quant AGI sidecar endpoint:
-
-- `GET /diag/terminal-feed?limit=20`
-
-Set sidecar URL (`NEXT_PUBLIC_*` is baked in at **build** time):
-
-- **Local dev:** `NEXT_PUBLIC_QUANT_AGI_URL=http://127.0.0.1:8844`
-- **Production (app subdomain):** nginx should expose the FastAPI process at `https://app.keepitbased.com/quant-sidecar/` (see main repo `config/nginx/sites-available/app.keepitbased-https.conf`), then:
-
-```bash
-NEXT_PUBLIC_QUANT_AGI_URL=https://app.keepitbased.com/quant-sidecar npm run build
-```
-
-See `env.production.example`.
-
-If feed fetch fails, UI falls back to synthetic events to keep the terminal usable.
-
-Suggested payload shape:
-
-```json
-{
-  "id": "evt-123",
-  "ts": "2026-05-07T02:00:00.000Z",
-  "type": "code_update_proposed",
-  "title": "Allocator cap retune",
-  "detail": "Regime-aware size cap lowered in high volatility.",
-  "state": "proposed",
-  "commitSha": "exp-4a911c2",
-  "promptHash": "f7c921ac",
-  "sharpeDelta": 0.18,
-  "drawdownDelta": -0.9
-}
-```
-
-## Next step
-
-Wire this UI to Quant AGI `/diag` and live event endpoints, then swap the static diff block for real patch content from autoresearch artifacts.
+Main app loads this UI at `/quant-agi-terminal/?embed=1`. Compact banner + dashboard links use `target="_top"`.

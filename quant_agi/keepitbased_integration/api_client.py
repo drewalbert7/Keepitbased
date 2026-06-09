@@ -33,6 +33,15 @@ from keepitbased_integration.quant_strategies import (
 from keepitbased_integration.sec_filing_scan import fetch_recent_filing_keyword_score
 from keepitbased_integration.signal_enhancer import EnhancedAlertSignal, SignalEnhancer
 from keepitbased_integration.ticker_ref import fetch_ticker_reference
+from paper_trading.paper_simulator import dry_run_payload, run_day_payload
+from paper_trading.grok_bot_advisor import interpret_user_note
+from paper_trading.paper_bot_metrics import (
+    enrich_nightly_context,
+    evaluate_promotion_gates,
+    summarize_paper_bot_metrics,
+)
+from paper_trading.walk_forward import evaluate_walk_forward
+from autoresearch.git_manager import GitExperimentManager
 
 _enhancer: SignalEnhancer | None = None
 _rank_cache_entries: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -826,6 +835,26 @@ class CodingChatIn(BaseModel):
     )
 
 
+class BotRunDayIn(BaseModel):
+    """Paper bot run-day input — Node supplies account + universe; sidecar proposes fills."""
+
+    cash_usd: float = Field(..., ge=0)
+    kill_switch_armed: bool = True
+    policy_version: int = Field(1, ge=1)
+    universe_symbols: list[str] = Field(default_factory=list)
+    prices: dict[str, float] = Field(default_factory=dict)
+    positions: list[dict[str, Any]] = Field(default_factory=list)
+    active_rules: list[dict[str, Any]] = Field(default_factory=list)
+    active_policy: dict[str, Any] = Field(default_factory=dict)
+
+
+class BotInterpretNoteIn(BaseModel):
+    """User trading note → Grok rule proposals (stored as pending rules by Node)."""
+
+    note: str = Field(..., min_length=1, max_length=4000)
+    context: Optional[dict[str, Any]] = Field(default_factory=dict)
+
+
 class AlertIn(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -1250,5 +1279,90 @@ def create_app() -> FastAPI:
             }
 
         return {"ok": True, "reply": text, "model": model, "error": None}
+
+    @app.post("/bot/run-day")
+    async def bot_run_day(payload: BotRunDayIn) -> dict[str, Any]:
+        """Propose paper fills for a run-day (Node persists approved fills)."""
+        universe_source = "deploy_list" if payload.universe_symbols else "watchlist"
+        return run_day_payload(
+            cash_usd=float(payload.cash_usd),
+            positions=payload.positions,
+            universe_symbols=[str(s).upper().strip() for s in payload.universe_symbols if str(s).strip()],
+            prices={str(k).upper(): float(v) for k, v in payload.prices.items() if v and float(v) > 0},
+            kill_switch_armed=bool(payload.kill_switch_armed),
+            policy_version=int(payload.policy_version),
+            active_rules=payload.active_rules,
+            active_policy=payload.active_policy or {},
+            universe_source=universe_source,
+        )
+
+    @app.post("/diag/paper-bot/scorecard")
+    async def diag_paper_bot_scorecard(payload: dict[str, Any]) -> dict[str, Any]:
+        """Scorecard + promotion gates from a paper-bot metrics payload (Node or nightly cron)."""
+        metrics = summarize_paper_bot_metrics(payload)
+        nightly_context = enrich_nightly_context(payload)
+        walk_forward = payload.get("walk_forward")
+        if walk_forward is None and payload.get("symbols"):
+            walk_forward = evaluate_walk_forward(list(payload.get("symbols") or []))
+        promo = evaluate_promotion_gates(
+            metrics,
+            walk_forward=walk_forward if isinstance(walk_forward, dict) else None,
+            reset_cooldown_blocked=bool(payload.get("reset_cooldown_blocked")),
+        )
+        return {
+            "ok": True,
+            "metrics": metrics,
+            "nightly_context": nightly_context,
+            "walk_forward": walk_forward,
+            **promo,
+        }
+
+    @app.post("/diag/paper-bot/walk-forward")
+    async def diag_paper_bot_walk_forward(payload: dict[str, Any]) -> dict[str, Any]:
+        """Walk-forward Sharpe on Massive daily closes for bot-traded symbols."""
+        symbols = payload.get("symbols") or []
+        holdout = int(payload.get("holdout_days") or 5)
+        return evaluate_walk_forward(list(symbols), holdout_days=max(3, min(10, holdout)))
+
+    @app.post("/diag/autoresearch/promote")
+    async def diag_autoresearch_promote(payload: dict[str, Any]) -> dict[str, Any]:
+        """Human promote: copy experiment commit files to ``promoted/staging`` branch."""
+        sha = str(payload.get("commit_sha") or payload.get("commitSha") or "").strip()
+        promoted_by = str(payload.get("promoted_by") or payload.get("promotedBy") or "operator")
+        gm = GitExperimentManager()
+        result = gm.promote_commit(sha, promoted_by=promoted_by)
+        if not result.get("ok"):
+            return result
+        return {**result, "experiment_id": payload.get("experiment_id")}
+
+    @app.post("/bot/dry-run")
+    async def bot_dry_run(payload: BotRunDayIn) -> dict[str, Any]:
+        """Preview trade intents without persisting fills (BotBrainPanel)."""
+        universe_source = "deploy_list" if payload.universe_symbols else "watchlist"
+        return dry_run_payload(
+            cash_usd=float(payload.cash_usd),
+            positions=payload.positions,
+            universe_symbols=[str(s).upper().strip() for s in payload.universe_symbols if str(s).strip()],
+            prices={str(k).upper(): float(v) for k, v in payload.prices.items() if v and float(v) > 0},
+            kill_switch_armed=bool(payload.kill_switch_armed),
+            policy_version=int(payload.policy_version),
+            active_rules=payload.active_rules,
+            active_policy=payload.active_policy or {},
+            universe_source=universe_source,
+        )
+
+    @app.post("/bot/interpret-note")
+    async def bot_interpret_note(payload: BotInterpretNoteIn) -> dict[str, Any]:
+        """Parse user trading note into structured rule proposals."""
+        result = interpret_user_note(payload.note, payload.context or {})
+        if not result.get("ok"):
+            return {"ok": False, "proposals": [], "error": result.get("error") or "Could not interpret note"}
+        return {
+            "ok": True,
+            "proposals": result.get("proposals") or [],
+            "model": result.get("model"),
+            "used_grok": bool(result.get("used_grok")),
+            "error": None,
+        }
 
     return app

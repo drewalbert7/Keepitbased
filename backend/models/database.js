@@ -189,6 +189,86 @@ async function runInitializeDatabase() {
         ON paper_bot_events(user_id, created_at DESC)
     `);
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS paper_bot_positions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        symbol VARCHAR(20) NOT NULL,
+        asset_type VARCHAR(10) NOT NULL DEFAULT 'stock' CHECK (asset_type IN ('stock', 'crypto')),
+        quantity DECIMAL(16,6) NOT NULL CHECK (quantity > 0),
+        avg_cost_usd DECIMAL(14,4) NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(user_id, symbol)
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS paper_bot_trades (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        symbol VARCHAR(20) NOT NULL,
+        asset_type VARCHAR(10) NOT NULL DEFAULT 'stock' CHECK (asset_type IN ('stock', 'crypto')),
+        side VARCHAR(4) NOT NULL CHECK (side IN ('buy', 'sell')),
+        quantity DECIMAL(16,6) NOT NULL CHECK (quantity > 0),
+        price_usd DECIMAL(14,4) NOT NULL,
+        notional_usd DECIMAL(14,2) NOT NULL,
+        reason_tags JSONB DEFAULT '[]'::jsonb,
+        policy_version INTEGER NOT NULL DEFAULT 1,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_paper_bot_trades_user_created
+        ON paper_bot_trades(user_id, created_at DESC)
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS paper_bot_daily_snapshots (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        snapshot_date DATE NOT NULL,
+        equity_usd DECIMAL(14,2) NOT NULL,
+        cash_usd DECIMAL(14,2) NOT NULL,
+        day_pnl_usd DECIMAL(14,2) NOT NULL DEFAULT 0,
+        cum_pnl_usd DECIMAL(14,2) NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(user_id, snapshot_date)
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_paper_bot_snapshots_user_date
+        ON paper_bot_daily_snapshots(user_id, snapshot_date DESC)
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS paper_bot_rules (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        source VARCHAR(24) NOT NULL CHECK (source IN ('user', 'bot_suggested', 'autoresearch')),
+        status VARCHAR(16) NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'active', 'dismissed')),
+        rule_text TEXT NOT NULL,
+        rule_json JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_paper_bot_rules_user_status
+        ON paper_bot_rules(user_id, status)
+    `);
+
+    await client.query(`
+      ALTER TABLE paper_bot_trades ADD COLUMN IF NOT EXISTS reason_json JSONB DEFAULT '{}'::jsonb
+    `);
+
+    await client.query(`
+      ALTER TABLE paper_bot_accounts ADD COLUMN IF NOT EXISTS reset_at TIMESTAMPTZ
+    `);
+
     // Price history table (for charts)
     await client.query(`
       CREATE TABLE IF NOT EXISTS price_history (

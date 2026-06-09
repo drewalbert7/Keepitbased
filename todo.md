@@ -2,13 +2,25 @@
 
 > **Single source of truth:** `keepitbased/todo.md` in this repo. When you or Cursor reference **`todo.md`**, use **this file only**. A stub at `/home/dstrad/todo.md` redirects here.
 
-Last updated: **2026-06-09** (Phase 0 paper bot shell shipped — building Phase 1 ledger next).
+Last updated: **2026-06-09** (Phase 3 complete · Phase 4 split plan · **stop for night**).
 
-**Session checkpoint (2026-06-09) — Paper bot Phase 0 shell:** **`PaperTradingBotPanel`** on **`/dashboard`** below suggestions — health strip ($10k equity/cash, P&L placeholders), kill switch (two-step disarm **`ENABLE PAPER TRADES`**), **trade deploy list only** toggle, chart/blotter placeholders, why-no-trades + autoresearch strip placeholders. **API:** `GET /api/paper-bot/state`, `POST /api/paper-bot/kill-switch`, `PATCH /api/paper-bot/settings`. **DB:** `paper_bot_accounts`, `paper_bot_events`. **Next (Phase 1):** `paper_simulator.py`, positions/trades/snapshots tables, equity chart, `smokePaperBotLedger.js`. **Plan:** § [Grok paper trading bot](#grok-paper-trading-bot) + [`GROK_PAPER_TRADING_BOT_PLAN.md`](quant_agi/docs/GROK_PAPER_TRADING_BOT_PLAN.md).
+**Session checkpoint (2026-06-09) — STOP FOR NIGHT · resume Phase 4a:** Phase 3 ✅ shipped (walk-forward, nightly context, promote flow, reset + 24h cooldown). **Phase 4 split** documented in [`GROK_PAPER_TRADING_BOT_PLAN.md`](quant_agi/docs/GROK_PAPER_TRADING_BOT_PLAN.md) § Phase 4 — **4a next:** shadow mode (P0) + namespace isolation (P0) + socket bot events + proactive Grok rules. **4b later:** DL-3 → DL-4 broker paper. **Defer:** MiroFish force-graph. **Committed + pushed** this session.
 
-**Session checkpoint (2026-06-09) — Plan review (pre-build):** North star + UI ASCII + **Great tier** (24 items) + **Amazing tier** (v1.5) + highest-leverage trio + explicit defer — all in § [Grok paper trading bot](#grok-paper-trading-bot). Full spec synced **2026-06-09**.
+**Session checkpoint (2026-06-09) — Product rename:** UI + plan → **Quant AGI Bot** (internal `paper_bot_*` APIs unchanged).
 
-**Session checkpoint (2026-06-09) — Quant terminal suggestions removed:** **`MarketTape`** deleted from **`/quant-agi`** terminal; stock suggestions live only on **`/dashboard`** (`QuantAgiSuggestionsPanel`). Terminal keeps autoresearch feed, coding advisor, diff panel, metrics. **Next:** **`PaperTradingBotPanel`** below dashboard suggestions. **Plan:** § [Grok paper trading bot](#grok-paper-trading-bot) now includes **UI spec** (equity chart, blotter, activity) + **Great** and **Amazing** tier refinements.
+**Session checkpoint (2026-06-09) — Quant AGI frontend deploy (remember):** After **any** `quant_agi/frontend` change, run **`cd quant_agi/frontend && npm run build:deploy`** (or `npm run build && pm2 restart quant-agi-frontend --update-env`). **Why:** `next start` loads the build manifest at process start — building without restarting PM2 leaves stale chunk hashes; `/_next/static/chunks/app/page-*.js` **404** → **"Application error: a client-side exception has occurred"** on `/quant-agi-terminal`. **`deploy-production.sh`** already restarts PM2; ad-hoc builds must too. Rule file: `.cursor/rules/quant-agi-frontend-deploy.mdc`.
+
+**Session checkpoint (2026-06-09) — Phase 2 Grok rules loop:** `BotRulesInbox` on **`/quant-agi`** · `grok_bot_advisor.py` (Grok JSON + heuristic fallback) · `bot_policy_engine.py` · Node `POST /api/paper-bot/notes`, approve/dismiss · sidecar `POST /bot/interpret-note` · active rules passed to simulate-day. **Next:** Phase 2.5 `BotBrainPanel`.
+
+**Session checkpoint (2026-06-09) — Quant AGI page organization:** Zone **B** = `PaperTradingBotPanel` + `components/bot/*` (health, controls, chart, positions, blotter, autoresearch strip placeholder). Zone **C** = autoresearch ops grid. Header trimmed (feed status only). CodeDiffPanel no fake patch. StreamBootstrap no synthetic mock events. **`todo.md`** + **`GROK_PAPER_TRADING_BOT_PLAN.md`** synced — bot on **`/quant-agi` only**.
+
+**Session checkpoint (2026-06-09) — Quant terminal overhaul + Phase 1 ledger:** **`/quant-agi`** terminal cleaned up — removed theater kill switch / paper-shadow-live toggles and dead market poll; header shows **read-only** paper bot status from `/api/paper-bot/state` + link to dashboard. **Phase 1:** `paper_bot_positions` / `paper_bot_trades` / `paper_bot_daily_snapshots` / `paper_bot_rules` tables · `paper_simulator.py` + `POST /bot/run-day` · `POST /api/paper-bot/simulate-day` · dashboard positions/blotter/equity chart · `npm run smoke:paper-bot`. **Next (Phase 2):** Grok rules inbox + policy engine.
+
+**Session checkpoint (2026-06-09) — Paper bot Phase 0 shell:** **`PaperTradingBotPanel`** on **`/dashboard`** below suggestions — health strip ($10k equity/cash, P&L placeholders), kill switch (two-step disarm **`ENABLE PAPER TRADES`**), **trade deploy list only** toggle, chart/blotter placeholders, why-no-trades + autoresearch strip placeholders. **API:** `GET /api/paper-bot/state`, `POST /api/paper-bot/kill-switch`, `PATCH /api/paper-bot/settings`. **DB:** `paper_bot_accounts`, `paper_bot_events`. **Next (Phase 1):** `paper_simulator.py`, positions/trades/snapshots tables, equity chart, `smokePaperBotLedger.js`. **Plan:** § [Quant AGI Bot](#quant-agi-bot) + [`GROK_PAPER_TRADING_BOT_PLAN.md`](quant_agi/docs/GROK_PAPER_TRADING_BOT_PLAN.md).
+
+**Session checkpoint (2026-06-09) — Plan review (pre-build):** North star + UI ASCII + **Great tier** (24 items) + **Amazing tier** (v1.5) + highest-leverage trio + explicit defer — all in § [Quant AGI Bot](#quant-agi-bot). Full spec synced **2026-06-09**.
+
+**Session checkpoint (2026-06-09) — Quant terminal suggestions removed:** **`MarketTape`** deleted from **`/quant-agi`** terminal; stock suggestions live only on **`/dashboard`** (`QuantAgiSuggestionsPanel`). Terminal keeps autoresearch feed, coding advisor, diff panel, metrics. **Next:** **`PaperTradingBotPanel`** below dashboard suggestions. **Plan:** § [Quant AGI Bot](#quant-agi-bot) now includes **UI spec** (equity chart, blotter, activity) + **Great** and **Amazing** tier refinements.
 
 **Session checkpoint (2026-06-09) — Security hardening:** Public **`/quant-sidecar/`** blocked at nginx (**403**). Quant terminal + dashboard use authenticated **`/api/quant-agi/sidecar/*`** (JWT + path allowlist). Internal services bind **`127.0.0.1`** only (`:3001`, `:5001`, `:8844`, `:3010`). **Smoke:** `npm run smoke:quant-agi-rank` includes security checks. **Ops doc:** [`docs/SECURITY_HARDENING.md`](docs/SECURITY_HARDENING.md). **Still manual:** SES production + SPF/DMARC/DKIM (`npm run email:check-dns`).
 
@@ -202,22 +214,28 @@ npm run email:test-opportunity
 
 ## Resume Here Next Session
 
-### Session save spot (2026-06-09) — continue here next time
+### Session save spot (2026-06-09) — **continue here next time (Phase 4a)**
 
-**Product (start here):** **Grok paper trading bot** — Phase 0 shell ✅ · Phase 1 ledger next.
+**Product (start here):** **Quant AGI Bot** — **`/quant-agi` only** · Phases 0–3 ✅ · **Phase 4a next** · dashboard unchanged.
 
-**Dashboard layout:**
-1. Watchlist + opportunity policy ✅
-2. **Deploy list** ✅
-3. **Quant AGI stock suggestions** ✅
-4. **Paper trading bot** ✅ shell (`PaperTradingBotPanel` + `/api/paper-bot/state`)
-5. Assistant (Grok + Watchlist analyst) ✅
+**Phase 4 split (canonical):** [`GROK_PAPER_TRADING_BOT_PLAN.md`](quant_agi/docs/GROK_PAPER_TRADING_BOT_PLAN.md) § Phase 4.
 
-**Next sprint (Phase 1):** `paper_bot_positions` / `paper_bot_trades` / `paper_bot_daily_snapshots` · `paper_simulator.py` · equity chart · `smokePaperBotLedger.js`. See § [Grok paper trading bot](#grok-paper-trading-bot).
+| Sprint | Scope | Do not start yet |
+|--------|--------|------------------|
+| **4a (next)** | Shadow mode · namespace isolation · socket bot events · proactive Grok rules · nightly cron | Force-graph · broker API |
+| **4b (later)** | **DL-3** `DeployPlanV1` → shadow/broker parity → **DL-4** paper broker | Live money |
 
-**Verify:** Sign in → `/dashboard` → scroll to **Grok paper trading bot** → refresh → kill switch armed · $10,000 equity.
+**4a P0 first tasks:**
+1. Shadow mode — log hypothetical broker orders (`paper_bot_events` + UI); no external API.
+2. Namespace isolation — paper/shadow fills must not fire opportunity emails.
 
-**Parallel:** rank → **`buildAgentWatchlistContext`**; **DL-3**; SES/DNS.
+**Quant AGI layout (`/quant-agi`):** Zone B = bot panel · Zone C = autoresearch ops.
+
+**Verify:** `/quant-agi` signed in → strip shows gates + promote · simulate-day · smoke passes.
+
+**Smoke:** `npm run smoke:paper-bot` · after frontend edits: `cd quant_agi/frontend && npm run build:deploy`
+
+**Parallel (non-blocking):** rank → **`buildAgentWatchlistContext`**; SES/DNS; DL-3 design while 4a ships.
 
 ### Session save spot (2026-06-08) — prior
 
@@ -276,13 +294,14 @@ npm run email:test-opportunity
 
 **Shipped this arc (2026-05-09 → 05-11):** Quant **`rule_breaker_gardner`** — **`quant_strategies.rule_breaker_gardner_scores`**, **`api_client._rank_rule_breaker_payload`**, terminal **`RankStrategyId`** + **`MarketTape`** leg breakdown UI; LangGraph **`opportunity_nodes.opportunity_scout`** — no enumerate-index score bias, stable sort **`(-score, -confidence, symbol)`**; **`llm_client`** — score authoritative + preserve **`topCandidates`** in scan prose; **`deploy-production.sh`** — PM2 start **`quant-agi-api`** / **`quant-agi-frontend`** if absent; **`StreamBootstrap`** — sort universe rows by score; auth/health/recover routes hardening (earlier commits). Still on **`main`:** fundamentals **`/stock/:symbol/fundamentals`**, photonics + momentum rankers, Financials modal.
 
-**Ops:** **`bash scripts/deploy-production.sh`** (builds main CRA + Quant Next, reloads API, reloads **`quant-agi-api`**, restarts **`quant-agi-frontend`**). LangGraph / Flask changes → **`pm2 restart stock-service`** + **`curl -sf http://127.0.0.1:5001/health`**.
+**Ops:** **`bash scripts/deploy-production.sh`** (builds main CRA + Quant Next, reloads API, reloads **`quant-agi-api`**, restarts **`quant-agi-frontend`**). **Ad-hoc Quant frontend only:** **`cd quant_agi/frontend && npm run build:deploy`** — never `npm run build` alone without **`pm2 restart quant-agi-frontend`**. LangGraph / Flask changes → **`pm2 restart stock-service`** + **`curl -sf http://127.0.0.1:5001/health`**.
 
 **Next:** Wire **`/diag/market-universe-rank`** for all three strategies + batched fundamentals + macro/news/X into **dashboard LangGraph** / **`buildAgentWatchlistContext`** — checklist in § [Quant AGI — unified stock selection](#quant-agi--unified-stock-selection-for-dashboard-langgraph).
 
 ### Quant AGI terminal integration (production)
 
 - Terminal app: `quant_agi/frontend` (Next.js), PM2 **`quant-agi-frontend`** on port **3010**.
+- **Deploy after frontend edits:** `npm run build:deploy` in `quant_agi/frontend` (build + PM2 restart). Skipping restart → stale `/_next/` chunks → client-side crash on terminal.
 - Sidecar API: PM2 **`quant-agi-api`** on port **8844**; Massive access confirmed (`api.massive.com`, key present).
 - **nginx** (`config/nginx/sites-available/app.keepitbased-https.conf`):
   - `/quant-agi-terminal/` → `127.0.0.1:3010`; `/_next/` → `127.0.0.1:3010/_next/`
@@ -306,21 +325,30 @@ npm run email:test-opportunity
 
 **Honest limit:** Signals + LLM synthesis, not omniscient AGI; latency, OTC gaps, stale news remain risks.
 
-### Grok paper trading bot
+### Quant AGI Bot
 
 > **Full spec:** [`quant_agi/docs/GROK_PAPER_TRADING_BOT_PLAN.md`](quant_agi/docs/GROK_PAPER_TRADING_BOT_PLAN.md) · **UX reference:** [`quant_agi/agent_agi/todo.md`](quant_agi/agent_agi/todo.md)
 
-**Product:** Grok-powered **paper trading bot** — **$10,000** simulated capital per user before any live broker sleeve. Users add **trading style notes**; Grok proposes **rules** (Quant strategy weights, sizing caps, dip-tier gates); bot proposes rules back daily. **Karpathy autoresearch** reviews **daily paper P&L** and suggests **code/strategy patches** in sandbox git only (human promote).
+**Product:** **Quant AGI Bot** — Grok-assisted **simulated** trading on **$10,000** capital per user before any live broker sleeve. Users add **trading style notes**; Grok proposes **rules** (Quant strategy weights, sizing caps, dip-tier gates); bot proposes rules back daily. **Karpathy autoresearch** reviews **daily simulated P&L** and suggests **code/strategy patches** in sandbox git only (human promote).
 
-**Dashboard stack (`/dashboard` / `AIAgentPage.tsx`):**
+**Dashboard stack (`/dashboard` / `AIAgentPage.tsx`) — do not add bot UI:**
 
 | # | Section | Status |
 |---|---------|--------|
 | 1 | Watchlist + opportunity policy | ✅ |
 | 2 | Deploy list | ✅ |
-| 3 | **Quant AGI stock suggestions** (`QuantAgiSuggestionsPanel`) | ✅ **dashboard only** — removed from Quant terminal **2026-06-09** |
-| 4 | **Paper trading bot** + Karpathy autoresearch strip | 🟡 **Phase 0 shell** — ledger Phase 1 |
-| 5 | Assistant (Grok + Watchlist analyst) | ✅ |
+| 3 | **Quant AGI stock suggestions** (`QuantAgiSuggestionsPanel`) | ✅ |
+| 4 | Assistant (Grok + Watchlist analyst) | ✅ |
+
+**Quant AGI stack (`/quant-agi` only):**
+
+| Zone | Section | Status |
+|------|---------|--------|
+| B | **`PaperTradingBotPanel`** — ledger, kill switch, simulate-day, chart, blotter | ✅ Phase 1 |
+| B | **`BotRulesInbox`** (Phase 2) | ✅ |
+| B | **`BotBrainPanel`** — policy snapshot, inputs, dry-run intents, decision log | ✅ Phase 2.5 |
+| B | **`AutoresearchDailyStrip`** (Phase 3) | ✅ live P&L + gates |
+| C | Event timeline · Jarvis · code diff · metrics/scorecard | ✅ |
 
 **Three Grok loops:**
 
@@ -328,7 +356,7 @@ npm run email:test-opportunity
 |------|------|
 | **User → bot** | Free-text notes → Grok parses → `BotRuleProposal` cards (approve/dismiss) |
 | **Bot → user** | Daily: paper P&L + ranks + dip tiers + swarm regime → Grok suggests 2–4 rules |
-| **Autoresearch → code** | Nightly: paper metrics → extend `autoresearch/loop.py` → Grok patches in `grok_artifacts/` → diff in dashboard strip + full `/quant-agi` terminal |
+| **Autoresearch → code** | Nightly: paper metrics → extend `autoresearch/loop.py` → Grok patches → diff in **Zone C** + summary in **AutoresearchDailyStrip** (Zone B) |
 
 **Architecture:**
 
@@ -346,28 +374,34 @@ npm run email:test-opportunity
 
 | Phase | Deliverable | Status |
 |-------|-------------|--------|
-| **0** | Dashboard layout + suggestions + bot shell | **🟡 Mostly done** — suggestions ✅; bot shell ✅; chart data Phase 1 |
-| **1** | Paper ledger + `paper_simulator.py` + **equity/P&L chart** + blotter + positions | Planned |
-| **2** | Grok rules inbox + policy engine + **dry-run preview** | Planned |
-| **3** | Autoresearch fed by real paper P&L + **promotion gates** | Planned |
-| **4** | MiroFish SSE graph + shadow mode + broker (**DL-4**) | Planned |
+| **0** | Quant AGI page shell + bot panel | **✅** — Zone B/C layout; dashboard unchanged |
+| **1** | Paper ledger + `paper_simulator.py` + chart + blotter | **✅ MVP** — simulate-day, positions, snapshots |
+| **2** | Grok rules inbox + policy engine | **✅** core loop |
+| **2.5** | **`BotBrainPanel`** + dry-run + policy snapshot + explain-trade | **✅** |
+| **3** | Autoresearch fed by real paper P&L + **promotion gates** | **✅** |
+| **4a** | Shadow mode + bot event feed + isolation + proactive rules | **Next** |
+| **4b** | **DL-3** → broker paper (**DL-4**) | Planned (after 4a + DL-3) |
+| **4 defer** | MiroFish force-graph full panel · live money | v1.5+ |
 
 #### North star (product voice)
 
 > The bot should feel like a **disciplined junior trader** who keeps a journal, shows their work, asks before changing strategy, and **never touches real money** until you say so.
 
-#### UI plan — performance over time & activity (`PaperTradingBotPanel`)
+#### UI plan — `PaperTradingBotPanel` on **`/quant-agi` only** (Zone B)
 
-Dashboard embed (not Quant terminal iframe). Match `kib-card` tokens; reuse **`lightweight-charts`** where charts exist on `/charts`.
+Quant AGI terminal tokens (`panel`, `neon`, `mint`). Subcomponents in `quant_agi/frontend/components/bot/`.
 
 ```text
-┌─ Paper Trading Bot ─────────────────────────────────────────────┐
+┌─ Quant AGI Bot ──────────────────────────────────────────────────┐
 │ Bot health strip: equity · cash · day P&L · open risk % ·     │
 │   days since last trade · mode badge (Paper only in v1)       │
 ├───────────────────────────────────────────────────────────────┤
 │ Kill switch (armed default) · two-step disarm to enable trades│
 ├───────────────────────────────────────────────────────────────┤
 │ BotRulesInbox — user notes + bot proposals (approve/dismiss)  │
+├───────────────────────────────────────────────────────────────┤
+│ BotBrainPanel — policy snapshot · inputs · dry-run intents  │
+│   (deploy list, rankers, dip tiers, swarm regime, skip log)   │
 ├───────────────────────────────────────────────────────────────┤
 │ BotPositionsTable — symbol, qty, cost, mkt value, unreal P&L  │
 ├───────────────────────────────────────────────────────────────┤
@@ -382,16 +416,50 @@ Dashboard embed (not Quant terminal iframe). Match `kib-card` tokens; reuse **`l
 ├───────────────────────────────────────────────────────────────┤
 │ AutoresearchDailyStrip — Sharpe Δ, diff preview, promote gate │
 ├───────────────────────────────────────────────────────────────┤
-│ Footer — link to `/quant-agi` full terminal · export run PDF  │
+│ Footer — disclaimer · policy version                          │
 └───────────────────────────────────────────────────────────────┘
 ```
 
-**Components (build order):** `PaperTradingBotPanel` → `BotRulesInbox` → `BotPositionsTable` → `BotTradeBlotter` → `BotPerformanceChart` → `AutoresearchDailyStrip`. **Mobile:** collapsed summary (equity, day P&L, last 3 trades, kill switch).
+**Zone C (same page):** EventTimeline · JarvisCodingChat · CodeDiffPanel · MetricsPanel.
+
+**Components (shipped / next):** `BotHealthStrip` ✅ · `BotControls` ✅ · `BotPerformanceChart` ✅ · `BotPositionsTable` ✅ · `BotTradeBlotter` ✅ · `BotRulesInbox` ✅ · **`BotBrainPanel`** ✅ · **`AutoresearchDailyStrip`** ✅ · **promote-flow** ✅ · **Phase 4a:** shadow blotter + event feed 🔲.
+
+#### `BotBrainPanel` — read the bot’s decision stack (Phase 2.5)
+
+**Purpose:** One place to answer *what is guiding the bot right now* and *what would it do next* — without implying Grok directly places trades.
+
+**Placement:** Zone B, below `BotRulesInbox`, above equity chart / positions.
+
+**Authority (show in UI copy):**
+
+| Layer | Role in brain panel |
+|-------|---------------------|
+| **Grok** | Rule proposals, rationales, daily journal line (Amazing tier) |
+| **`bot_policy_engine.py`** | Merged caps, precedence, `TradeIntent[]` — **source of truth** |
+| **Rankers + dip tiers + deploy list** | Input signals the engine read |
+| **Swarm snapshot** | Regime context label only (not execution authority) |
+
+**Panel sections (v1):**
+
+1. **Active policy snapshot** — merged params (`max_position_pct`, `max_open_positions`, `min_cash_reserve`, etc.), `policy_version`, precedence reminder (`kill_switch > caps > active rules > defaults`).
+2. **Universe & gates** — deploy-list-only toggle state, symbol count, kill-switch status, cash headroom.
+3. **Input signals** — top rank candidates (per strategy), dip tier counts on universe, optional swarm `regime_label`.
+4. **Dry-run intents** — `POST /api/paper-bot/dry-run` → `TradeIntent[]` (symbol, side, target weight, rules fired, skip reason) — **no fills persisted**.
+5. **Recent decisions log** — tail of `paper_bot_events` (skipped: cap, tier, kill switch, no deploy-list symbol).
+
+**API / backend (planned):**
+
+- `GET /api/paper-bot/policy-snapshot` — merged policy + inputs metadata
+- `POST /api/paper-bot/dry-run` — intents only (Quant `POST /bot/dry-run` or shared path with `run-day`)
+- Extend `paper_bot_trades.reason_json` for blotter **Explain this trade** (links from brain → blotter)
+
+**Exit criteria:** User approves a sizing rule, opens brain, sees rule in snapshot + dry-run intents respect cap; after simulate-day, blotter row expands to same `reason_json`.
 
 #### Plan refinements — Great tier (Phase 1–3)
 
 **Product & UX**
 
+- [ ] **`BotBrainPanel`** — policy snapshot, universe gates, input signals, dry-run intents, recent skip log (see § above).
 - [ ] **Bot health strip** — four scan metrics at top (equity, day P&L, open risk %, days since last trade).
 - [ ] **Equity curve + daily P&L bars** — toggles + **7D / 30D / All**; data from `paper_bot_daily_snapshots`.
 - [ ] **Explain this trade** — every blotter row expandable: `reason_json`, rule ids, dip tier, rank at fill, `policy_version`, **`fill_price_source`**.
@@ -423,10 +491,10 @@ Dashboard embed (not Quant terminal iframe). Match `kib-card` tokens; reuse **`l
 
 **Autoresearch (Phase 3)**
 
-- [ ] **Promotion gates** — promote patch only if ALL pass: ≥10 paper days, ≥20 closed trades, walk-forward Sharpe Δ > 0 on held-out last 5 days, max drawdown not worse than baseline.
-- [ ] **Knobs vs code patches** — parameter tunes → proposed rules only; code patches → sandbox git + human promote always.
-- [ ] **Rich nightly prompt** — equity summary, worst day, win rate, symbols traded, rules that fired most.
-- [ ] **24h cooldown after account reset** before autoresearch may promote from new run.
+- [x] **Promotion gates** — paper days, fills, Sharpe holdout, drawdown, walk-forward Massive, reset cooldown; enforced on promote.
+- [x] **Knobs vs code patches** — copy in strip + researcher prompt; rules inbox vs sandbox promote.
+- [x] **Rich nightly prompt** — worst day, win rate, symbols, reason tags in API + Grok context.
+- [x] **24h cooldown after account reset** — `POST /api/paper-bot/reset` + gate on promote.
 
 **Metrics & docs**
 
@@ -437,14 +505,14 @@ Dashboard embed (not Quant terminal iframe). Match `kib-card` tokens; reuse **`l
 **Highest-leverage trio (do early)**
 
 1. **Price source + audit fields on every trade**
-2. **Dry-run “tomorrow’s intents” before `run-day`**
+2. **`BotBrainPanel` dry-run** — tomorrow’s intents before `run-day`
 3. **Promotion gates for autoresearch** (design tables/APIs in Phase 1 even if Phase 3 ships later)
 
 #### Plan refinements — Amazing tier (v1.5+)
 
 **Feel alive**
 
-- [ ] **Daily bot journal (Grok)** — 30-second plain-English daily note (like digest voice): what happened, what was skipped, best would-have-been.
+- [ ] **Daily bot journal (Grok)** — 30-second plain-English note; **surfaces inside `BotBrainPanel`** (top narrative strip).
 - [ ] **“Why no trades today?”** — first-class empty state (not blank blotter).
 - [ ] **Chart day replay** — click equity point → scroll blotter to date, show active rules + swarm regime label.
 
@@ -489,7 +557,7 @@ Shorts, options, crypto paper, intraday scalping, auto-promote LLM code to prod,
 
 ### Quant AGI agentic trading bot build-out notes
 
-Alias for § [Grok paper trading bot](#grok-paper-trading-bot) — kept for older links. North star unchanged: **MiroFish swarm** → **autoresearch** → **paper** → **policy envelope** → UI. Terminal at `/quant-agi` remains **deep ops** (timeline, Jarvis, full diff); dashboard embeds compact panels.
+Alias for § [Quant AGI Bot](#quant-agi-bot) — kept for older links. North star unchanged: **MiroFish swarm** → **autoresearch** → **paper** → **policy envelope** → UI. Terminal at `/quant-agi` remains **deep ops** (timeline, Jarvis, full diff); dashboard embeds compact panels.
 
 ### Recent session — Profile hub, landing page, notification defaults (2026-05-06, done)
 

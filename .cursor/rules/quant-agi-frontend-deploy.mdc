@@ -1,0 +1,33 @@
+---
+description: Restart quant-agi-frontend after Next.js builds to avoid stale chunk 404s
+globs: quant_agi/frontend/**
+alwaysApply: false
+---
+
+# Quant AGI frontend deploy
+
+After changing `quant_agi/frontend`, **always rebuild and restart** the PM2 process before expecting `/quant-agi-terminal` to work on production.
+
+## Required command
+
+```bash
+cd quant_agi/frontend && npm run build:deploy
+```
+
+Equivalent manual steps:
+
+```bash
+cd quant_agi/frontend && npm run build && pm2 restart quant-agi-frontend --update-env
+```
+
+## Why
+
+Next.js `next start` loads the build manifest at process start. Running `npm run build` without restarting PM2 leaves a stale manifest — page chunks like `/_next/static/chunks/app/page-*.js` return **404** and the terminal shows:
+
+> Application error: a client-side exception has occurred
+
+## When to apply
+
+- After any Quant AGI frontend code change you want live on `app.keepitbased.com`
+- After `npm run build` in `quant_agi/frontend` (even if deploy script was not used)
+- `scripts/deploy-production.sh` already restarts `quant-agi-frontend`; ad-hoc builds must too

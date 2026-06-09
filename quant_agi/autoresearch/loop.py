@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import signal
 import time
 from pathlib import Path
@@ -17,6 +18,7 @@ from config import settings
 from db import ExperimentRow, engine, init_db
 from swarm.swarm_manager import SwarmManager
 
+from paper_trading.paper_bot_metrics import load_paper_bot_metrics_file
 from utils.logger import get_logger
 
 _LOG = get_logger(__name__)
@@ -117,6 +119,10 @@ def run_autoresearch_night(*, iterations: Optional[int] = None) -> None:
 
     )
 
+    paper_bot_metrics = load_paper_bot_metrics_file(os.environ.get("PAPER_BOT_METRICS_PATH"))
+    if paper_bot_metrics:
+        _LOG.info("Loaded paper bot metrics from PAPER_BOT_METRICS_PATH")
+
     seed_base = int(time.time()) % 1_000_000
 
     for i in range(iters):
@@ -134,7 +140,7 @@ def run_autoresearch_night(*, iterations: Optional[int] = None) -> None:
 
 
 
-        proposal = researcher_mod.propose_with_optional_llm(seed)
+        proposal = researcher_mod.propose_with_optional_llm(seed, paper_bot_metrics=paper_bot_metrics)
 
         branch = gm.create_branch(f"itr-{seed}")
 
