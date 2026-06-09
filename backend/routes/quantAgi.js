@@ -6,6 +6,7 @@ const auth = require('../middleware/auth');
 const config = require('../config');
 const logger = require('../utils/logger');
 const { resolveQuantAgiBaseUrl } = require('../utils/quantAgiBaseUrl');
+const { isAllowedSidecarRequest, normalizeSubPath } = require('../utils/quantAgiSidecarAllowlist');
 
 const router = express.Router();
 
@@ -67,5 +68,84 @@ router.get(
     }
   }
 );
+
+const sidecarLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 180,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many Quant AGI sidecar requests, retry shortly' },
+  keyGenerator: (req) => `quant-sidecar:${req.user?.id ?? req.ip}`
+});
+
+const codingChatLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 24,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Coding advisor rate limit — try again in a minute' },
+  keyGenerator: (req) => `quant-coding:${req.user?.id ?? req.ip}`
+});
+
+function sidecarSubPath(req) {
+  const raw = req.params[0] || '';
+  return normalizeSubPath(raw);
+}
+
+async function proxySidecar(req, res) {
+  const subPath = sidecarSubPath(req);
+  if (!subPath || !isAllowedSidecarRequest(req.method, subPath)) {
+    return res.status(403).json({ message: 'Quant AGI path not allowed' });
+  }
+
+  const base = resolveQuantAgiBaseUrl();
+  const targetUrl = `${base}/${subPath}`;
+  const timeout =
+    subPath.startsWith('v1/coding-chat')
+      ? config.QUANT_AGI_TIMEOUT_MS || 120000
+      : config.QUANT_AGI_RANK_TIMEOUT_MS || 45000;
+
+  try {
+    const axiosConfig = {
+      method: req.method,
+      url: targetUrl,
+      params: req.query,
+      timeout,
+      validateStatus: (s) => s >= 200 && s < 300,
+      responseType: 'json'
+    };
+    if (req.method === 'POST') {
+      axiosConfig.data = req.body;
+      axiosConfig.headers = { 'Content-Type': 'application/json' };
+    }
+
+    const { data } = await axios(axiosConfig);
+    return res.json(data && typeof data === 'object' ? data : { ok: true, data });
+  } catch (err) {
+    const status = err.response?.status;
+    logger.warn(
+      `Quant AGI sidecar proxy failed (${subPath}): ${err.message}${status ? ` (${status})` : ''}`
+    );
+    if (err.response?.data && typeof err.response.data === 'object') {
+      return res.status(status && status >= 400 && status < 600 ? status : 502).json(err.response.data);
+    }
+    return res.status(status && status >= 400 && status < 600 ? status : 502).json({
+      ok: false,
+      message: 'Quant AGI sidecar unavailable',
+      detail: err.message
+    });
+  }
+}
+
+router.all('/sidecar/*', auth, (req, res) => {
+  const subPath = sidecarSubPath(req);
+  if (subPath?.startsWith('v1/coding-chat') && req.method === 'POST') {
+    return codingChatLimiter(req, res, () => proxySidecar(req, res));
+  }
+  if (req.method === 'GET' || req.method === 'HEAD') {
+    return sidecarLimiter(req, res, () => proxySidecar(req, res));
+  }
+  return res.status(405).json({ message: 'Method not allowed' });
+});
 
 module.exports = router;

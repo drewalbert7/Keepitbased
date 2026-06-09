@@ -587,4 +587,5 @@ def daily_watchlist_digest():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    host = os.environ.get('HOST', '127.0.0.1')
+    app.run(host=host, port=port, debug=False)

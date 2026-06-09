@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getQuantAgiBaseUrl } from "../lib/quantBase";
+import { quantAuthedFetch } from "../lib/quantAuth";
 
 type Role = "user" | "assistant";
 
@@ -32,7 +33,7 @@ export function JarvisCodingChat() {
 
     try {
       const history = [...turns, userTurn].map(({ role, content }) => ({ role, content }));
-      const res = await fetch(`${base}/v1/coding-chat`, {
+      const res = await quantAuthedFetch(`${base}/v1/coding-chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text, history: history.slice(0, -1) }),
@@ -56,7 +57,7 @@ export function JarvisCodingChat() {
         if (apiErr) {
           errText = apiErr;
         } else if (res.status === 404) {
-          errText = `Not found (404) at ${base}/v1/coding-chat. Redeploy quant-agi-api with the coding-chat route on port 8844, or point NEXT_PUBLIC_QUANT_AGI_URL at ${window.location.origin}/quant-sidecar when building.`;
+          errText = `Not found (404) at ${base}/v1/coding-chat. Redeploy keepitbased-api (sidecar proxy) and quant-agi-api, or set NEXT_PUBLIC_QUANT_AGI_URL for local sidecar.`;
         } else {
           errText = `Request failed (${res.status}). Ensure quant-agi-api is running and GROK_API_KEY is set when the route exists.`;
         }

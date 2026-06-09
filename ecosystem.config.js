@@ -8,6 +8,7 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: 3001,
+        HOST: '127.0.0.1',
         PYTHON_SERVICE_URL: 'http://127.0.0.1:5001',
         // PM2 vars are applied before backend/.env; dotenv does not overwrite existing keys.
         // Critical dip emails are capped per user; daily Grok briefing is separate (digest budget).
@@ -16,6 +17,7 @@ module.exports = {
       env_production: {
         NODE_ENV: 'production',
         PORT: 3001,
+        HOST: '127.0.0.1',
         PYTHON_SERVICE_URL: 'http://127.0.0.1:5001',
         ENABLE_DAILY_WATCHLIST_DIGEST_EMAIL: 'true'
       },
@@ -42,6 +44,7 @@ module.exports = {
       exec_mode: 'fork',
       env: {
         PORT: 5001,
+        HOST: '127.0.0.1',
         LLM_PROVIDER: process.env.LLM_PROVIDER,
         LLM_MODEL: process.env.LLM_MODEL,
         OPENAI_API_KEY: process.env.OPENAI_API_KEY,
@@ -63,7 +66,7 @@ module.exports = {
     {
       name: 'quant-agi-api',
       script: '.venv_test/bin/python',
-      args: 'main.py serve --host 0.0.0.0 --port 8844',
+      args: 'main.py serve --host 127.0.0.1 --port 8844',
       cwd: './quant_agi',
       instances: 1,
       exec_mode: 'fork',
@@ -81,7 +84,7 @@ module.exports = {
     {
       name: 'quant-agi-frontend',
       script: 'npm',
-      args: 'start -- --port 3010',
+      args: 'start -- --port 3010 --hostname 127.0.0.1',
       cwd: './quant_agi/frontend',
       interpreter: 'none',
       instances: 1,

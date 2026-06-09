@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { getQuantAgiBaseUrl } from "../lib/quantBase";
+import { quantAuthedFetch } from "../lib/quantAuth";
 import {
   LatestPatch,
   MarketSymbolSnapshot,
@@ -58,7 +59,7 @@ export function StreamBootstrap() {
     const pullFeed = async () => {
       const base = getQuantAgiBaseUrl();
       try {
-        const res = await fetch(`${base}/diag/terminal-feed?limit=20`, { cache: "no-store" });
+        const res = await quantAuthedFetch(`${base}/diag/terminal-feed?limit=20`, { cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const payload = await res.json();
         const events = Array.isArray(payload.events)
@@ -77,7 +78,7 @@ export function StreamBootstrap() {
         replaceEvents(events);
         setLatestPatch((payload.latestPatch ?? null) as LatestPatch | null);
 
-        const marketRes = await fetch(
+        const marketRes = await quantAuthedFetch(
           `${base}/diag/market-snapshot?symbols=AAPL,NVDA,MSFT,TSLA,SPY`,
           { cache: "no-store" }
         );
@@ -99,7 +100,7 @@ export function StreamBootstrap() {
           setMarket(symbols);
         }
 
-        const rankedRes = await fetch(
+        const rankedRes = await quantAuthedFetch(
           `${base}/diag/market-universe-rank?strategy=${encodeURIComponent(rankStrategyId)}&top_n=25`,
           { cache: "no-store" }
         );
@@ -175,7 +176,7 @@ export function StreamBootstrap() {
           setRankMeta(meta);
         }
 
-        const scorecardRes = await fetch(`${base}/diag/scorecard?window=60`, {
+        const scorecardRes = await quantAuthedFetch(`${base}/diag/scorecard?window=60`, {
           cache: "no-store"
         });
         if (scorecardRes.ok) {

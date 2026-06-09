@@ -98,6 +98,8 @@ io.use((socket, next) => {
 });
 
 const PORT = config.PORT;
+const LISTEN_HOST =
+  process.env.HOST || (config.NODE_ENV === 'production' ? '127.0.0.1' : '0.0.0.0');
 
 // Middleware
 app.use(helmet({
@@ -242,8 +244,8 @@ async function startServer() {
     });
 
     // Start server
-    server.listen(PORT, () => {
-      logger.info(`🚀 KeepItBased API server running on port ${PORT}`);
+    server.listen(PORT, LISTEN_HOST, () => {
+      logger.info(`🚀 KeepItBased API server running on ${LISTEN_HOST}:${PORT}`);
       logger.info(`🌍 Environment: ${config.NODE_ENV}`);
       logger.info(`🔧 Configuration validated and loaded`);
 

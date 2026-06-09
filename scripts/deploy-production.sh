@@ -30,13 +30,13 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
   if curl -sf "$HEALTH_URL" >/dev/null; then
     echo "==> health OK: $HEALTH_URL"
     echo "==> If LangGraph / python-service changed: pm2 restart stock-service && curl -sf http://127.0.0.1:5001/health"
-    # Quant AGI: nginx proxies /quant-sidecar/ → :8844 and /quant-agi-terminal/ → :3010 — start if missing or reload.
+    # Quant AGI: nginx serves terminal iframe; sidecar reached via authenticated Node proxy only.
     if [ -f quant_agi/main.py ] && [ -f ecosystem.config.js ]; then
       if pm2 describe quant-agi-api >/dev/null 2>&1; then
         echo "==> pm2 reload quant-agi-api (Python sidecar :8844)"
         pm2 reload ecosystem.config.js --only quant-agi-api --update-env || pm2 restart quant-agi-api --update-env
       else
-        echo "==> pm2 start quant-agi-api (was not running — avoids 502 on /quant-sidecar/)"
+        echo "==> pm2 start quant-agi-api (was not running — avoids sidecar proxy 502)"
         pm2 start ecosystem.config.js --only quant-agi-api
       fi
       if pm2 describe quant-agi-frontend >/dev/null 2>&1; then

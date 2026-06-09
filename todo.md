@@ -2,7 +2,9 @@
 
 > **Single source of truth:** `keepitbased/todo.md` in this repo. When you or Cursor reference **`todo.md`**, use **this file only**. A stub at `/home/dstrad/todo.md` redirects here.
 
-Last updated: **2026-06-08** (Grok paper trading bot plan + dashboard layout spec).
+Last updated: **2026-06-09** (security hardening: sidecar auth proxy, localhost binds).
+
+**Session checkpoint (2026-06-09) — Security hardening:** Public **`/quant-sidecar/`** blocked at nginx (**403**). Quant terminal + dashboard use authenticated **`/api/quant-agi/sidecar/*`** (JWT + path allowlist). Internal services bind **`127.0.0.1`** only (`:3001`, `:5001`, `:8844`, `:3010`). **Smoke:** `npm run smoke:quant-agi-rank` includes security checks. **Ops doc:** [`docs/SECURITY_HARDENING.md`](docs/SECURITY_HARDENING.md). **Still manual:** SES production + SPF/DMARC/DKIM (`npm run email:check-dns`).
 
 **Session checkpoint (2026-06-08) — Dashboard Quant AGI suggestions (gate before terminal removal):** **`QuantAgiSuggestionsPanel`** on **`/dashboard`** under **Deploy list** — proxied via **`GET /api/quant-agi/market-universe-rank`** (auth), 4 strategies, 8s refresh, add-to-watchlist, Gardner breakdown. **Smoke:** `node backend/scripts/smokeQuantAgiDashboardRank.js` (all 4 strategies must return positions). **Do not remove** `MarketTape` from **`/quant-agi`** until dashboard smoke passes in prod + you confirm UI parity. **Next:** **`PaperTradingBotPanel`** below suggestions. Full bot plan: [`quant_agi/docs/GROK_PAPER_TRADING_BOT_PLAN.md`](quant_agi/docs/GROK_PAPER_TRADING_BOT_PLAN.md).
 

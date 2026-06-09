@@ -1,9 +1,8 @@
 /**
- * Base URL for Quant AGI FastAPI (browser calls nginx `/quant-sidecar/` in production).
+ * Base URL for Quant AGI FastAPI (browser uses authenticated Node proxy in production).
  *
  * 1) `NEXT_PUBLIC_QUANT_AGI_URL` wins when set at build time.
- * 2) On the live app host, default to same-origin `/quant-sidecar` so a missed env
- *    does not point the browser at `127.0.0.1` (wrong machine).
+ * 2) On the live app host, default to `/api/quant-agi/sidecar` (JWT required; nginx blocks `/quant-sidecar/`).
  * 3) Local dev default: sidecar on localhost:8844.
  */
 export function getQuantAgiBaseUrl(): string {
@@ -16,7 +15,7 @@ export function getQuantAgiBaseUrl(): string {
   if (typeof window !== "undefined") {
     const { protocol, hostname } = window.location;
     if (hostname === "app.keepitbased.com") {
-      return `${protocol}//${hostname}/quant-sidecar`;
+      return `${protocol}//${hostname}/api/quant-agi/sidecar`;
     }
   }
 
