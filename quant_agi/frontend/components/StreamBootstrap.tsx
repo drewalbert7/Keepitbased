@@ -8,9 +8,6 @@ import {
   MarketSymbolSnapshot,
   QuantEvent,
   QuantScorecard,
-  QuantSuggestedPosition,
-  RankMeta,
-  type RankStrategyId,
   useQuantStore
 } from "../lib/store";
 
@@ -44,13 +41,8 @@ export function StreamBootstrap() {
   const replaceEvents = useQuantStore((s) => s.replaceEvents);
   const setLatestPatch = useQuantStore((s) => s.setLatestPatch);
   const setMarket = useQuantStore((s) => s.setMarket);
-  const setSuggestions = useQuantStore((s) => s.setSuggestions);
-  const setRankMeta = useQuantStore((s) => s.setRankMeta);
   const setScorecard = useQuantStore((s) => s.setScorecard);
   const setConnected = useQuantStore((s) => s.setConnected);
-
-  const rankStrategyId = useQuantStore((s) => s.rankStrategyId);
-  const setRankStrategyMeta = useQuantStore((s) => s.setRankStrategyMeta);
 
   useEffect(() => {
     hydrateMockData();
@@ -100,82 +92,6 @@ export function StreamBootstrap() {
           setMarket(symbols);
         }
 
-        const rankedRes = await quantAuthedFetch(
-          `${base}/diag/market-universe-rank?strategy=${encodeURIComponent(rankStrategyId)}&top_n=25`,
-          { cache: "no-store" }
-        );
-        if (rankedRes.ok) {
-          const rankedPayload = await rankedRes.json();
-          const rawStrat = String(rankedPayload.strategy || "");
-          const sid: RankStrategyId =
-            rawStrat === "photonics_chokepoint" ||
-            rawStrat === "rule_breaker_gardner" ||
-            rawStrat === "rule_breaker_gardner_early"
-              ? rawStrat
-              : "momentum_liquidity";
-          setRankStrategyMeta({
-            id: sid,
-            label: String(rankedPayload.strategy_label || sid),
-            disclaimer: String(rankedPayload.strategy_disclaimer || "")
-          });
-          const positions: QuantSuggestedPosition[] = Array.isArray(rankedPayload.positions)
-            ? (rankedPayload.positions as Array<Partial<QuantSuggestedPosition>>).map((row) => ({
-                symbol: String(row.symbol || ""),
-                asset_type: row.asset_type === "crypto" ? ("crypto" as const) : ("stock" as const),
-                score: typeof row.score === "number" ? row.score : 0,
-                last_close: typeof row.last_close === "number" ? row.last_close : null,
-                day_change_pct: typeof row.day_change_pct === "number" ? row.day_change_pct : null,
-                momentum_20d_pct: typeof row.momentum_20d_pct === "number" ? row.momentum_20d_pct : 0,
-                vol_20d_pct: typeof row.vol_20d_pct === "number" ? row.vol_20d_pct : 0,
-                drawdown_60d_pct: typeof row.drawdown_60d_pct === "number" ? row.drawdown_60d_pct : 0,
-                avg_dollar_vol_20d:
-                  typeof row.avg_dollar_vol_20d === "number" ? row.avg_dollar_vol_20d : null,
-                history_source: String(row.history_source || "unknown"),
-                is_live_massive: Boolean(row.is_live_massive),
-                as_of: typeof row.as_of === "string" ? row.as_of : null,
-                why: Array.isArray(row.why) ? row.why.map((x) => String(x)) : [],
-                position_hint: String(row.position_hint || "watch candidate"),
-                strategy_factors:
-                  row.strategy_factors && typeof row.strategy_factors === "object"
-                    ? (row.strategy_factors as Record<string, unknown>)
-                    : undefined
-              }))
-            : [];
-          positions.sort(
-            (a, b) =>
-              (b.score ?? 0) - (a.score ?? 0) || String(a.symbol).localeCompare(String(b.symbol))
-          );
-          setSuggestions(positions);
-
-          const meta: RankMeta = {
-            accepted_count: typeof rankedPayload.accepted_count === "number" ? rankedPayload.accepted_count : 0,
-            excluded_count: typeof rankedPayload.excluded_count === "number" ? rankedPayload.excluded_count : 0,
-            excluded_counts: {
-              price_below_min:
-                typeof rankedPayload?.excluded_counts?.price_below_min === "number"
-                  ? rankedPayload.excluded_counts.price_below_min
-                  : 0,
-              liquidity_below_min:
-                typeof rankedPayload?.excluded_counts?.liquidity_below_min === "number"
-                  ? rankedPayload.excluded_counts.liquidity_below_min
-                  : 0,
-              insufficient_history:
-                typeof rankedPayload?.excluded_counts?.insufficient_history === "number"
-                  ? rankedPayload.excluded_counts.insufficient_history
-                  : 0
-            },
-            min_price:
-              typeof rankedPayload?.liquidity_gate?.min_price === "number"
-                ? rankedPayload.liquidity_gate.min_price
-                : 0,
-            min_avg_dollar_vol_20d:
-              typeof rankedPayload?.liquidity_gate?.min_avg_dollar_vol_20d === "number"
-                ? rankedPayload.liquidity_gate.min_avg_dollar_vol_20d
-                : 0
-          };
-          setRankMeta(meta);
-        }
-
         const scorecardRes = await quantAuthedFetch(`${base}/diag/scorecard?window=60`, {
           cache: "no-store"
         });
@@ -219,15 +135,11 @@ export function StreamBootstrap() {
   }, [
     hydrateMockData,
     ingest,
-    rankStrategyId,
     replaceEvents,
     setConnected,
     setLatestPatch,
     setMarket,
-    setRankMeta,
-    setRankStrategyMeta,
-    setScorecard,
-    setSuggestions
+    setScorecard
   ]);
 
   return null;

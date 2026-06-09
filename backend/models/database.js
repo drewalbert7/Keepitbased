@@ -157,6 +157,38 @@ async function runInitializeDatabase() {
       CREATE INDEX IF NOT EXISTS idx_deploy_list_user_id ON user_deploy_list_items(user_id)
     `);
 
+    // Grok paper trading bot — Phase 0 account + event log (ledger tables in Phase 1)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS paper_bot_accounts (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        starting_cash_usd DECIMAL(14,2) NOT NULL DEFAULT 10000,
+        cash_usd DECIMAL(14,2) NOT NULL DEFAULT 10000,
+        mode VARCHAR(16) NOT NULL DEFAULT 'paper'
+          CHECK (mode IN ('paper', 'shadow', 'live')),
+        kill_switch_armed BOOLEAN NOT NULL DEFAULT true,
+        trade_deploy_list_only BOOLEAN NOT NULL DEFAULT true,
+        policy_version INTEGER NOT NULL DEFAULT 1,
+        last_trade_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS paper_bot_events (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        event_type VARCHAR(48) NOT NULL,
+        payload JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_paper_bot_events_user_created
+        ON paper_bot_events(user_id, created_at DESC)
+    `);
+
     // Price history table (for charts)
     await client.query(`
       CREATE TABLE IF NOT EXISTS price_history (

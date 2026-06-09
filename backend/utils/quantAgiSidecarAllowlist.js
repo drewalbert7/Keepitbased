@@ -6,7 +6,6 @@ const SIDECAR_GET_PREFIXES = [
   'health',
   'diag/terminal-feed',
   'diag/market-snapshot',
-  'diag/market-universe-rank',
   'diag/scorecard'
 ];
 

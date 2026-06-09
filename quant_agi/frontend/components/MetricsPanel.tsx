@@ -6,7 +6,6 @@ import { useQuantStore } from "../lib/store";
 export function MetricsPanel() {
   const events = useQuantStore((s) => s.events);
   const scorecard = useQuantStore((s) => s.scorecard);
-  const rankMeta = useQuantStore((s) => s.rankMeta);
 
   const metrics = useMemo(() => {
     const tested = events.filter((e) => e.state === "tested" || e.type === "backtest_result");
@@ -50,12 +49,6 @@ export function MetricsPanel() {
             <p>Avg Winrate d: {(scorecard.avg_winrate_delta * 100).toFixed(2)}pp</p>
           </div>
         </div>
-      )}
-      {rankMeta && (
-        <p className="mt-3 text-xs text-white/60">
-          Liquidity exclusions: {rankMeta.excluded_counts.liquidity_below_min} liquidity,{" "}
-          {rankMeta.excluded_counts.price_below_min} price, {rankMeta.excluded_counts.insufficient_history} history.
-        </p>
       )}
     </section>
   );

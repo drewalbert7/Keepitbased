@@ -1,8 +1,8 @@
 # Grok Paper Trading Bot — build plan
 
-**Date:** 2026-06-08  
-**Status:** Approved direction — implementation not started  
-**Canonical roadmap:** [`../../todo.md`](../../todo.md) § Quant AGI agentic trading bot  
+**Date:** 2026-06-09  
+**Status:** Phase 0 in progress — dashboard bot shell + plan refinements in `todo.md`  
+**Canonical roadmap:** [`../../todo.md`](../../todo.md) § [Grok paper trading bot](../../todo.md#grok-paper-trading-bot) (Great + Amazing tier checklists)  
 **Prerequisite review:** [`REVIEW_FOR_NEXT_SESSION.md`](./REVIEW_FOR_NEXT_SESSION.md)
 
 ---
@@ -28,8 +28,8 @@ Educational tooling only — not investment advice. Kill switch and policy envel
 | **Quant rankers** | 4 strategies, `/diag/market-universe-rank`, daily digest email | Not wired to a portfolio or order simulator |
 | **MiroFish swarm** | `swarm/SwarmManager`, emergence, webhook enrich on dip alerts | No portfolio state in; no trade decisions out |
 | **Autoresearch** | Nightly loop, Grok JSON proposals, `grok_artifacts/` in sandbox git, SQLite `ExperimentRow`, `/diag/terminal-feed` | Evaluates **synthetic** swarm benchmarks — **not** paper bot P&amp;L on Massive closes |
-| **Terminal UI** | Next.js cockpit: `MarketTape`, `EventTimeline`, `CodeDiffPanel`, `JarvisCodingChat`, paper/shadow/live toggle (cosmetic) | No real paper ledger; live toggle is theater |
-| **Main dashboard** | Watchlist, **Deploy list** (DL-1/2), Grok assistant | Quant suggestions live on **`/quant-agi`** iframe, not on dashboard |
+| **Terminal UI** | Next.js ops cockpit: timeline, diff, Jarvis, metrics (no stock suggestions) | Deep ops only; suggestions on dashboard |
+| **Main dashboard** | Watchlist, **Deploy list** (DL-1/2), **`QuantAgiSuggestionsPanel`**, Grok assistant | **`PaperTradingBotPanel`** shell ✅; ledger Phase 1 🔲 |
 | **Deploy list** | Grok-optimized capital-ready symbols | No execution; natural feeder for bot universe later |
 | **Dip engine** | Deterministic tiers (`on_sale` / `overreaction` / `capitulation`) | Bot should **read** tiers, not replace them |
 
@@ -47,9 +47,9 @@ Target stack on **`/dashboard`** (`AIAgentPage.tsx`) — top to bottom:
 ├─────────────────────────────────────────────┤
 │ 2. Deploy list (capital-ready symbols)      │
 ├─────────────────────────────────────────────┤
-│ 3. Quant AGI stock suggestions (MarketTape)│  ← move from Quant terminal
+│ 3. Quant AGI stock suggestions (`QuantAgiSuggestionsPanel`) │  ✅ dashboard
 ├─────────────────────────────────────────────┤
-│ 4. Grok Paper Trading Bot                   │  ← NEW (this plan)
+│ 4. Grok Paper Trading Bot (`PaperTradingBotPanel`)      │  🟡 shell live
 │    ├─ Paper account ($10k) + positions      │
 │    ├─ User trading notes / rules inbox      │
 │    ├─ Bot-suggested rules (approve/dismiss)  │
@@ -67,8 +67,8 @@ Target stack on **`/dashboard`** (`AIAgentPage.tsx`) — top to bottom:
 
 | Task | Approach |
 |------|----------|
-| Move Quant suggestions | Extract/port `MarketTape` + `StreamBootstrap` rank fetch into CRA components **`QuantAgiSuggestionsPanel.tsx`** on dashboard; call `https://app…/quant-sidecar/diag/market-universe-rank` (same as terminal). |
-| Bot section | New **`PaperTradingBotPanel.tsx`** on dashboard; polls Node APIs (not iframed Python). |
+| Move Quant suggestions | ✅ **`QuantAgiSuggestionsPanel`** on dashboard — `/api/quant-agi/market-universe-rank` |
+| Bot section | ✅ **`PaperTradingBotPanel`** shell — `GET /api/paper-bot/state`; Phase 1 ledger next |
 | Styling | Match `kib-card` / dashboard tokens — do not iframe the black Next terminal into the middle of the dashboard. |
 | Deploy ↔ bot | Deploy list symbols = **preferred universe** for paper bot when user enables “trade deploy list only”. |
 
@@ -195,12 +195,14 @@ paper_bot_daily_snapshots (
 
 ### Phase 0 — Layout + read-only (1–2 weeks)
 
-- [ ] Reorder dashboard per §3.
-- [ ] `QuantAgiSuggestionsPanel` on dashboard (rank fetch + strategy tabs + add-to-watchlist).
-- [ ] `PaperTradingBotPanel` shell: $10k display (static), empty positions, “Kill switch armed”.
-- [ ] API stubs: `GET /api/paper-bot/state` returns default account.
+- [x] Reorder dashboard per §3.
+- [x] `QuantAgiSuggestionsPanel` on dashboard (rank fetch + strategy tabs + add-to-watchlist).
+- [x] `PaperTradingBotPanel` shell: $10k display, health strip, kill switch, deploy-list-only toggle, chart/blotter placeholders.
+- [x] API: `GET /api/paper-bot/state`, `POST /api/paper-bot/kill-switch`, `PATCH /api/paper-bot/settings`; tables `paper_bot_accounts`, `paper_bot_events`.
 
-**Exit criteria:** Dashboard order matches spec; suggestions work without visiting `/quant-agi`.
+**Exit criteria:** Dashboard order matches spec; suggestions work without visiting `/quant-agi`. ✅ Bot shell visible on `/dashboard`.
+
+> **Full UI + Great/Amazing tier checklists:** [`../../todo.md`](../../todo.md#grok-paper-trading-bot)
 
 ### Phase 1 — Paper ledger + manual trades (2–3 weeks)
 

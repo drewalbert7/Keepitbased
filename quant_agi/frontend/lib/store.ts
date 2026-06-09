@@ -38,56 +38,6 @@ export type MarketSymbolSnapshot = {
   is_live_massive: boolean;
 };
 
-export type RankStrategyId =
-  | "momentum_liquidity"
-  | "photonics_chokepoint"
-  | "rule_breaker_gardner"
-  | "rule_breaker_gardner_early";
-
-export type RuleBreakerBreakdownRow = {
-  element_key: string;
-  book_criterion: string;
-  score_0_100: number;
-  weight: number;
-  weighted_contribution: number;
-};
-
-export type QuantSuggestedPosition = {
-  symbol: string;
-  asset_type: "stock" | "crypto";
-  score: number;
-  last_close: number | null;
-  day_change_pct: number | null;
-  momentum_20d_pct: number;
-  vol_20d_pct: number;
-  drawdown_60d_pct: number;
-  avg_dollar_vol_20d?: number | null;
-  history_source: string;
-  is_live_massive: boolean;
-  as_of: string | null;
-  why: string[];
-  position_hint: string;
-  strategy_factors?: Record<string, unknown>;
-};
-
-export type RankMeta = {
-  accepted_count: number;
-  excluded_count: number;
-  excluded_counts: {
-    price_below_min: number;
-    liquidity_below_min: number;
-    insufficient_history: number;
-  };
-  min_price: number;
-  min_avg_dollar_vol_20d: number;
-};
-
-export type RankStrategyMeta = {
-  id: RankStrategyId;
-  label: string;
-  disclaimer: string;
-};
-
 export type QuantScorecard = {
   window: number;
   tested_experiments: number;
@@ -111,16 +61,8 @@ type QuantState = {
   setLatestPatch: (patch: LatestPatch | null) => void;
   market: MarketSymbolSnapshot[];
   setMarket: (rows: MarketSymbolSnapshot[]) => void;
-  suggestions: QuantSuggestedPosition[];
-  setSuggestions: (rows: QuantSuggestedPosition[]) => void;
-  rankMeta: RankMeta | null;
-  setRankMeta: (meta: RankMeta | null) => void;
   scorecard: QuantScorecard | null;
   setScorecard: (scorecard: QuantScorecard | null) => void;
-  rankStrategyId: RankStrategyId;
-  setRankStrategyId: (id: RankStrategyId) => void;
-  rankStrategyMeta: RankStrategyMeta | null;
-  setRankStrategyMeta: (meta: RankStrategyMeta | null) => void;
   hydrateMockData: () => void;
 };
 
@@ -165,11 +107,7 @@ export const useQuantStore = create<QuantState>((set) => ({
   killSwitch: true,
   latestPatch: null,
   market: [],
-  suggestions: [],
-  rankMeta: null,
   scorecard: null,
-  rankStrategyId: "momentum_liquidity",
-  rankStrategyMeta: null,
   setConnected: (v) => set({ connected: v }),
   setMode: (mode) => set({ mode }),
   toggleKillSwitch: () => set((s) => ({ killSwitch: !s.killSwitch })),
@@ -180,11 +118,6 @@ export const useQuantStore = create<QuantState>((set) => ({
   replaceEvents: (events) => set({ events }),
   setLatestPatch: (patch) => set({ latestPatch: patch }),
   setMarket: (rows) => set({ market: rows }),
-  setSuggestions: (rows) => set({ suggestions: rows }),
-  setRankMeta: (rankMeta) => set({ rankMeta }),
   setScorecard: (scorecard) => set({ scorecard }),
-  setRankStrategyId: (rankStrategyId) => set({ rankStrategyId }),
-  setRankStrategyMeta: (rankStrategyMeta) => set({ rankStrategyMeta }),
   hydrateMockData: () => set({ events: sampleEvents })
 }));
-

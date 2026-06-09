@@ -1,7 +1,6 @@
 import { CodeDiffPanel } from "../components/CodeDiffPanel";
 import { EventTimeline } from "../components/EventTimeline";
 import { JarvisCodingChat } from "../components/JarvisCodingChat";
-import { MarketTape } from "../components/MarketTape";
 import { MetricsPanel } from "../components/MetricsPanel";
 import { MissionBanner } from "../components/MissionBanner";
 import { StreamBootstrap } from "../components/StreamBootstrap";
@@ -14,7 +13,6 @@ export default function HomePage() {
         <MissionBanner />
         <TerminalHeader />
         <StreamBootstrap />
-        <MarketTape />
         <section className="grid gap-4 lg:grid-cols-[1.1fr_1fr_0.9fr]">
           <EventTimeline />
           <div className="flex min-w-0 flex-col gap-4">

@@ -164,9 +164,9 @@ export const QuantAgiSuggestionsPanel: React.FC<{
           </p>
           <p className="mt-1 text-[11px] text-kib-muted">
             <Link to="/quant-agi" className="text-kib-cyber underline-offset-2 hover:underline">
-              Open full Quant terminal
+              Open Quant terminal
             </Link>{' '}
-            for autoresearch and coding advisor (suggestions stay here on the dashboard).
+            for autoresearch, coding advisor, and ops cockpit.
           </p>
         </div>
         <button
