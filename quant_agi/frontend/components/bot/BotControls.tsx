@@ -1,56 +1,83 @@
-import { PAPER_BOT_DISARM_PHRASE } from "../../lib/paperBotApi";
-import type { PaperBotAccount } from "../../lib/paperBotApi";
+import type { PaperBotAccount, PaperBotUniverseMode } from "../../lib/paperBotApi";
 import { money, pnlClass } from "./format";
+
+const UNIVERSE_OPTIONS: Array<{
+  value: PaperBotUniverseMode;
+  label: string;
+  detail: string;
+}> = [
+  {
+    value: "curated",
+    label: "My watchlist + deploy list",
+    detail: "Trade symbols you curate on the dashboard (default)."
+  },
+  {
+    value: "deploy_list_only",
+    label: "Deploy list only",
+    detail: "Restrict to deploy-list symbols only."
+  },
+  {
+    value: "quant_auto",
+    label: "Quant auto-pick",
+    detail:
+      "Bot scans momentum, Gardner, Gardner Early, and photonics rankers — trades highest scores first (paper only)."
+  },
+  {
+    value: "quant_auto_agent",
+    label: "Quant auto-pick (multi-agent)",
+    detail:
+      "Same rank universe with LangGraph entry/exit strategists (Grok when configured) — policy engine still enforces caps (paper only)."
+  }
+];
 
 type Props = {
   account: PaperBotAccount;
   busy: boolean;
-  disarmOpen: boolean;
-  confirmPhrase: string;
-  onConfirmPhraseChange: (v: string) => void;
-  onToggleKillSwitch: () => void;
-  onConfirmDisarm: () => void;
-  onCancelDisarm: () => void;
-  onToggleDeployListOnly: () => void;
+  onUniverseModeChange: (mode: PaperBotUniverseMode) => void;
 };
 
-export function BotControls({
-  account,
-  busy,
-  disarmOpen,
-  confirmPhrase,
-  onConfirmPhraseChange,
-  onToggleKillSwitch,
-  onConfirmDisarm,
-  onCancelDisarm,
-  onToggleDeployListOnly
-}: Props) {
+export function BotControls({ account, busy, onUniverseModeChange }: Props) {
+  const mode = account.universeMode ?? (account.tradeDeployListOnly ? "deploy_list_only" : "curated");
+  const selected = UNIVERSE_OPTIONS.find((o) => o.value === mode) ?? UNIVERSE_OPTIONS[0];
+
   return (
-    <>
-      <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-panelAlt/50 px-3 py-3">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onToggleKillSwitch}
-          className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
-            account.killSwitchArmed
-              ? "bg-mint/20 text-mint ring-1 ring-mint/30"
-              : "bg-warn/20 text-warn ring-1 ring-warn/30"
-          }`}
-        >
-          Kill switch: {account.killSwitchArmed ? "Armed" : "Disarmed"}
-        </button>
-        <label className="flex cursor-pointer items-center gap-2 text-xs text-white/60">
-          <input
-            type="checkbox"
-            checked={account.tradeDeployListOnly}
+    <div className="mb-4 rounded-xl border border-white/10 bg-panelAlt/50 px-3 py-3">
+      <p className="text-[10px] uppercase tracking-wide text-white/45">Trading universe</p>
+      <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <select
+            value={mode}
             disabled={busy}
-            onChange={onToggleDeployListOnly}
-            className="rounded border-white/20"
-          />
-          Trade deploy list only
-        </label>
-        <span className="text-[11px] text-white/50">
+            onChange={(e) => onUniverseModeChange(e.target.value as PaperBotUniverseMode)}
+            className="w-full max-w-md rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white disabled:opacity-50"
+          >
+            {UNIVERSE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1.5 text-[11px] text-white/50">{selected.detail}</p>
+          {mode === "quant_auto" || mode === "quant_auto_agent" ? (
+            <div className="mt-2 space-y-2 rounded-md border border-amber-500/25 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-100/90">
+              <p>
+                <strong className="text-amber-50">Quant execution (paper):</strong> top rank scores ·
+                equity-based sizing · entries 10:00–15:30 ET · exits on rank drop / 8% stop.
+                {mode === "quant_auto_agent" ? (
+                  <>
+                    {" "}
+                    <strong className="text-amber-50">Multi-agent:</strong> LangGraph scouts regime and
+                    proposes entry/exit priorities each tick (logged in lab history).
+                  </>
+                ) : null}
+              </p>
+              <p className="text-amber-100/75">
+                Aggressive experiment — no guarantee of profit. Not investment advice.
+              </p>
+            </div>
+          ) : null}
+        </div>
+        <span className="shrink-0 text-[11px] text-white/50 sm:pt-2">
           Cumulative P&L:{" "}
           <span className={pnlClass(account.cumPnlUsd)}>
             {account.cumPnlUsd >= 0 ? "+" : ""}
@@ -58,39 +85,6 @@ export function BotControls({
           </span>
         </span>
       </div>
-
-      {disarmOpen ? (
-        <div className="mb-4 rounded-xl border border-warn/30 bg-warn/10 p-3">
-          <p className="text-sm text-warn">
-            Type <strong className="font-mono">{PAPER_BOT_DISARM_PHRASE}</strong> to disarm the kill switch.
-          </p>
-          <input
-            type="text"
-            value={confirmPhrase}
-            onChange={(e) => onConfirmPhraseChange(e.target.value)}
-            className="mt-2 w-full max-w-md rounded-md border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
-            placeholder={PAPER_BOT_DISARM_PHRASE}
-          />
-          <div className="mt-2 flex gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={onConfirmDisarm}
-              className="rounded-lg border border-neon/40 bg-neon/15 px-3 py-1.5 text-xs text-white disabled:opacity-50"
-            >
-              Confirm disarm
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={onCancelDisarm}
-              className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/70"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : null}
-    </>
+    </div>
   );
 }

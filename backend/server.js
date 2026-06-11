@@ -135,6 +135,8 @@ app.use(express.urlencoded({ extended: true }));
 // Initialize services
 const priceMonitor = new PriceMonitor(io);
 const alertService = new AlertService();
+const paperBotSocket = require('./services/paperBotSocket');
+paperBotSocket.setIo(io);
 
 // Routes
 app.use('/api/webhooks/ses-delivery', sesDeliveryWebhook);
@@ -200,6 +202,11 @@ scheduleResearchIngestion();
 // Daily Grok watchlist digest (Profile opt-out per user; ENABLE_* defaults on, see config)
 scheduleDailyWatchlistDigest(alertService);
 scheduleEmailOutboxWorker(priceMonitor);
+
+const paperBotAutoRun = require('./services/paperBotAutoRun');
+const paperBotService = require('./services/paperBotService');
+paperBotAutoRun.bindPaperBotService(paperBotService);
+paperBotAutoRun.schedulePaperBotAutoRun();
 
 // Error handling
 app.use((err, req, res, next) => {

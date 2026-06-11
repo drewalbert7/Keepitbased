@@ -166,7 +166,7 @@ async function runInitializeDatabase() {
         mode VARCHAR(16) NOT NULL DEFAULT 'paper'
           CHECK (mode IN ('paper', 'shadow', 'live')),
         kill_switch_armed BOOLEAN NOT NULL DEFAULT true,
-        trade_deploy_list_only BOOLEAN NOT NULL DEFAULT true,
+        trade_deploy_list_only BOOLEAN NOT NULL DEFAULT false,
         policy_version INTEGER NOT NULL DEFAULT 1,
         last_trade_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -267,6 +267,28 @@ async function runInitializeDatabase() {
 
     await client.query(`
       ALTER TABLE paper_bot_accounts ADD COLUMN IF NOT EXISTS reset_at TIMESTAMPTZ
+    `);
+
+    await client.query(`
+      ALTER TABLE paper_bot_accounts ADD COLUMN IF NOT EXISTS auto_run_enabled BOOLEAN NOT NULL DEFAULT false
+    `);
+
+    await client.query(`
+      ALTER TABLE paper_bot_accounts ADD COLUMN IF NOT EXISTS last_auto_run_at TIMESTAMPTZ
+    `);
+
+    await client.query(`
+      ALTER TABLE paper_bot_accounts ADD COLUMN IF NOT EXISTS universe_mode VARCHAR(24) NOT NULL DEFAULT 'quant_auto'
+    `);
+
+    await client.query(`
+      ALTER TABLE paper_bot_accounts ALTER COLUMN universe_mode SET DEFAULT 'quant_auto'
+    `);
+
+    await client.query(`
+      UPDATE paper_bot_accounts
+      SET universe_mode = 'deploy_list_only'
+      WHERE trade_deploy_list_only = true AND universe_mode = 'curated'
     `);
 
     // Price history table (for charts)

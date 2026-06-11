@@ -4,6 +4,20 @@ const config = require('../config');
 const logger = require('../utils/logger');
 const { resolveQuantAgiBaseUrl } = require('../utils/quantAgiBaseUrl');
 const deployListService = require('./deployListService');
+const { stampPaperBotFillReason, stampShadowOrderPayload } = require('../utils/paperBotNamespace');
+const { emitPaperBotUpdate } = require('./paperBotSocket');
+const { isUsStockRegularTradingHours } = require('../utils/researchAlertGates');
+
+function notifyPaperBotClients(userId, eventType, hint) {
+  try {
+    emitPaperBotUpdate(userId, {
+      eventType: String(eventType || 'update'),
+      hint: hint || null
+    });
+  } catch (err) {
+    logger.warn(`paperBot socket notify failed: ${err.message}`);
+  }
+}
 
 const DEFAULT_STARTING_CASH = 10000;
 const DISARM_CONFIRM_PHRASE = 'ENABLE PAPER TRADES';
@@ -16,6 +30,15 @@ const DEFAULT_POLICY = {
 const POLICY_PRECEDENCE =
   'kill_switch > user caps > active approved rules > engine defaults';
 const RANK_STRATEGIES_FOR_BRAIN = ['momentum_liquidity', 'rule_breaker_gardner'];
+const QUANT_AUTO_STRATEGIES = [
+  'momentum_liquidity',
+  'rule_breaker_gardner',
+  'rule_breaker_gardner_early',
+  'photonics_chokepoint'
+];
+const QUANT_AUTO_TOP_PER_STRATEGY = 8;
+const QUANT_AUTO_MAX_SYMBOLS = 20;
+const VALID_UNIVERSE_MODES = new Set(['curated', 'deploy_list_only', 'quant_auto', 'quant_auto_agent']);
 
 function round2(n) {
   return Math.round(Number(n) * 100) / 100;
@@ -110,7 +133,10 @@ function mapAccount(row, metrics) {
     openRiskPct: metrics?.openRiskPct ?? 0,
     mode: row.mode,
     killSwitchArmed: row.kill_switch_armed,
-    tradeDeployListOnly: row.trade_deploy_list_only,
+    autoRunEnabled: Boolean(row.auto_run_enabled),
+    lastAutoRunAt: row.last_auto_run_at || null,
+    tradeDeployListOnly: normalizeUniverseMode(row) === 'deploy_list_only',
+    universeMode: normalizeUniverseMode(row),
     policyVersion: row.policy_version,
     lastTradeAt: row.last_trade_at,
     daysSinceLastTrade: row.last_trade_at
@@ -118,6 +144,44 @@ function mapAccount(row, metrics) {
       : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
+  };
+}
+
+function computeBotRuntime(row) {
+  const autoRun = Boolean(row.auto_run_enabled);
+  const killArmed = Boolean(row.kill_switch_armed);
+  const marketOpen = isUsStockRegularTradingHours();
+  const botOn = autoRun && !killArmed;
+  const intervalMin = Math.round((config.PAPER_BOT_AUTO_RUN_INTERVAL_MS || 900000) / 60000);
+
+  let status = 'off';
+  let label = 'Bot OFF';
+  let detail = 'Turn the bot on to run policy automatically during US market hours.';
+
+  if (botOn && marketOpen) {
+    status = 'running';
+    label = 'Bot ON';
+    detail = `Trading during market hours — policy check about every ${intervalMin} min.`;
+  } else if (botOn && !marketOpen) {
+    status = 'waiting';
+    label = 'Bot ON';
+    detail = 'Market closed — resumes Mon–Fri 9:30 AM–4:00 PM ET.';
+  } else if (autoRun && killArmed) {
+    status = 'paused';
+    label = 'Bot PAUSED';
+    detail = 'Kill switch armed — turn the bot on again to resume.';
+  }
+
+  return {
+    status,
+    label,
+    detail,
+    botOn,
+    autoRunEnabled: autoRun,
+    marketOpen,
+    lastAutoRunAt: row.last_auto_run_at || null,
+    autoRunIntervalMinutes: intervalMin,
+    schedulerEnabled: Boolean(config.ENABLE_PAPER_BOT_AUTO_RUN)
   };
 }
 
@@ -168,15 +232,21 @@ async function loadRecentTrades(userId, limit = 20) {
   return rows;
 }
 
-async function loadRecentEvents(userId, limit = 20) {
-  const { rows } = await db.query(
-    `SELECT id, event_type, payload, created_at
+const IMPROVEMENT_EVENT_EXCLUDE = ['dry_run', 'shadow_order'];
+
+async function loadRecentEvents(userId, limit = 20, { scope } = {}) {
+  const lim = Math.min(50, Math.max(1, Number(limit) || 20));
+  const params = [userId];
+  let sql = `SELECT id, event_type, payload, created_at
      FROM paper_bot_events
-     WHERE user_id = $1
-     ORDER BY created_at DESC
-     LIMIT $2`,
-    [userId, limit]
-  );
+     WHERE user_id = $1`;
+  if (scope === 'improvement') {
+    params.push(IMPROVEMENT_EVENT_EXCLUDE);
+    sql += ` AND event_type <> ALL($${params.length}::text[])`;
+  }
+  params.push(lim);
+  sql += ` ORDER BY created_at DESC LIMIT $${params.length}`;
+  const { rows } = await db.query(sql, params);
   return rows.map((r) => ({
     id: r.id,
     eventType: r.event_type,
@@ -215,10 +285,34 @@ async function fetchRankLeadersForBrain() {
   return out;
 }
 
+function buildBotRunDayBody(ctx, accountRow, { killSwitchArmed } = {}) {
+  const mode = normalizeUniverseMode(accountRow);
+  const quantMode =
+    mode === 'quant_auto' || mode === 'quant_auto_agent' || mode === 'quant_auto_fallback';
+  const agentMode = mode === 'quant_auto_agent';
+  return {
+    cash_usd: Number(accountRow.cash_usd),
+    kill_switch_armed:
+      killSwitchArmed !== undefined ? Boolean(killSwitchArmed) : Boolean(accountRow.kill_switch_armed),
+    policy_version: accountRow.policy_version,
+    universe_symbols: ctx.universe,
+    prices: ctx.priceMap,
+    positions: ctx.positionsPayload,
+    active_rules: ctx.activeRulesPayload,
+    active_policy: ctx.mergedPolicy,
+    universe_source: ctx.universeSource,
+    quant_rank_by_symbol: ctx.quantRankBySymbol || {},
+    quant_mode: quantMode,
+    agent_mode: agentMode,
+    run_at_iso: new Date().toISOString()
+  };
+}
+
 async function buildRunContext(userId) {
   const accountRow = await ensureAccount(userId);
   const positionsRaw = await loadPositions(userId);
-  const universe = await resolveUniverse(userId, accountRow.trade_deploy_list_only);
+  const universeResolved = await resolveUniverse(userId, accountRow);
+  const universe = universeResolved.symbols;
   const priceSymbols = [...new Set([...universe, ...positionsRaw.map((p) => p.symbol)])];
   const priceMap = await fetchSymbolPrices(priceSymbols);
   const activeRuleRows = await loadRulesByStatus(userId, 'active');
@@ -240,7 +334,8 @@ async function buildRunContext(userId) {
     activeRulesPayload,
     mergedPolicy,
     positionsPayload,
-    universeSource: accountRow.trade_deploy_list_only ? 'deploy_list' : 'watchlist'
+    universeSource: universeSourceLabel(universeResolved.mode),
+    quantRankBySymbol: universeResolved.quantRankBySymbol
   };
 }
 
@@ -325,23 +420,138 @@ async function upsertDailySnapshot(userId, accountRow, metrics) {
   );
 }
 
-async function resolveUniverse(userId, tradeDeployListOnly) {
-  if (tradeDeployListOnly) {
-    const rows = await deployListService.listDeployList(userId);
-    const symbols = rows
-      .filter((r) => r.alert_active !== false)
-      .map((r) => String(r.symbol || '').toUpperCase())
-      .filter(Boolean);
-    if (symbols.length) return symbols;
-  }
+async function loadDeployListSymbols(userId) {
+  const rows = await deployListService.listDeployList(userId);
+  return rows
+    .filter((r) => r.alert_active !== false)
+    .map((r) => String(r.symbol || '').toUpperCase())
+    .filter(Boolean);
+}
 
+async function loadWatchlistSymbols(userId, limit = 25) {
   const { rows } = await db.query(
     `SELECT symbol FROM user_alerts
      WHERE user_id = $1 AND active = true AND asset_type = 'stock'
-     ORDER BY updated_at DESC LIMIT 25`,
-    [userId]
+     ORDER BY updated_at DESC LIMIT $2`,
+    [userId, limit]
   );
   return rows.map((r) => String(r.symbol).toUpperCase()).filter(Boolean);
+}
+
+function mergeUniverseSymbols(deploySymbols, watchSymbols, maxSymbols = 30) {
+  const seen = new Set();
+  const out = [];
+  for (const sym of [...deploySymbols, ...watchSymbols]) {
+    if (seen.has(sym)) continue;
+    seen.add(sym);
+    out.push(sym);
+    if (out.length >= maxSymbols) break;
+  }
+  return out;
+}
+
+function normalizeUniverseMode(row) {
+  const raw = String(row?.universe_mode || '').trim();
+  if (VALID_UNIVERSE_MODES.has(raw)) return raw;
+  return row?.trade_deploy_list_only ? 'deploy_list_only' : 'curated';
+}
+
+function universeSourceLabel(mode) {
+  if (mode === 'deploy_list_only') return 'deploy_list_only';
+  if (mode === 'quant_auto' || mode === 'quant_auto_agent' || mode === 'quant_auto_fallback') {
+    return mode === 'quant_auto_agent' ? 'quant_auto_agent' : 'quant_auto';
+  }
+  return 'watchlist_and_deploy_list';
+}
+
+function universeModeHint(mode) {
+  if (mode === 'deploy_list_only') return 'Universe: deploy list only';
+  if (mode === 'quant_auto_agent') return 'Universe: quant auto-pick (multi-agent LangGraph)';
+  if (mode === 'quant_auto') return 'Universe: quant auto-pick (best rank scores)';
+  return 'Universe: watchlist + deploy list';
+}
+
+async function fetchQuantAutoUniverse() {
+  const base = resolveQuantAgiBaseUrl();
+  const timeout = config.QUANT_AGI_RANK_TIMEOUT_MS || 45000;
+  const bySymbol = new Map();
+
+  for (const strategy of QUANT_AUTO_STRATEGIES) {
+    try {
+      const { data } = await axios.get(`${base}/diag/market-universe-rank`, {
+        params: { strategy, top_n: QUANT_AUTO_TOP_PER_STRATEGY },
+        timeout
+      });
+      const rows = Array.isArray(data?.positions)
+        ? data.positions
+        : Array.isArray(data?.rows)
+          ? data.rows
+          : [];
+      for (const row of rows) {
+        const symbol = String(row.symbol || '')
+          .toUpperCase()
+          .trim();
+        if (!symbol) continue;
+        const score =
+          typeof row.score === 'number' ? row.score : Number(row.tape_score_raw ?? row.score ?? 0);
+        const prev = bySymbol.get(symbol);
+        if (!prev || score > prev.score) {
+          bySymbol.set(symbol, { score, strategy });
+        }
+      }
+    } catch (err) {
+      logger.warn(`Quant auto universe rank failed (${strategy}): ${err.message}`);
+    }
+  }
+
+  const ranked = [...bySymbol.entries()]
+    .sort((a, b) => b[1].score - a[1].score)
+    .slice(0, QUANT_AUTO_MAX_SYMBOLS);
+
+  return {
+    symbols: ranked.map(([symbol]) => symbol),
+    rankBySymbol: Object.fromEntries(
+      ranked.map(([symbol, meta]) => [symbol, { score: meta.score, strategy: meta.strategy }])
+    )
+  };
+}
+
+async function resolveCuratedUniverse(userId, deployListOnly) {
+  const deploySymbols = await loadDeployListSymbols(userId);
+  if (deployListOnly) {
+    if (deploySymbols.length) return deploySymbols;
+    return loadWatchlistSymbols(userId);
+  }
+  const watchSymbols = await loadWatchlistSymbols(userId);
+  return mergeUniverseSymbols(deploySymbols, watchSymbols);
+}
+
+async function resolveUniverse(userId, accountRow) {
+  const mode = normalizeUniverseMode(accountRow);
+  if (mode === 'quant_auto' || mode === 'quant_auto_agent') {
+    const quant = await fetchQuantAutoUniverse();
+    if (quant.symbols.length) {
+      return { symbols: quant.symbols, mode, quantRankBySymbol: quant.rankBySymbol };
+    }
+    logger.warn('Quant auto universe empty — falling back to curated watchlist + deploy list');
+    return {
+      symbols: await resolveCuratedUniverse(userId, false),
+      mode: 'quant_auto_fallback',
+      quantRankBySymbol: null
+    };
+  }
+  if (mode === 'deploy_list_only') {
+    return {
+      symbols: await resolveCuratedUniverse(userId, true),
+      mode,
+      quantRankBySymbol: null
+    };
+  }
+  return {
+    symbols: await resolveCuratedUniverse(userId, false),
+    mode: 'curated',
+    quantRankBySymbol: null
+  };
 }
 
 async function ensureAccount(userId) {
@@ -350,8 +560,9 @@ async function ensureAccount(userId) {
     return existing.rows[0];
   }
   const inserted = await db.query(
-    `INSERT INTO paper_bot_accounts (user_id, starting_cash_usd, cash_usd, kill_switch_armed, trade_deploy_list_only)
-     VALUES ($1, $2, $2, true, true)
+    `INSERT INTO paper_bot_accounts
+       (user_id, starting_cash_usd, cash_usd, kill_switch_armed, trade_deploy_list_only, universe_mode)
+     VALUES ($1, $2, $2, true, false, 'quant_auto')
      RETURNING *`,
     [userId, DEFAULT_STARTING_CASH]
   );
@@ -371,11 +582,7 @@ async function applyFill(userId, accountRow, fill) {
   const price = Number(fill.price_usd);
   const notional = round2(Number(fill.notional_usd ?? qty * price));
   const reasonTags = JSON.stringify(Array.isArray(fill.reason_tags) ? fill.reason_tags : ['manual']);
-  const reasonJson = JSON.stringify(
-    fill.reason_json && typeof fill.reason_json === 'object' && !Array.isArray(fill.reason_json)
-      ? fill.reason_json
-      : {}
-  );
+  const reasonJson = JSON.stringify(stampPaperBotFillReason(fill.reason_json));
 
   if (!symbol || !Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || price <= 0) {
     const err = new Error('Invalid fill');
@@ -498,14 +705,25 @@ async function getState(userId) {
   const recentTrades = tradesRaw.map(mapTrade);
   const snapshots = snapshotsRaw.map(mapSnapshot);
 
+  const botRuntime = computeBotRuntime(row);
+
   let whyNoTradesToday = null;
-  if (account.killSwitchArmed) {
+  if (!botRuntime.botOn) {
+    whyNoTradesToday = 'Bot is off — turn it on to trade automatically during market hours.';
+  } else if (!botRuntime.marketOpen) {
+    whyNoTradesToday = 'Bot is on but the market is closed — no fills until the next session.';
+  } else if (
+    (account.universeMode === 'quant_auto' || account.universeMode === 'quant_auto_agent') &&
+    !recentTrades.length
+  ) {
     whyNoTradesToday =
-      'Kill switch is armed — paper trades are paused until you disarm it above.';
+      account.universeMode === 'quant_auto_agent'
+        ? 'Bot is on in quant multi-agent mode — LangGraph is planning entries/exits from rank strategies.'
+        : 'Bot is on in quant auto-pick mode — scanning rank strategies for the best candidate.';
   } else if (!recentTrades.length) {
-    whyNoTradesToday = 'No fills yet — run a simulated day or add deploy-list symbols.';
+    whyNoTradesToday = 'Bot is on — waiting for policy to find a fill in your universe.';
   } else if (account.daysSinceLastTrade != null && account.daysSinceLastTrade > 0) {
-    whyNoTradesToday = `Last fill was ${account.daysSinceLastTrade} day(s) ago. Run simulate-day to test policy.`;
+    whyNoTradesToday = `Last fill was ${account.daysSinceLastTrade} day(s) ago. Bot keeps checking while the market is open.`;
   }
 
   const pendingRules = (await loadRulesByStatus(userId, 'pending')).map(mapRule);
@@ -522,7 +740,8 @@ async function getState(userId) {
     autoresearch: null,
     disclaimer:
       'Educational paper simulation only — not investment advice. No brokerage orders are placed.',
-    phase: '3-autoresearch'
+    phase: '5c-brain-monitor',
+    botRuntime
   };
 }
 
@@ -536,53 +755,139 @@ async function setKillSwitch(userId, { armed, confirmPhrase }) {
     }
   }
   await ensureAccount(userId);
+  const armedVal = Boolean(armed);
   const { rows } = await db.query(
     `UPDATE paper_bot_accounts
-     SET kill_switch_armed = $2, updated_at = NOW()
+     SET kill_switch_armed = $2,
+         auto_run_enabled = CASE WHEN $2 THEN false ELSE auto_run_enabled END,
+         updated_at = NOW()
      WHERE user_id = $1
      RETURNING *`,
-    [userId, Boolean(armed)]
+    [userId, armedVal]
   );
   await db.query(
     `INSERT INTO paper_bot_events (user_id, event_type, payload)
      VALUES ($1, 'kill_switch', $2)`,
     [userId, JSON.stringify({ armed: Boolean(armed) })]
   );
-  return mapAccount(rows[0], null);
-}
-
-async function setTradeDeployListOnly(userId, enabled) {
-  await ensureAccount(userId);
-  const { rows } = await db.query(
-    `UPDATE paper_bot_accounts
-     SET trade_deploy_list_only = $2, updated_at = NOW()
-     WHERE user_id = $1
-     RETURNING *`,
-    [userId, Boolean(enabled)]
+  notifyPaperBotClients(
+    userId,
+    'kill_switch',
+    armedVal ? 'Bot paused — kill switch armed' : 'Kill switch disarmed'
   );
   return mapAccount(rows[0], null);
 }
 
-async function simulateDay(userId) {
+async function setBotRun(userId, { on, confirmPhrase }) {
+  await ensureAccount(userId);
+  if (on) {
+    if (String(confirmPhrase || '').trim() !== DISARM_CONFIRM_PHRASE) {
+      const err = new Error(`Type ${DISARM_CONFIRM_PHRASE} to turn the bot on`);
+      err.statusCode = 400;
+      err.code = 'CONFIRM_PHRASE_REQUIRED';
+      throw err;
+    }
+    const { rows } = await db.query(
+      `UPDATE paper_bot_accounts
+       SET auto_run_enabled = true, kill_switch_armed = false, updated_at = NOW()
+       WHERE user_id = $1
+       RETURNING *`,
+      [userId]
+    );
+    await db.query(
+      `INSERT INTO paper_bot_events (user_id, event_type, payload)
+       VALUES ($1, 'bot_started', $2)`,
+      [userId, JSON.stringify({ marketOpen: isUsStockRegularTradingHours() })]
+    );
+    notifyPaperBotClients(userId, 'bot_started', 'Bot ON — auto-trading during market hours');
+    return { account: mapAccount(rows[0], null), botRuntime: computeBotRuntime(rows[0]) };
+  }
+
+  const { rows } = await db.query(
+    `UPDATE paper_bot_accounts
+     SET auto_run_enabled = false, kill_switch_armed = true, updated_at = NOW()
+     WHERE user_id = $1
+     RETURNING *`,
+    [userId]
+  );
+  await db.query(
+    `INSERT INTO paper_bot_events (user_id, event_type, payload) VALUES ($1, 'bot_stopped', $2)`,
+    [userId, JSON.stringify({})]
+  );
+  notifyPaperBotClients(userId, 'bot_stopped', 'Bot OFF — auto-trading stopped');
+  return { account: mapAccount(rows[0], null), botRuntime: computeBotRuntime(rows[0]) };
+}
+
+async function setPaperBotSettings(userId, { universeMode, tradeDeployListOnly }) {
+  await ensureAccount(userId);
+  let mode = universeMode;
+  if (!mode && typeof tradeDeployListOnly === 'boolean') {
+    mode = tradeDeployListOnly ? 'deploy_list_only' : 'curated';
+  }
+  if (!VALID_UNIVERSE_MODES.has(mode)) {
+    const err = new Error('Invalid universe mode');
+    err.statusCode = 400;
+    throw err;
+  }
+  const deployOnly = mode === 'deploy_list_only';
+  const { rows } = await db.query(
+    `UPDATE paper_bot_accounts
+     SET universe_mode = $2,
+         trade_deploy_list_only = $3,
+         updated_at = NOW()
+     WHERE user_id = $1
+     RETURNING *`,
+    [userId, mode, deployOnly]
+  );
+  await db.query(
+    `INSERT INTO paper_bot_events (user_id, event_type, payload)
+     VALUES ($1, 'settings_updated', $2)`,
+    [userId, JSON.stringify({ universeMode: mode, tradeDeployListOnly: deployOnly })]
+  );
+  notifyPaperBotClients(userId, 'settings_updated', universeModeHint(mode));
+  return mapAccount(rows[0], null);
+}
+
+async function setTradeDeployListOnly(userId, enabled) {
+  return setPaperBotSettings(userId, {
+    universeMode: enabled ? 'deploy_list_only' : 'curated'
+  });
+}
+
+async function simulateDay(userId, { source = 'manual' } = {}) {
   const ctx = await buildRunContext(userId);
   const { accountRow, universe, priceMap, activeRulesPayload, positionsPayload, universeSource } =
     ctx;
   const base = resolveQuantAgiBaseUrl();
 
-  const { data } = await axios.post(
-    `${base}/bot/run-day`,
-    {
-      cash_usd: Number(accountRow.cash_usd),
-      kill_switch_armed: accountRow.kill_switch_armed,
-      policy_version: accountRow.policy_version,
-      universe_symbols: universe,
-      prices: priceMap,
-      positions: positionsPayload,
-      active_rules: activeRulesPayload,
-      universe_source: universeSource
-    },
-    { timeout: config.QUANT_AGI_RANK_TIMEOUT_MS || 45000 }
-  );
+  const runBody = buildBotRunDayBody(ctx, accountRow);
+  const { data } = await axios.post(`${base}/bot/run-day`, runBody, {
+    timeout: config.QUANT_AGI_RANK_TIMEOUT_MS || 45000
+  });
+
+  if (runBody.agent_mode && data?.agent_plan_result) {
+    await db.query(
+      `INSERT INTO paper_bot_events (user_id, event_type, payload)
+       VALUES ($1, 'agent_plan_tick', $2)`,
+      [
+        userId,
+        JSON.stringify({
+          regimeLabel: data.regime_label || data.agent_plan_result.regime_label || null,
+          grokUsed: Boolean(data.grok_used ?? data.agent_plan_result.grok_used),
+          rationale: data.agent_plan_result.rationale || data.agent_plan?.rationale || null,
+          tradeIntents: data.agent_plan_result.trade_intents || data.agent_plan?.trade_intents || [],
+          plan: data.agent_plan || data.agent_plan_result.plan || null,
+          skipped: Boolean(data.agent_plan_result.skipped),
+          source
+        })
+      ]
+    );
+    notifyPaperBotClients(
+      userId,
+      'agent_plan_tick',
+      data.agent_plan_result.rationale || 'Agent plan tick completed'
+    );
+  }
 
   if (data?.skipped) {
     await db.query(
@@ -590,6 +895,20 @@ async function simulateDay(userId) {
        VALUES ($1, 'run_day_skipped', $2)`,
       [userId, JSON.stringify({ reason: data.reason || 'skipped' })]
     );
+    if (source === 'auto') {
+      await db.query(
+        `UPDATE paper_bot_accounts SET last_auto_run_at = NOW(), updated_at = NOW() WHERE user_id = $1`,
+        [userId]
+      );
+      await db.query(
+        `INSERT INTO paper_bot_events (user_id, event_type, payload)
+         VALUES ($1, 'auto_run_tick', $2)`,
+        [userId, JSON.stringify({ skipped: true, reason: data.reason || 'skipped' })]
+      );
+      notifyPaperBotClients(userId, 'auto_run_tick', data.reason || 'Auto-run skipped');
+    } else {
+      notifyPaperBotClients(userId, 'run_day_skipped', data.reason || 'Simulate day skipped');
+    }
     return { ...((await getState(userId)) || {}), runDay: { skipped: true, reason: data.reason } };
   }
 
@@ -609,6 +928,29 @@ async function simulateDay(userId) {
     [userId, JSON.stringify({ fillCount: fills.length, fills })]
   );
 
+  if (source === 'auto') {
+    await db.query(
+      `UPDATE paper_bot_accounts SET last_auto_run_at = NOW(), updated_at = NOW() WHERE user_id = $1`,
+      [userId]
+    );
+    await db.query(
+      `INSERT INTO paper_bot_events (user_id, event_type, payload)
+       VALUES ($1, 'auto_run_tick', $2)`,
+      [userId, JSON.stringify({ fillCount: fills.length, skipped: false })]
+    );
+    notifyPaperBotClients(
+      userId,
+      'auto_run_tick',
+      fills.length ? `Auto-run — ${fills.length} fill(s)` : 'Auto-run — no fills this tick'
+    );
+  } else {
+    notifyPaperBotClients(
+      userId,
+      'run_day_completed',
+      `Simulated day — ${fills.length} fill(s)`
+    );
+  }
+
   return { ...(await getState(userId)), runDay: { skipped: false, fillCount: fills.length } };
 }
 
@@ -625,7 +967,9 @@ async function getPolicySnapshot(userId) {
     activeRules,
     gates: {
       killSwitchArmed: accountRow.kill_switch_armed,
-      tradeDeployListOnly: accountRow.trade_deploy_list_only,
+      tradeDeployListOnly: normalizeUniverseMode(accountRow) === 'deploy_list_only',
+      universeMode: normalizeUniverseMode(accountRow),
+      agentModeEnabled: normalizeUniverseMode(accountRow) === 'quant_auto_agent',
       cashUsd: round2(cash),
       cashHeadroomUsd: round2(Math.max(0, cash - Number(mergedPolicy.min_cash_reserve))),
       openPositions: positionsRaw.length,
@@ -645,7 +989,33 @@ async function getPolicySnapshot(userId) {
   };
 }
 
-async function dryRun(userId) {
+function mapShadowOrdersFromDryRun(data) {
+  const fills = Array.isArray(data?.fills) ? data.fills : [];
+  if (fills.length) {
+    return fills.map((f) => ({
+      symbol: String(f.symbol || '').toUpperCase(),
+      side: f.side === 'sell' ? 'sell' : 'buy',
+      quantity: Number(f.quantity),
+      priceUsd: Number(f.price_usd),
+      notionalUsd: Number(f.notional_usd),
+      reasonTags: Array.isArray(f.reason_tags) ? f.reason_tags : [],
+      reasonJson: f.reason_json && typeof f.reason_json === 'object' ? f.reason_json : {}
+    }));
+  }
+  return (Array.isArray(data?.intents) ? data.intents : [])
+    .filter((i) => i?.action === 'buy' && i?.symbol)
+    .map((i) => ({
+      symbol: String(i.symbol).toUpperCase(),
+      side: 'buy',
+      quantity: Number(i.quantity) || 0,
+      priceUsd: Number(i.priceUsd ?? i.price_usd) || 0,
+      notionalUsd: Number(i.notionalUsd ?? i.notional_usd) || 0,
+      reasonTags: Array.isArray(i.reason_tags) ? i.reason_tags : [],
+      reasonJson: i.reason_json && typeof i.reason_json === 'object' ? i.reason_json : { detail: i.detail, reason: i.reason }
+    }));
+}
+
+async function shadowPreview(userId) {
   const ctx = await buildRunContext(userId);
   const {
     accountRow,
@@ -657,18 +1027,132 @@ async function dryRun(userId) {
     universeSource
   } = ctx;
   const base = resolveQuantAgiBaseUrl();
+  const killSwitchArmed = Boolean(accountRow.kill_switch_armed);
 
   const { data } = await axios.post(
     `${base}/bot/dry-run`,
-    {
-      cash_usd: Number(accountRow.cash_usd),
-      kill_switch_armed: accountRow.kill_switch_armed,
-      policy_version: accountRow.policy_version,
-      universe_symbols: universe,
-      prices: priceMap,
-      positions: positionsPayload,
-      active_rules: activeRulesPayload
-    },
+    buildBotRunDayBody(ctx, accountRow, { killSwitchArmed: false }),
+    { timeout: config.QUANT_AGI_RANK_TIMEOUT_MS || 45000 }
+  );
+
+  const orders = mapShadowOrdersFromDryRun(data);
+  const skippedIntents = (Array.isArray(data?.intents) ? data.intents : []).filter(
+    (i) => i?.action && i.action !== 'buy'
+  );
+
+  for (const order of orders) {
+    const payload = stampShadowOrderPayload(
+      {
+        symbol: order.symbol,
+        side: order.side,
+        quantity: order.quantity,
+        priceUsd: order.priceUsd,
+        notionalUsd: order.notionalUsd,
+        reasonTags: order.reasonTags,
+        reasonJson: order.reasonJson,
+        policyVersion: data?.policy_version ?? accountRow.policy_version
+      },
+      { killSwitchArmed }
+    );
+    await db.query(
+      `INSERT INTO paper_bot_events (user_id, event_type, payload)
+       VALUES ($1, 'shadow_order', $2)`,
+      [userId, JSON.stringify(payload)]
+    );
+  }
+
+  await db.query(
+    `INSERT INTO paper_bot_events (user_id, event_type, payload)
+     VALUES ($1, 'shadow_run', $2)`,
+    [
+      userId,
+      JSON.stringify({
+        skipped: Boolean(data?.skipped),
+        reason: data?.reason || null,
+        orderCount: orders.length,
+        skippedIntentCount: skippedIntents.length,
+        assumedDisarmed: true,
+        killSwitchArmedAtRun: killSwitchArmed,
+        policyVersion: data?.policy_version ?? accountRow.policy_version
+      })
+    ]
+  );
+
+  notifyPaperBotClients(
+    userId,
+    'shadow_run',
+    orders.length
+      ? `Shadow preview — ${orders.length} hypothetical order(s)`
+      : 'Shadow preview — no orders'
+  );
+
+  return {
+    skipped: Boolean(data?.skipped),
+    reason: data?.reason || null,
+    assumedDisarmed: true,
+    killSwitchArmedAtRun: killSwitchArmed,
+    orders,
+    skippedIntents,
+    orderCount: orders.length,
+    policyVersion: data?.policy_version ?? accountRow.policy_version,
+    appliedPolicy: data?.applied_policy || mergedPolicy
+  };
+}
+
+async function getShadowOrders(userId, limit = 20) {
+  const lim = Math.min(50, Math.max(1, Number(limit) || 20));
+  const { rows } = await db.query(
+    `SELECT id, payload, created_at
+     FROM paper_bot_events
+     WHERE user_id = $1 AND event_type = 'shadow_order'
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [userId, lim]
+  );
+  return rows.map((r) => {
+    const p = r.payload && typeof r.payload === 'object' ? r.payload : {};
+    return {
+      id: r.id,
+      symbol: p.symbol,
+      side: p.side || 'buy',
+      quantity: Number(p.quantity) || 0,
+      priceUsd: Number(p.priceUsd) || 0,
+      notionalUsd: Number(p.notionalUsd) || 0,
+      reasonTags: Array.isArray(p.reasonTags) ? p.reasonTags : [],
+      fillNamespace: p.fill_namespace || null,
+      killSwitchArmedAtRun: Boolean(p.kill_switch_armed_at_run),
+      policyVersion: p.policyVersion,
+      createdAt: r.created_at
+    };
+  });
+}
+
+function mapQuantDryRunResponse(data, accountRow, mergedPolicy) {
+  const agentPlan = data?.agent_plan && typeof data.agent_plan === 'object' ? data.agent_plan : null;
+  return {
+    skipped: Boolean(data?.skipped),
+    reason: data?.reason || null,
+    intents: Array.isArray(data?.intents) ? data.intents : [],
+    fills: Array.isArray(data?.fills) ? data.fills : [],
+    policyVersion: data?.policy_version ?? accountRow.policy_version,
+    appliedPolicy: data?.applied_policy || mergedPolicy,
+    agentPlan,
+    regimeLabel: data?.regime_label || agentPlan?.regime_label || null,
+    grokUsed: Boolean(data?.grok_used ?? agentPlan?.grok_used),
+    debateSummary: agentPlan?.debate_summary || null,
+    debateResults: Array.isArray(agentPlan?.debate_results) ? agentPlan.debate_results : [],
+    tradeIntents: Array.isArray(agentPlan?.trade_intents) ? agentPlan.trade_intents : []
+  };
+}
+
+async function dryRun(userId) {
+  const ctx = await buildRunContext(userId);
+  const { accountRow, mergedPolicy } = ctx;
+  const base = resolveQuantAgiBaseUrl();
+
+  const { data } = await axios.post(
+    `${base}/bot/dry-run`,
+    buildBotRunDayBody(ctx, accountRow),
     { timeout: config.QUANT_AGI_RANK_TIMEOUT_MS || 45000 }
   );
 
@@ -680,23 +1164,160 @@ async function dryRun(userId) {
       JSON.stringify({
         skipped: Boolean(data?.skipped),
         reason: data?.reason || null,
-        intentCount: Array.isArray(data?.intents) ? data.intents.length : 0
+        intentCount: Array.isArray(data?.intents) ? data.intents.length : 0,
+        agentMode: Boolean(buildBotRunDayBody(ctx, accountRow).agent_mode)
       })
     ]
   );
 
+  return mapQuantDryRunResponse(data, accountRow, mergedPolicy);
+}
+
+async function getBrainMonitor(userId) {
+  const ctx = await buildRunContext(userId);
+  const { accountRow, mergedPolicy, positionsRaw, priceMap } = ctx;
+  const mode = normalizeUniverseMode(accountRow);
+  const base = resolveQuantAgiBaseUrl();
+  const timeout = config.QUANT_AGI_RANK_TIMEOUT_MS || 45000;
+  const body = buildBotRunDayBody(ctx, accountRow);
+
+  const snapshot = await getPolicySnapshot(userId);
+  const latestPlanEvent = (await loadRecentEvents(userId, 12)).find(
+    (e) => e.eventType === 'agent_plan_tick'
+  );
+  if (!snapshot.inputSignals.regimeLabel && latestPlanEvent?.payload?.regimeLabel) {
+    snapshot.inputSignals.regimeLabel = latestPlanEvent.payload.regimeLabel;
+  }
+
+  const { data: primaryData } = await axios.post(`${base}/bot/dry-run`, body, { timeout });
+
+  const dryRunResult = mapQuantDryRunResponse(primaryData, accountRow, mergedPolicy);
+  if (!snapshot.inputSignals.regimeLabel && dryRunResult.regimeLabel) {
+    snapshot.inputSignals.regimeLabel = dryRunResult.regimeLabel;
+  }
+
+  const agentPlanHistory = (await loadRecentEvents(userId, 10)).filter(
+    (e) => e.eventType === 'agent_plan_tick'
+  );
+  const lastReflection = (await loadRecentEvents(userId, 8)).find(
+    (e) => e.eventType === 'brain_reflection'
+  );
+
+  const pendingRules = (await loadRulesByStatus(userId, 'pending')).map(mapRule);
+  const brainPendingRules = pendingRules.filter(
+    (r) => r.ruleJson && r.ruleJson.brain_reflection === true
+  );
+
+  const snapshotsRaw = await loadSnapshots(userId);
+  const tradesRaw = await loadRecentTrades(userId, 30);
+  const metrics = computePaperBotMetrics(
+    accountRow,
+    snapshotsRaw,
+    Number(accountRow.cash_usd) +
+      positionsRaw.reduce(
+        (sum, p) =>
+          sum + Number(p.quantity) * (priceMap[p.symbol.toUpperCase()] ?? Number(p.avg_cost_usd)),
+        0
+      ),
+    tradesRaw.length
+  );
+
+  const agentTaggedFills = tradesRaw.filter((t) => {
+    const rj = t.reason_json && typeof t.reason_json === 'object' ? t.reason_json : {};
+    return Boolean(rj.agent_plan);
+  }).length;
+
   return {
-    skipped: Boolean(data?.skipped),
-    reason: data?.reason || null,
-    intents: Array.isArray(data?.intents) ? data.intents : [],
-    fills: Array.isArray(data?.fills) ? data.fills : [],
-    policyVersion: data?.policy_version ?? accountRow.policy_version,
-    appliedPolicy: data?.applied_policy || mergedPolicy
+    snapshot,
+    dryRun: dryRunResult,
+    agentPlanHistory,
+    lastReflection: lastReflection || null,
+    brainPendingRules,
+    performance: {
+      ...metrics,
+      agentPlanTicks: agentPlanHistory.length,
+      agentTaggedFills,
+      universeMode: mode
+    },
+    disclaimer:
+      'Brain monitor is educational — agent debate and reflection propose changes; you approve rules before they affect the ledger.'
   };
 }
 
-async function getRecentEvents(userId, limit = 15) {
-  return loadRecentEvents(userId, limit);
+async function runBrainReflection(userId) {
+  await ensureAccount(userId);
+  const monitor = await getBrainMonitor(userId);
+  const base = resolveQuantAgiBaseUrl();
+  const ctx = await buildRunContext(userId);
+  const { accountRow, mergedPolicy } = ctx;
+  const tradesRaw = await loadRecentTrades(userId, 25);
+
+  const { data } = await axios.post(
+    `${base}/bot/brain-reflect`,
+    {
+      agent_plans: monitor.agentPlanHistory.map((e) => e.payload || {}),
+      recent_trades: tradesRaw.map(mapTrade),
+      metrics: monitor.performance,
+      current_policy: mergedPolicy,
+      universe_mode: normalizeUniverseMode(accountRow)
+    },
+    { timeout: config.QUANT_AGI_RANK_TIMEOUT_MS || 45000 }
+  );
+
+  if (!data?.ok) {
+    const err = new Error(data?.error || 'Brain reflection failed');
+    err.statusCode = 502;
+    throw err;
+  }
+
+  const proposals = Array.isArray(data.proposals) ? data.proposals : [];
+  const createdRuleIds = [];
+
+  for (const p of proposals) {
+    const ruleText = String(p.rule_text || p.ruleText || 'Brain reflection proposal').slice(0, 500);
+    const ruleJson = {
+      ...(p.payload && typeof p.payload === 'object' ? p.payload : {}),
+      rule_type: p.rule_type || p.payload?.rule_type,
+      rationale: p.rationale || null,
+      brain_reflection: true
+    };
+    const { rows } = await db.query(
+      `INSERT INTO paper_bot_rules (user_id, source, status, rule_text, rule_json)
+       VALUES ($1, 'bot_suggested', 'pending', $2, $3::jsonb)
+       RETURNING id`,
+      [userId, ruleText, JSON.stringify(ruleJson)]
+    );
+    if (rows[0]?.id) createdRuleIds.push(rows[0].id);
+  }
+
+  await db.query(
+    `INSERT INTO paper_bot_events (user_id, event_type, payload)
+     VALUES ($1, 'brain_reflection', $2)`,
+    [
+      userId,
+      JSON.stringify({
+        summary: data.summary || null,
+        insights: data.insights || {},
+        proposalCount: proposals.length,
+        createdRuleIds,
+        grokUsed: Boolean(data.grok_used)
+      })
+    ]
+  );
+
+  notifyPaperBotClients(
+    userId,
+    'brain_reflection',
+    proposals.length
+      ? `Brain reflection — ${proposals.length} proposal(s) in rules inbox`
+      : 'Brain reflection complete — no policy changes suggested'
+  );
+
+  return getBrainMonitor(userId);
+}
+
+async function getRecentEvents(userId, limit = 15, options = {}) {
+  return loadRecentEvents(userId, limit, options);
 }
 
 const BASELINE_MAX_DRAWDOWN_PCT = 0.15;
@@ -1094,6 +1715,8 @@ async function promoteAutoresearchPatch(userId, { commitSha, experimentId } = {}
     ]
   );
 
+  notifyPaperBotClients(userId, 'autoresearch_promoted', 'Autoresearch patch promoted to staging');
+
   return {
     ok: true,
     sourceSha: data.source_sha || sha,
@@ -1122,6 +1745,8 @@ async function resetAccount(userId) {
        SET cash_usd = starting_cash_usd,
            policy_version = 1,
            last_trade_at = NULL,
+           last_auto_run_at = NULL,
+           auto_run_enabled = false,
            reset_at = NOW(),
            kill_switch_armed = true,
            updated_at = NOW()
@@ -1141,6 +1766,7 @@ async function resetAccount(userId) {
   } finally {
     client.release();
   }
+  notifyPaperBotClients(userId, 'account_reset', 'Paper account reset');
   return getState(userId);
 }
 
@@ -1198,6 +1824,7 @@ async function manualTrade(userId, { symbol, side, notionalUsd }) {
   const metrics = await computeMetrics(refreshed, posAfter, priceMap);
   await upsertDailySnapshot(userId, refreshed, metrics);
 
+  notifyPaperBotClients(userId, 'fill', `Manual paper fill — ${tradeSide.toUpperCase()} ${sym}`);
   return getState(userId);
 }
 
@@ -1254,6 +1881,11 @@ async function interpretNote(userId, noteText) {
     );
   }
 
+  notifyPaperBotClients(
+    userId,
+    'user_note',
+    proposals.length ? `Grok proposed ${proposals.length} rule(s)` : 'Trading note recorded'
+  );
   return getState(userId);
 }
 
@@ -1296,10 +1928,11 @@ async function approveRule(userId, ruleId) {
     [userId, JSON.stringify({ ruleId: id, action: 'approved' })]
   );
 
+  notifyPaperBotClients(userId, 'rule_applied', 'Grok rule approved — policy version bumped');
   return getState(userId);
 }
 
-async function dismissRule(userId, ruleId) {
+async function removeRule(userId, ruleId) {
   const id = Number(ruleId);
   if (!Number.isFinite(id)) {
     const err = new Error('Invalid rule id');
@@ -1307,27 +1940,105 @@ async function dismissRule(userId, ruleId) {
     throw err;
   }
 
-  const { rowCount } = (
-    await db.query(
-      `UPDATE paper_bot_rules
-       SET status = 'dismissed', updated_at = NOW()
-       WHERE id = $1 AND user_id = $2 AND status = 'pending'`,
-      [id, userId]
-    )
-  ).rowCount;
-
-  if (!rowCount) {
-    const err = new Error('Pending rule not found');
+  const check = await db.query(
+    `SELECT id, status, rule_text FROM paper_bot_rules WHERE id = $1 AND user_id = $2`,
+    [id, userId]
+  );
+  if (!check.rows.length) {
+    const err = new Error('Rule not found');
     err.statusCode = 404;
     throw err;
   }
 
+  const row = check.rows[0];
+  const fromStatus = String(row.status || '');
+  if (fromStatus !== 'pending' && fromStatus !== 'active') {
+    const err = new Error('Rule is already removed');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const updateResult = await db.query(
+    `UPDATE paper_bot_rules
+     SET status = 'dismissed', updated_at = NOW()
+     WHERE id = $1 AND user_id = $2 AND status IN ('pending', 'active')`,
+    [id, userId]
+  );
+
+  if (!updateResult.rowCount) {
+    const err = new Error('Rule not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (fromStatus === 'active') {
+    await db.query(
+      `UPDATE paper_bot_accounts
+       SET policy_version = policy_version + 1, updated_at = NOW()
+       WHERE user_id = $1`,
+      [userId]
+    );
+  }
+
+  const eventType = fromStatus === 'active' ? 'rule_revoked' : 'rule_dismissed';
+  const hint =
+    fromStatus === 'active'
+      ? 'Active rule removed — policy version bumped'
+      : 'Pending rule removed';
+
+  await db.query(
+    `INSERT INTO paper_bot_events (user_id, event_type, payload)
+     VALUES ($1, $2, $3)`,
+    [
+      userId,
+      eventType,
+      JSON.stringify({
+        ruleId: id,
+        fromStatus,
+        ruleText: row.rule_text || null
+      })
+    ]
+  );
+
+  notifyPaperBotClients(userId, eventType, hint);
+  return getState(userId);
+}
+
+async function dismissRule(userId, ruleId) {
+  return removeRule(userId, ruleId);
+}
+
+async function removeAllPendingRules(userId) {
+  const { rows } = await db.query(
+    `SELECT id FROM paper_bot_rules WHERE user_id = $1 AND status = 'pending' ORDER BY id ASC`,
+    [userId]
+  );
+  if (!rows.length) {
+    return getState(userId);
+  }
+
+  const ids = rows.map((r) => r.id);
+  await db.query(
+    `UPDATE paper_bot_rules
+     SET status = 'dismissed', updated_at = NOW()
+     WHERE user_id = $1 AND status = 'pending'`,
+    [userId]
+  );
+
   await db.query(
     `INSERT INTO paper_bot_events (user_id, event_type, payload)
      VALUES ($1, 'rule_dismissed', $2)`,
-    [userId, JSON.stringify({ ruleId: id })]
+    [
+      userId,
+      JSON.stringify({
+        bulk: true,
+        removedCount: ids.length,
+        ruleIds: ids
+      })
+    ]
   );
 
+  notifyPaperBotClients(userId, 'rule_dismissed', `Removed ${ids.length} pending rule(s)`);
   return getState(userId);
 }
 
@@ -1335,16 +2046,24 @@ module.exports = {
   DISARM_CONFIRM_PHRASE,
   getState,
   getPolicySnapshot,
+  getBrainMonitor,
+  runBrainReflection,
   getAutoresearchLatest,
   promoteAutoresearchPatch,
   resetAccount,
+  shadowPreview,
+  getShadowOrders,
   dryRun,
   getRecentEvents,
   setKillSwitch,
+  setBotRun,
+  setPaperBotSettings,
   setTradeDeployListOnly,
   simulateDay,
   manualTrade,
   interpretNote,
   approveRule,
-  dismissRule
+  dismissRule,
+  removeRule,
+  removeAllPendingRules
 };

@@ -289,6 +289,13 @@ const config = {
    * Set ENABLE_RESEARCH_INGESTION=true after POLYGON/MASSIVE key is configured.
    */
   ENABLE_RESEARCH_INGESTION: process.env.ENABLE_RESEARCH_INGESTION === 'true',
+
+  /** Paper bot policy ticks during US market hours (Mon–Fri 9:30–16:00 ET). */
+  ENABLE_PAPER_BOT_AUTO_RUN: process.env.ENABLE_PAPER_BOT_AUTO_RUN !== 'false',
+  PAPER_BOT_AUTO_RUN_INTERVAL_MS: (() => {
+    const n = parseInt(process.env.PAPER_BOT_AUTO_RUN_INTERVAL_MS, 10);
+    return Number.isFinite(n) && n >= 60000 ? n : 15 * 60 * 1000;
+  })(),
   /** Cron expression for news ingestion (default: every 10 minutes). */
   RESEARCH_NEWS_CRON: process.env.RESEARCH_NEWS_CRON || '*/10 * * * *',
   /** Max distinct stock tickers to poll per cron tick (rate-limit friendly). */

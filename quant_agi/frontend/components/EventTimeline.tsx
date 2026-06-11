@@ -15,10 +15,14 @@ export function EventTimeline() {
 
   return (
     <section className="rounded-2xl border border-white/10 bg-panel/70 p-4">
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/70">Live event timeline</h2>
+      <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-white/70">Autoresearch lab history</h2>
+      <p className="mb-3 text-[11px] text-white/45">
+        Nightly autoresearch experiments and patch proposals — not paper-bot fills or trading rules (see Bot
+        improvement log in Zone B).
+      </p>
       <div className="space-y-3">
         {events.length === 0 ? (
-          <p className="text-sm text-white/60">No events yet.</p>
+          <p className="text-sm text-white/60">No autoresearch events yet.</p>
         ) : (
           events.map((event) => (
             <article key={event.id} className="rounded-xl border border-white/10 bg-panelAlt/80 p-3">

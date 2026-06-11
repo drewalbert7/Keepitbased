@@ -2,9 +2,11 @@
 
 > **Single source of truth:** `keepitbased/todo.md` in this repo. When you or Cursor reference **`todo.md`**, use **this file only**. A stub at `/home/dstrad/todo.md` redirects here.
 
-Last updated: **2026-06-09** (Phase 3 complete · Phase 4 split plan · **stop for night**).
+Last updated: **2026-06-11** (Phase 4a + 4c + 5c shipped · UI polish deferred).
 
-**Session checkpoint (2026-06-09) — STOP FOR NIGHT · resume Phase 4a:** Phase 3 ✅ shipped (walk-forward, nightly context, promote flow, reset + 24h cooldown). **Phase 4 split** documented in [`GROK_PAPER_TRADING_BOT_PLAN.md`](quant_agi/docs/GROK_PAPER_TRADING_BOT_PLAN.md) § Phase 4 — **4a next:** shadow mode (P0) + namespace isolation (P0) + socket bot events + proactive Grok rules. **4b later:** DL-3 → DL-4 broker paper. **Defer:** MiroFish force-graph. **Committed + pushed** this session.
+**Session checkpoint (2026-06-11) — Quant AGI Bot multi-agent + brain monitor:** **Shipped:** Phase **4a** complete (namespace, shadow API only, improvement log, socket bridge, **Bot ON/OFF** + `paperBotAutoRun.js` cron). Phase **4c** quant execution (`quant_execution.py`, ET windows, rank rotation). Phase **5a+5b+5c** LangGraph **`bot_graph/`** (`POST /bot/plan-tick`, `agent_mode` on run-day) · universe **`quant_auto_agent`** · **`brain_reflection.py`** + `GET /paper-bot/brain` · **BotBrainPanel** monitor (regime, debate, dry-run, plan history, reflection). **Rules:** remove active/pending (`POST /rules/:id/remove`, clear pending) — fixed `rowCount` bug. **UI removed:** shadow broker panel, mode comparison. **Smoke:** rule removal in `smokePaperBotLedger.js` (needs `PAPER_BOT_TEST_*`). **Phase:** `5c-brain-monitor`. **Next (user reviewing):** UI elegance — tabbed brain, universe simplify, paper scorecard strip, move autoresearch strip to Zone C; **4a remainder:** proactive Grok daily rules + nightly `paper_bot_daily_close` cron. **Ops:** `cd quant_agi/frontend && npm run build:deploy` · `pm2 restart keepitbased-api quant-agi-api`.
+
+**Session checkpoint (2026-06-09) — STOP FOR NIGHT · Phase 4a start:** Phase 3 ✅ shipped (walk-forward, nightly context, promote flow, reset + 24h cooldown). **Phase 4 split** in [`GROK_PAPER_TRADING_BOT_PLAN.md`](quant_agi/docs/GROK_PAPER_TRADING_BOT_PLAN.md) § Phase 4.
 
 **Session checkpoint (2026-06-09) — Product rename:** UI + plan → **Quant AGI Bot** (internal `paper_bot_*` APIs unchanged).
 
@@ -214,28 +216,40 @@ npm run email:test-opportunity
 
 ## Resume Here Next Session
 
-### Session save spot (2026-06-09) — **continue here next time (Phase 4a)**
+### Session save spot (2026-06-11) — **continue here next time**
 
-**Product (start here):** **Quant AGI Bot** — **`/quant-agi` only** · Phases 0–3 ✅ · **Phase 4a next** · dashboard unchanged.
+**Product (start here):** **Quant AGI Bot** — **`/quant-agi` only** · Phases 0–3 ✅ · **4a core ✅** · **4c quant exec ✅** · **5c multi-agent brain ✅** · dashboard unchanged.
+
+**Recommended default experiment:** Universe **`quant_auto_agent`** (LangGraph entry/exit + policy caps) · Bot ON during RTH · review **Bot brain** + **rules inbox** weekly.
 
 **Phase 4 split (canonical):** [`GROK_PAPER_TRADING_BOT_PLAN.md`](quant_agi/docs/GROK_PAPER_TRADING_BOT_PLAN.md) § Phase 4.
 
-| Sprint | Scope | Do not start yet |
-|--------|--------|------------------|
-| **4a (next)** | Shadow mode · namespace isolation · socket bot events · proactive Grok rules · nightly cron | Force-graph · broker API |
-| **4b (later)** | **DL-3** `DeployPlanV1` → shadow/broker parity → **DL-4** paper broker | Live money |
+| Sprint | Scope | Status |
+|--------|--------|--------|
+| **4a** | Namespace · socket · improvement log · Bot ON/OFF auto-run · shadow API (no Zone B UI) | **✅ core** |
+| **4c** | Quant auto-pick execution (rank rotation, ET windows, equity sizing) | **✅** |
+| **5a–5c** | LangGraph plan-tick · Grok entry/exit · candidate debate · brain reflection · `GET /paper-bot/brain` | **✅** |
+| **4a tail** | Proactive Grok daily rules · nightly `paper_bot_daily_close` cron | **🔲** |
+| **4b (later)** | **DL-3** → broker paper (**DL-4**) | Planned |
 
-**4a P0 first tasks:**
-1. Shadow mode — log hypothetical broker orders (`paper_bot_events` + UI); no external API.
-2. Namespace isolation — paper/shadow fills must not fire opportunity emails.
+**4a shipped checklist:**
+1. ~~Namespace isolation~~ ✅ `paperBotNamespace.js` + `fill_namespace` stamp.
+2. ~~Shadow mode (API)~~ ✅ `POST /shadow-run` — **UI removed** (no `BotShadowBlotter` in panel).
+3. ~~Bot improvement log~~ ✅ `BotImprovementLog` · `agent_plan_tick` · `brain_reflection` events.
+4. ~~Socket bot events~~ ✅ `paperBotSocket.js` · `PaperBotSocketBridge`.
+5. ~~Market-hours auto-run + Bot ON/OFF~~ ✅ `paperBotAutoRun.js` · `BotStatusBar`.
 
-**Quant AGI layout (`/quant-agi`):** Zone B = bot panel · Zone C = autoresearch ops.
+**Universe modes:** `curated` · `deploy_list_only` · `quant_auto` · **`quant_auto_agent`** (multi-agent).
 
-**Verify:** `/quant-agi` signed in → strip shows gates + promote · simulate-day · smoke passes.
+**Key APIs:** `POST /bot/plan-tick` · `POST /bot/brain-reflect` · `GET /paper-bot/brain` · `POST /paper-bot/rules/:id/remove` · `POST /paper-bot/rules/pending/clear`.
 
-**Smoke:** `npm run smoke:paper-bot` · after frontend edits: `cd quant_agi/frontend && npm run build:deploy`
+**UX polish (discussed, not shipped):** Tabbed brain (Next tick | Policy | History) · merge health into status bar · simplify universe dropdown · **paper scorecard** strip · move **AutoresearchDailyStrip** to Zone C · plain-language labels (not “dry-run”).
 
-**Parallel (non-blocking):** rank → **`buildAgentWatchlistContext`**; SES/DNS; DL-3 design while 4a ships.
+**Verify:** `/quant-agi` signed in → Bot ON · quant_auto_agent · brain shows regime + next tick · remove rule works.
+
+**Smoke:** `cd backend && npm run smoke:paper-bot` (set `PAPER_BOT_TEST_EMAIL` / `PAPER_BOT_TEST_PASSWORD`) · after frontend: `cd quant_agi/frontend && npm run build:deploy`
+
+**Parallel (non-blocking):** rank → **`buildAgentWatchlistContext`**; SES/DNS; DL-3 design.
 
 ### Session save spot (2026-06-08) — prior
 
@@ -346,8 +360,10 @@ npm run email:test-opportunity
 |------|---------|--------|
 | B | **`PaperTradingBotPanel`** — ledger, kill switch, simulate-day, chart, blotter | ✅ Phase 1 |
 | B | **`BotRulesInbox`** (Phase 2) | ✅ |
-| B | **`BotBrainPanel`** — policy snapshot, inputs, dry-run intents, decision log | ✅ Phase 2.5 |
-| B | **`AutoresearchDailyStrip`** (Phase 3) | ✅ live P&L + gates |
+| B | **`BotStatusBar`** — Bot ON/OFF, Run now, reset | ✅ Phase 4a |
+| B | **`BotBrainPanel`** — regime, debate, dry-run, plan history, brain reflection | ✅ Phase 5c |
+| B | **`BotImprovementLog`** — fills, rules, agent ticks | ✅ Phase 4a |
+| B | **`AutoresearchDailyStrip`** (Phase 3) | ✅ — *candidate move to Zone C* |
 | C | Event timeline · Jarvis · code diff · metrics/scorecard | ✅ |
 
 **Three Grok loops:**
@@ -379,8 +395,11 @@ npm run email:test-opportunity
 | **2** | Grok rules inbox + policy engine | **✅** core loop |
 | **2.5** | **`BotBrainPanel`** + dry-run + policy snapshot + explain-trade | **✅** |
 | **3** | Autoresearch fed by real paper P&L + **promotion gates** | **✅** |
-| **4a** | Shadow mode + bot event feed + isolation + proactive rules | **Next** |
-| **4b** | **DL-3** → broker paper (**DL-4**) | Planned (after 4a + DL-3) |
+| **4a** | Namespace + socket + improvement log + Bot ON/OFF auto-run | **✅ core** (shadow UI removed; API remains) |
+| **4c** | Quant auto-pick execution engine | **✅** |
+| **5c** | LangGraph multi-agent plan-tick + brain monitor + reflection | **✅** |
+| **4a tail** | Proactive Grok daily rules + nightly paper close cron | **🔲** |
+| **4b** | **DL-3** → broker paper (**DL-4**) | Planned |
 | **4 defer** | MiroFish force-graph full panel · live money | v1.5+ |
 
 #### North star (product voice)
@@ -420,9 +439,9 @@ Quant AGI terminal tokens (`panel`, `neon`, `mint`). Subcomponents in `quant_agi
 └───────────────────────────────────────────────────────────────┘
 ```
 
-**Zone C (same page):** EventTimeline · JarvisCodingChat · CodeDiffPanel · MetricsPanel.
+**Zone C (same page):** EventTimeline · JarvisCodingChat · CodeDiffPanel.
 
-**Components (shipped / next):** `BotHealthStrip` ✅ · `BotControls` ✅ · `BotPerformanceChart` ✅ · `BotPositionsTable` ✅ · `BotTradeBlotter` ✅ · `BotRulesInbox` ✅ · **`BotBrainPanel`** ✅ · **`AutoresearchDailyStrip`** ✅ · **promote-flow** ✅ · **Phase 4a:** shadow blotter + event feed 🔲.
+**Components (shipped / next):** `BotStatusBar` ✅ · `BotHealthStrip` ✅ · `BotControls` ✅ (4 universe modes) · `BotPerformanceChart` ✅ · `BotPositionsTable` ✅ · `BotTradeBlotter` ✅ · `BotRulesInbox` ✅ (approve/remove active + pending) · **`BotBrainPanel`** ✅ (5c monitor) · **`AutoresearchDailyStrip`** ✅ · **promote-flow** ✅ · **`BotImprovementLog`** ✅ · **`PaperBotSocketBridge`** ✅ · **`bot_graph/`** + `brain_reflection.py` ✅ · **UI polish** (tabbed brain, scorecard) 🔲 · **4a tail:** proactive Grok rules + nightly cron 🔲.
 
 #### `BotBrainPanel` — read the bot’s decision stack (Phase 2.5)
 

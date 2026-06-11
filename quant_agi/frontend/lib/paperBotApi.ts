@@ -12,7 +12,10 @@ export interface PaperBotAccount {
   openRiskPct: number;
   mode: "paper" | "shadow" | "live";
   killSwitchArmed: boolean;
+  autoRunEnabled: boolean;
+  lastAutoRunAt: string | null;
   tradeDeployListOnly: boolean;
+  universeMode?: PaperBotUniverseMode;
   policyVersion: number;
   lastTradeAt: string | null;
   daysSinceLastTrade: number | null;
@@ -62,8 +65,25 @@ export interface PaperBotRule {
   updatedAt: string;
 }
 
+export type PaperBotUniverseMode = "curated" | "deploy_list_only" | "quant_auto" | "quant_auto_agent";
+
+export type PaperBotRuntimeStatus = "off" | "running" | "waiting" | "paused";
+
+export interface PaperBotRuntime {
+  status: PaperBotRuntimeStatus;
+  label: string;
+  detail: string;
+  botOn: boolean;
+  autoRunEnabled: boolean;
+  marketOpen: boolean;
+  lastAutoRunAt: string | null;
+  autoRunIntervalMinutes: number;
+  schedulerEnabled: boolean;
+}
+
 export interface PaperBotState {
   account: PaperBotAccount;
+  botRuntime?: PaperBotRuntime;
   positions: PaperBotPosition[];
   recentTrades: PaperBotTrade[];
   pendingRules: PaperBotRule[];
@@ -84,6 +104,8 @@ export interface PaperBotPolicySnapshot {
   gates: {
     killSwitchArmed: boolean;
     tradeDeployListOnly: boolean;
+    universeMode?: PaperBotUniverseMode;
+    agentModeEnabled?: boolean;
     cashUsd: number;
     cashHeadroomUsd: number;
     openPositions: number;
@@ -119,6 +141,26 @@ export interface PaperBotIntent {
   reason_json?: Record<string, unknown>;
 }
 
+export interface PaperBotAgentDebate {
+  symbol: string;
+  bull_score?: number;
+  bear_score?: number;
+  verdict?: string;
+  bull_case?: string;
+  bear_case?: string;
+  summary?: string;
+  source?: string;
+}
+
+export interface PaperBotAgentTradeIntent {
+  action: string;
+  symbol?: string;
+  urgency?: number;
+  reason?: string;
+  rationale?: string;
+  source?: string;
+}
+
 export interface PaperBotDryRunResult {
   skipped: boolean;
   reason: string | null;
@@ -126,6 +168,52 @@ export interface PaperBotDryRunResult {
   fills: unknown[];
   policyVersion: number;
   appliedPolicy: Record<string, number>;
+  agentPlan?: Record<string, unknown> | null;
+  regimeLabel?: string | null;
+  grokUsed?: boolean;
+  debateSummary?: string | null;
+  debateResults?: PaperBotAgentDebate[];
+  tradeIntents?: PaperBotAgentTradeIntent[];
+}
+
+export interface PaperBotAgentPlanHistoryItem {
+  id: number;
+  createdAt: string;
+  regimeLabel?: string | null;
+  grokUsed?: boolean;
+  rationale?: string | null;
+  tradeIntents?: PaperBotAgentTradeIntent[];
+  debateSummary?: string | null;
+  skipped?: boolean;
+}
+
+export interface PaperBotBrainReflection {
+  id: number;
+  createdAt: string;
+  payload: {
+    summary?: string;
+    insights?: Record<string, unknown>;
+    proposalCount?: number;
+    grokUsed?: boolean;
+  };
+}
+
+export interface PaperBotBrainMonitor {
+  snapshot: PaperBotPolicySnapshot;
+  dryRun: PaperBotDryRunResult;
+  agentPlanHistory: PaperBotAgentPlanHistoryItem[];
+  lastReflection: PaperBotBrainReflection | null;
+  brainPendingRules: PaperBotRule[];
+  performance: {
+    cumPnlUsd: number;
+    agentPlanTicks: number;
+    agentTaggedFills: number;
+    universeMode: PaperBotUniverseMode;
+    tradeCount: number;
+    sharpeProxy: number;
+    maxDrawdownPct: number;
+  };
+  disclaimer: string;
 }
 
 export interface PaperBotEvent {
@@ -135,14 +223,54 @@ export interface PaperBotEvent {
   createdAt: string;
 }
 
+export interface PaperBotShadowOrder {
+  id: number;
+  symbol: string;
+  side: "buy" | "sell";
+  quantity: number;
+  priceUsd: number;
+  notionalUsd: number;
+  reasonTags: string[];
+  fillNamespace: string | null;
+  killSwitchArmedAtRun: boolean;
+  policyVersion?: number;
+  createdAt: string;
+}
+
+export interface PaperBotShadowPreviewResult {
+  skipped: boolean;
+  reason: string | null;
+  assumedDisarmed: boolean;
+  killSwitchArmedAtRun: boolean;
+  orders: Array<{
+    symbol: string;
+    side: string;
+    quantity: number;
+    priceUsd: number;
+    notionalUsd: number;
+  }>;
+  skippedIntents: PaperBotIntent[];
+  orderCount: number;
+  policyVersion: number;
+  appliedPolicy: Record<string, number>;
+}
+
 export type PaperBotSummary = Pick<
   PaperBotAccount,
   "mode" | "killSwitchArmed" | "equityUsd" | "cashUsd" | "tradeDeployListOnly"
 > & { phase: string };
 
 function normalizePaperBotState(raw: Partial<PaperBotState>): PaperBotState {
+  const account = raw.account as PaperBotAccount;
   return {
-    account: raw.account as PaperBotAccount,
+    account: {
+      ...account,
+      autoRunEnabled: account?.autoRunEnabled ?? false,
+      lastAutoRunAt: account?.lastAutoRunAt ?? null,
+      universeMode:
+        account?.universeMode ??
+        (account?.tradeDeployListOnly ? "deploy_list_only" : "curated")
+    },
     positions: Array.isArray(raw.positions) ? raw.positions : [],
     recentTrades: Array.isArray(raw.recentTrades) ? raw.recentTrades : [],
     pendingRules: Array.isArray(raw.pendingRules) ? raw.pendingRules : [],
@@ -153,10 +281,23 @@ function normalizePaperBotState(raw: Partial<PaperBotState>): PaperBotState {
     disclaimer:
       raw.disclaimer ??
       "Educational paper simulation only — not investment advice. No brokerage orders are placed.",
-    phase: raw.phase ?? "3-autoresearch",
+    phase: raw.phase ?? "4a-autorun",
+    botRuntime: (raw.botRuntime as PaperBotRuntime | undefined) ?? DEFAULT_BOT_RUNTIME,
     runDay: raw.runDay
   };
 }
+
+const DEFAULT_BOT_RUNTIME: PaperBotRuntime = {
+  status: "off",
+  label: "Bot OFF",
+  detail: "Turn the bot on to run policy automatically during US market hours.",
+  botOn: false,
+  autoRunEnabled: false,
+  marketOpen: false,
+  lastAutoRunAt: null,
+  autoRunIntervalMinutes: 15,
+  schedulerEnabled: true
+};
 
 function apiBase(): string {
   if (typeof window === "undefined") return "/api";
@@ -219,6 +360,16 @@ export async function fetchPaperBotState(): Promise<PaperBotState> {
   return normalizePaperBotState(data);
 }
 
+export async function setPaperBotRun(
+  on: boolean,
+  confirmPhrase?: string
+): Promise<{ account: PaperBotAccount; botRuntime: PaperBotRuntime }> {
+  return paperBotFetch<{ account: PaperBotAccount; botRuntime: PaperBotRuntime }>("/paper-bot/bot-run", {
+    method: "POST",
+    body: JSON.stringify({ on, confirmPhrase })
+  });
+}
+
 export async function setPaperBotKillSwitch(
   armed: boolean,
   confirmPhrase?: string
@@ -231,7 +382,8 @@ export async function setPaperBotKillSwitch(
 }
 
 export async function setPaperBotSettings(settings: {
-  tradeDeployListOnly: boolean;
+  tradeDeployListOnly?: boolean;
+  universeMode?: PaperBotUniverseMode;
 }): Promise<PaperBotAccount> {
   const data = await paperBotFetch<{ account: PaperBotAccount }>("/paper-bot/settings", {
     method: "PATCH",
@@ -265,7 +417,19 @@ export async function approvePaperBotRule(ruleId: number): Promise<PaperBotState
 }
 
 export async function dismissPaperBotRule(ruleId: number): Promise<PaperBotState> {
-  const data = await paperBotFetch<Partial<PaperBotState>>(`/paper-bot/rules/${ruleId}/dismiss`, {
+  return removePaperBotRule(ruleId);
+}
+
+export async function removePaperBotRule(ruleId: number): Promise<PaperBotState> {
+  const data = await paperBotFetch<Partial<PaperBotState>>(`/paper-bot/rules/${ruleId}/remove`, {
+    method: "POST",
+    body: "{}"
+  });
+  return normalizePaperBotState(data);
+}
+
+export async function clearPendingPaperBotRules(): Promise<PaperBotState> {
+  const data = await paperBotFetch<Partial<PaperBotState>>("/paper-bot/rules/pending/clear", {
     method: "POST",
     body: "{}"
   });
@@ -274,6 +438,17 @@ export async function dismissPaperBotRule(ruleId: number): Promise<PaperBotState
 
 export async function fetchPaperBotPolicySnapshot(): Promise<PaperBotPolicySnapshot> {
   return paperBotFetch<PaperBotPolicySnapshot>("/paper-bot/policy-snapshot");
+}
+
+export async function fetchPaperBotBrain(): Promise<PaperBotBrainMonitor> {
+  return paperBotFetch<PaperBotBrainMonitor>("/paper-bot/brain");
+}
+
+export async function runPaperBotBrainReflection(): Promise<PaperBotBrainMonitor> {
+  return paperBotFetch<PaperBotBrainMonitor>("/paper-bot/brain/reflect", {
+    method: "POST",
+    body: "{}"
+  });
 }
 
 export async function runPaperBotDryRun(): Promise<PaperBotDryRunResult> {
@@ -285,6 +460,13 @@ export async function runPaperBotDryRun(): Promise<PaperBotDryRunResult> {
 
 export async function fetchPaperBotEvents(limit = 15): Promise<PaperBotEvent[]> {
   const data = await paperBotFetch<{ events: PaperBotEvent[] }>(`/paper-bot/events?limit=${limit}`);
+  return Array.isArray(data.events) ? data.events : [];
+}
+
+export async function fetchPaperBotImprovementEvents(limit = 25): Promise<PaperBotEvent[]> {
+  const data = await paperBotFetch<{ events: PaperBotEvent[] }>(
+    `/paper-bot/events?limit=${limit}&scope=improvement`
+  );
   return Array.isArray(data.events) ? data.events : [];
 }
 
@@ -406,4 +588,18 @@ export async function resetPaperBotAccount(): Promise<PaperBotState> {
     body: "{}"
   });
   return normalizePaperBotState(data);
+}
+
+export async function runPaperBotShadowPreview(): Promise<PaperBotShadowPreviewResult> {
+  return paperBotFetch<PaperBotShadowPreviewResult>("/paper-bot/shadow-run", {
+    method: "POST",
+    body: "{}"
+  });
+}
+
+export async function fetchPaperBotShadowOrders(limit = 15): Promise<PaperBotShadowOrder[]> {
+  const data = await paperBotFetch<{ orders: PaperBotShadowOrder[] }>(
+    `/paper-bot/shadow-orders?limit=${limit}`
+  );
+  return Array.isArray(data.orders) ? data.orders : [];
 }

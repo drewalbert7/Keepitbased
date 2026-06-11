@@ -5,7 +5,6 @@ import { useSearchParams } from "next/navigation";
 import { CodeDiffPanel } from "./CodeDiffPanel";
 import { EventTimeline } from "./EventTimeline";
 import { JarvisCodingChat } from "./JarvisCodingChat";
-import { MetricsPanel } from "./MetricsPanel";
 import { MissionBanner } from "./MissionBanner";
 import { PaperTradingBotPanel } from "./PaperTradingBotPanel";
 import { EmbedAuthBridge } from "./EmbedAuthBridge";
@@ -31,16 +30,16 @@ function TerminalPageInner() {
             <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-cyan-300/80">Zone C</p>
             <h2 className="mt-1 text-base font-semibold text-white">Autoresearch &amp; engineering ops</h2>
             <p className="mt-1 text-xs text-white/50">
-              Experiment timeline, nightly patch diff, Grok coding advisor, and evaluation scorecard.
+              Autoresearch lab history, nightly patch diff, and Grok coding advisor — separate from the paper bot
+              improvement log in Zone B.
             </p>
           </div>
-          <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr_0.9fr]">
+          <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr]">
             <EventTimeline />
             <div className="flex min-w-0 flex-col gap-4">
               <JarvisCodingChat />
               <CodeDiffPanel />
             </div>
-            <MetricsPanel />
           </div>
         </section>
       </div>

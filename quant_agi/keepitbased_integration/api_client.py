@@ -34,6 +34,8 @@ from keepitbased_integration.sec_filing_scan import fetch_recent_filing_keyword_
 from keepitbased_integration.signal_enhancer import EnhancedAlertSignal, SignalEnhancer
 from keepitbased_integration.ticker_ref import fetch_ticker_reference
 from paper_trading.paper_simulator import dry_run_payload, run_day_payload
+from paper_trading.plan_tick import plan_tick_payload
+from paper_trading.brain_reflection import reflect_brain_payload
 from paper_trading.grok_bot_advisor import interpret_user_note
 from paper_trading.paper_bot_metrics import (
     enrich_nightly_context,
@@ -846,6 +848,11 @@ class BotRunDayIn(BaseModel):
     positions: list[dict[str, Any]] = Field(default_factory=list)
     active_rules: list[dict[str, Any]] = Field(default_factory=list)
     active_policy: dict[str, Any] = Field(default_factory=dict)
+    universe_source: str = "deploy_list"
+    quant_rank_by_symbol: dict[str, Any] = Field(default_factory=dict)
+    quant_mode: bool = False
+    run_at_iso: Optional[str] = None
+    agent_mode: bool = False
 
 
 class BotInterpretNoteIn(BaseModel):
@@ -853,6 +860,16 @@ class BotInterpretNoteIn(BaseModel):
 
     note: str = Field(..., min_length=1, max_length=4000)
     context: Optional[dict[str, Any]] = Field(default_factory=dict)
+
+
+class BotBrainReflectIn(BaseModel):
+    """Brain reflection — agent plan history + paper fills → improvement proposals."""
+
+    agent_plans: list[dict[str, Any]] = Field(default_factory=list)
+    recent_trades: list[dict[str, Any]] = Field(default_factory=list)
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    current_policy: dict[str, Any] = Field(default_factory=dict)
+    universe_mode: str = "quant_auto_agent"
 
 
 class AlertIn(BaseModel):
@@ -1280,10 +1297,43 @@ def create_app() -> FastAPI:
 
         return {"ok": True, "reply": text, "model": model, "error": None}
 
+    @app.post("/bot/brain-reflect")
+    async def bot_brain_reflect(payload: BotBrainReflectIn) -> dict[str, Any]:
+        """Analyze agent ticks + paper P&L; propose conservative policy tweaks."""
+        return reflect_brain_payload(
+            agent_plans=payload.agent_plans,
+            recent_trades=payload.recent_trades,
+            metrics=payload.metrics,
+            current_policy=payload.current_policy,
+            universe_mode=payload.universe_mode,
+        )
+
+    @app.post("/bot/plan-tick")
+    async def bot_plan_tick(payload: BotRunDayIn) -> dict[str, Any]:
+        """Multi-agent LangGraph plan for quant auto-pick (audit only — no fills)."""
+        universe_source = payload.universe_source or (
+            "deploy_list" if payload.universe_symbols else "watchlist"
+        )
+        return plan_tick_payload(
+            cash_usd=float(payload.cash_usd),
+            positions=payload.positions,
+            universe_symbols=[str(s).upper().strip() for s in payload.universe_symbols if str(s).strip()],
+            prices={str(k).upper(): float(v) for k, v in payload.prices.items() if v and float(v) > 0},
+            kill_switch_armed=bool(payload.kill_switch_armed),
+            policy_version=int(payload.policy_version),
+            active_rules=payload.active_rules,
+            active_policy=payload.active_policy or {},
+            universe_source=universe_source,
+            quant_rank_by_symbol=payload.quant_rank_by_symbol or {},
+            run_at_iso=payload.run_at_iso,
+        )
+
     @app.post("/bot/run-day")
     async def bot_run_day(payload: BotRunDayIn) -> dict[str, Any]:
         """Propose paper fills for a run-day (Node persists approved fills)."""
-        universe_source = "deploy_list" if payload.universe_symbols else "watchlist"
+        universe_source = payload.universe_source or (
+            "deploy_list" if payload.universe_symbols else "watchlist"
+        )
         return run_day_payload(
             cash_usd=float(payload.cash_usd),
             positions=payload.positions,
@@ -1294,6 +1344,10 @@ def create_app() -> FastAPI:
             active_rules=payload.active_rules,
             active_policy=payload.active_policy or {},
             universe_source=universe_source,
+            quant_rank_by_symbol=payload.quant_rank_by_symbol or {},
+            quant_mode=bool(payload.quant_mode),
+            run_at_iso=payload.run_at_iso,
+            agent_mode=bool(payload.agent_mode),
         )
 
     @app.post("/diag/paper-bot/scorecard")
@@ -1338,7 +1392,9 @@ def create_app() -> FastAPI:
     @app.post("/bot/dry-run")
     async def bot_dry_run(payload: BotRunDayIn) -> dict[str, Any]:
         """Preview trade intents without persisting fills (BotBrainPanel)."""
-        universe_source = "deploy_list" if payload.universe_symbols else "watchlist"
+        universe_source = payload.universe_source or (
+            "deploy_list" if payload.universe_symbols else "watchlist"
+        )
         return dry_run_payload(
             cash_usd=float(payload.cash_usd),
             positions=payload.positions,
@@ -1349,6 +1405,10 @@ def create_app() -> FastAPI:
             active_rules=payload.active_rules,
             active_policy=payload.active_policy or {},
             universe_source=universe_source,
+            quant_rank_by_symbol=payload.quant_rank_by_symbol or {},
+            quant_mode=bool(payload.quant_mode),
+            run_at_iso=payload.run_at_iso,
+            agent_mode=bool(payload.agent_mode),
         )
 
     @app.post("/bot/interpret-note")

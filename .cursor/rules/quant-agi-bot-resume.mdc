@@ -9,14 +9,16 @@ globs:
 
 # Quant AGI Bot — resume here
 
-**Last stop:** 2026-06-09 (night). **Phases 0–3 shipped.** Phase 4 **split** — do not build as one monolith.
+**Last stop:** 2026-06-11. **Phases 0–3 shipped.** Phase 4a Steps 1–4 shipped.
 
-## Next sprint: Phase 4a (P0 first)
+## Next sprint: Phase 4a
 
-1. **Shadow mode** — hypothetical broker orders in `paper_bot_events` + UI; no external API; use existing `mode: shadow` on `paper_bot_accounts`.
-2. **Namespace isolation** — paper/shadow fills must not trigger opportunity emails or deploy-list side effects.
+1. ~~**Namespace isolation**~~ ✅ `backend/utils/paperBotNamespace.js` + smoke audit
+2. ~~**Shadow mode**~~ ✅ `POST /shadow-run` · `BotShadowBlotter` · `fill_namespace: paper_bot_shadow`
+3. ~~**Bot improvement log**~~ ✅ `BotImprovementLog` · Zone C = autoresearch lab history only
+4. ~~**Socket bot events**~~ ✅ `paperBotUpdate` → `PaperBotSocketBridge` · live Zone B refresh
 
-Then: Socket bot events · proactive Grok daily rules (loop B) · nightly `paper_bot_daily_close` cron.
+Then: Proactive Grok daily rules (loop B) · nightly `paper_bot_daily_close` cron + `PAPER_BOT_METRICS_PATH`.
 
 ## Later: Phase 4b
 

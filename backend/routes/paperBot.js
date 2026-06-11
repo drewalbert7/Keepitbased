@@ -26,6 +26,28 @@ router.get('/policy-snapshot', auth, paperBotLimiter, async (req, res) => {
   }
 });
 
+router.get('/brain', auth, paperBotLimiter, async (req, res) => {
+  try {
+    const monitor = await paperBotService.getBrainMonitor(req.user.id);
+    return res.json(monitor);
+  } catch (error) {
+    logger.error('GET paper-bot/brain failed:', error);
+    return res.status(500).json({ message: 'Failed to load bot brain monitor' });
+  }
+});
+
+router.post('/brain/reflect', auth, paperBotLimiter, async (req, res) => {
+  try {
+    const monitor = await paperBotService.runBrainReflection(req.user.id);
+    return res.json(monitor);
+  } catch (error) {
+    logger.error('POST paper-bot/brain/reflect failed:', error);
+    return res.status(error.statusCode || 500).json({
+      message: error.message || 'Brain reflection failed'
+    });
+  }
+});
+
 router.post('/dry-run', auth, paperBotLimiter, async (req, res) => {
   try {
     const result = await paperBotService.dryRun(req.user.id);
@@ -41,7 +63,8 @@ router.post('/dry-run', auth, paperBotLimiter, async (req, res) => {
 router.get('/events', auth, paperBotLimiter, async (req, res) => {
   try {
     const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 15));
-    const events = await paperBotService.getRecentEvents(req.user.id, limit);
+    const scope = req.query.scope === 'improvement' ? 'improvement' : undefined;
+    const events = await paperBotService.getRecentEvents(req.user.id, limit, { scope });
     return res.json({ events });
   } catch (error) {
     logger.error('GET paper-bot/events failed:', error);
@@ -99,6 +122,32 @@ router.get('/state', auth, paperBotLimiter, async (req, res) => {
 });
 
 router.post(
+  '/bot-run',
+  auth,
+  paperBotLimiter,
+  [body('on').isBoolean(), body('confirmPhrase').optional().isString().trim()],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+      const result = await paperBotService.setBotRun(req.user.id, {
+        on: req.body.on,
+        confirmPhrase: req.body.confirmPhrase
+      });
+      return res.json(result);
+    } catch (error) {
+      if (error.statusCode === 400) {
+        return res.status(400).json({ message: error.message, code: error.code });
+      }
+      logger.error('POST paper-bot/bot-run failed:', error);
+      return res.status(500).json({ message: 'Failed to update bot run state' });
+    }
+  }
+);
+
+router.post(
   '/kill-switch',
   auth,
   paperBotLimiter,
@@ -128,20 +177,26 @@ router.patch(
   '/settings',
   auth,
   paperBotLimiter,
-  [body('tradeDeployListOnly').optional().isBoolean()],
+  [
+    body('tradeDeployListOnly').optional().isBoolean(),
+    body('universeMode').optional().isIn(['curated', 'deploy_list_only', 'quant_auto', 'quant_auto_agent'])
+  ],
   async (req, res) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
       }
-      if (typeof req.body.tradeDeployListOnly !== 'boolean') {
+      if (
+        typeof req.body.tradeDeployListOnly !== 'boolean' &&
+        typeof req.body.universeMode !== 'string'
+      ) {
         return res.status(400).json({ message: 'No settings to update' });
       }
-      const account = await paperBotService.setTradeDeployListOnly(
-        req.user.id,
-        req.body.tradeDeployListOnly
-      );
+      const account = await paperBotService.setPaperBotSettings(req.user.id, {
+        universeMode: req.body.universeMode,
+        tradeDeployListOnly: req.body.tradeDeployListOnly
+      });
       return res.json({ account });
     } catch (error) {
       logger.error('PATCH paper-bot/settings failed:', error);
@@ -149,6 +204,29 @@ router.patch(
     }
   }
 );
+
+router.post('/shadow-run', auth, paperBotLimiter, async (req, res) => {
+  try {
+    const result = await paperBotService.shadowPreview(req.user.id);
+    return res.json(result);
+  } catch (error) {
+    logger.error('POST paper-bot/shadow-run failed:', error);
+    return res.status(error.statusCode || 500).json({
+      message: error.message || 'Shadow preview failed'
+    });
+  }
+});
+
+router.get('/shadow-orders', auth, paperBotLimiter, async (req, res) => {
+  try {
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+    const orders = await paperBotService.getShadowOrders(req.user.id, limit);
+    return res.json({ orders });
+  } catch (error) {
+    logger.error('GET paper-bot/shadow-orders failed:', error);
+    return res.status(500).json({ message: 'Failed to load shadow orders' });
+  }
+});
 
 router.post('/simulate-day', auth, paperBotLimiter, async (req, res) => {
   try {
@@ -225,6 +303,19 @@ router.post(
   }
 );
 
+router.post('/rules/pending/clear', auth, paperBotLimiter, async (req, res) => {
+  try {
+    const state = await paperBotService.removeAllPendingRules(req.user.id);
+    return res.json(state);
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
+    logger.error('POST paper-bot/rules pending clear failed:', error);
+    return res.status(500).json({ message: 'Failed to clear pending rules' });
+  }
+});
+
 router.post('/rules/:id/approve', auth, paperBotLimiter, async (req, res) => {
   try {
     const state = await paperBotService.approveRule(req.user.id, req.params.id);
@@ -240,14 +331,27 @@ router.post('/rules/:id/approve', auth, paperBotLimiter, async (req, res) => {
 
 router.post('/rules/:id/dismiss', auth, paperBotLimiter, async (req, res) => {
   try {
-    const state = await paperBotService.dismissRule(req.user.id, req.params.id);
+    const state = await paperBotService.removeRule(req.user.id, req.params.id);
     return res.json(state);
   } catch (error) {
     if (error.statusCode) {
       return res.status(error.statusCode).json({ message: error.message });
     }
     logger.error('POST paper-bot/rules dismiss failed:', error);
-    return res.status(500).json({ message: 'Failed to dismiss rule' });
+    return res.status(500).json({ message: 'Failed to remove rule' });
+  }
+});
+
+router.post('/rules/:id/remove', auth, paperBotLimiter, async (req, res) => {
+  try {
+    const state = await paperBotService.removeRule(req.user.id, req.params.id);
+    return res.json(state);
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
+    logger.error('POST paper-bot/rules remove failed:', error);
+    return res.status(500).json({ message: 'Failed to remove rule' });
   }
 });
 

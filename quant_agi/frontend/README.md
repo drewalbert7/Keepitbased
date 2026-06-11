@@ -12,7 +12,7 @@ Zone B — Quant AGI Bot (`PaperTradingBotPanel`)
   BotPositionsTable · BotTradeBlotter · AutoresearchDailyStrip
 
 Zone C — Autoresearch & engineering ops
-  EventTimeline · JarvisCodingChat · CodeDiffPanel · MetricsPanel
+  EventTimeline · JarvisCodingChat · CodeDiffPanel
 ```
 
 ## Run locally
@@ -26,7 +26,7 @@ npm run dev
 ## Backend integration
 
 - **Quant AGI Bot:** `/api/paper-bot/*` (JWT from main app login)
-- **Autoresearch feed:** `/api/quant-agi/sidecar/diag/terminal-feed`, `diag/scorecard`
+- **Autoresearch feed:** `/api/quant-agi/sidecar/diag/terminal-feed`
 - **Jarvis:** `POST /v1/coding-chat` via sidecar proxy
 
 On `app.keepitbased.com` the terminal auto-uses `/api/quant-agi/sidecar` for sidecar routes.

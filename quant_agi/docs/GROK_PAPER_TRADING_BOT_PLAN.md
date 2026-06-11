@@ -61,7 +61,6 @@ Target stack on **`/quant-agi`** (`quant_agi/frontend`) — top to bottom:
 └──────────────────────────────────────────────────────┘
 ┌─ ZONE C: Autoresearch & engineering ops ─────────────┐
 │ EventTimeline │ JarvisCodingChat + CodeDiffPanel     │
-│               │ MetricsPanel (scorecard)             │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -284,7 +283,7 @@ Phase 3 closed the core loop (paper ledger → brain → autoresearch → human 
 | **Shadow mode** | `mode: shadow` on account; log hypothetical orders to `paper_bot_events` + shadow blotter UI; no external API | **P0** |
 | **Socket/SSE bot events** | Push `fill`, `rule_applied`, `kill_switch`, `autoresearch_promoted` via existing Socket.IO pattern (optional `paperBotUpdate`) | P1 |
 | **Proactive Grok rules (loop B)** | Daily 2–4 bot-suggested rules into `BotRulesInbox` from P&amp;L + rank context | P1 |
-| **Namespace isolation** | Paper/shadow fills must not trigger opportunity emails or deploy-list side effects | P0 |
+| **Namespace isolation** | Paper/shadow fills must not trigger opportunity emails or deploy-list side effects | **✅ Step 1** — `paperBotNamespace.js` + smoke audit |
 | **Nightly cron** | `paper_bot_daily_close` + export metrics JSON for `PAPER_BOT_METRICS_PATH` | P1 |
 | **Amazing-tier (pick 1–2)** | Daily bot journal strip in brain · chart day-replay · “Paper-test this deploy list” on dashboard | P2 |
 
