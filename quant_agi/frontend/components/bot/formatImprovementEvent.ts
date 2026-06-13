@@ -82,6 +82,21 @@ export function formatImprovementEvent(ev: PaperBotEvent): FormattedImprovementE
             ? `${Number(p.proposalCount)} policy proposal(s) — review rules inbox`
             : "No policy changes suggested"
       };
+    case "bot_learning": {
+      const sourceCount = Array.isArray(p.sources) ? p.sources.length : 0;
+      const autoN = Array.isArray(p.autoApprovedRuleIds) ? p.autoApprovedRuleIds.length : 0;
+      const isAuto = p.source === "auto";
+      return {
+        ...base,
+        tone: "research",
+        title: isAuto ? "Auto-learning cycle" : "Bot learning cycle",
+        detail: p.summary
+          ? `${String(p.summary).slice(0, 90)}${sourceCount ? ` · ${sourceCount} source(s)` : ""}${autoN ? ` · ${autoN} rule(s) auto-applied` : ""}`
+          : sourceCount
+            ? `${sourceCount} external source(s) reviewed`
+            : "External research complete"
+      };
+    }
     case "agent_plan_tick": {
       const intents = Array.isArray(p.tradeIntents) ? p.tradeIntents : [];
       const buys = intents.filter((i) => String((i as Record<string, unknown>).action) === "buy").length;

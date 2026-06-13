@@ -547,6 +547,136 @@ export interface PaperBotPatchPreview {
   truncated: boolean;
 }
 
+export interface PaperBotLearningSource {
+  title: string;
+  url: string;
+  snippet?: string;
+  source_type?: string;
+  query?: string;
+}
+
+export interface PaperBotLearningLesson {
+  title: string;
+  detail?: string;
+  source_titles?: string[];
+}
+
+export interface PaperBotLearningCoachingDirectives {
+  regime_bias?: string;
+  entry_posture?: string;
+  exit_posture?: string;
+  priority_themes?: string[];
+  avoid?: string[];
+  trusted_symbols?: string[];
+}
+
+export interface PaperBotTrustedXTrader {
+  id: number;
+  xUserId: string;
+  username: string;
+  label: string;
+  createdAt: string;
+}
+
+export interface PaperBotXTrustedMeta {
+  configured: boolean;
+  xSearchOnly?: boolean;
+  accounts: Array<{ id?: string; username?: string; label?: string }>;
+  tickerBuzz: Array<{ symbol: string; mentions: number }>;
+  trustedSymbols: string[];
+  warning?: string | null;
+}
+
+export interface PaperBotLearningMemory {
+  updated_at?: string;
+  source?: string;
+  summary?: string | null;
+  lessons?: PaperBotLearningLesson[];
+  agent_hints?: string[];
+  coaching_directives?: PaperBotLearningCoachingDirectives;
+  research_queries?: string[];
+  source_count?: number;
+  grok_used?: boolean;
+}
+
+export interface PaperBotLearningEventPayload {
+  summary?: string | null;
+  lessons?: PaperBotLearningLesson[];
+  agentHints?: string[];
+  coachingDirectives?: PaperBotLearningCoachingDirectives;
+  trustedSymbols?: string[];
+  trustedXAccounts?: Array<{ username?: string; label?: string }>;
+  learningMemoryUpdatedAt?: string | null;
+  sources?: PaperBotLearningSource[];
+  researchQueries?: string[];
+  proposalCount?: number;
+  grokUsed?: boolean;
+  source?: string;
+  autoApprovedRuleIds?: number[];
+  capabilities?: Record<string, boolean>;
+}
+
+export interface PaperBotLearningLatest {
+  metrics: PaperBotMetrics;
+  nightlyContext: PaperBotNightlyContext;
+  capabilities: {
+    arxiv?: boolean;
+    x?: boolean;
+    x_search?: boolean;
+    x_monitor?: boolean;
+  };
+  lastLearning: {
+    id: number;
+    eventType: string;
+    payload: PaperBotLearningEventPayload;
+    createdAt: string;
+  } | null;
+  learningPendingRules: PaperBotRule[];
+  activeLearningMemory: PaperBotLearningMemory | null;
+  xTrusted: PaperBotXTrustedMeta;
+  trustedTraders: PaperBotTrustedXTrader[];
+  maxTrustedTraders: number;
+  autoLearning: {
+    schedulerEnabled: boolean;
+    runsWhenBotOn: boolean;
+    autoApproveTightening: boolean;
+    intervalHours: number;
+    lastAutoLearningAt: string | null;
+    marketOpen: boolean;
+    botOn: boolean;
+  };
+  asOf: string;
+  disclaimer: string;
+}
+
+export async function fetchPaperBotLearningLatest(): Promise<PaperBotLearningLatest> {
+  return paperBotFetch<PaperBotLearningLatest>("/paper-bot/learning/latest");
+}
+
+export async function runPaperBotLearningCycle(): Promise<PaperBotLearningLatest> {
+  return paperBotFetch<PaperBotLearningLatest>("/paper-bot/learning/run", {
+    method: "POST",
+    body: "{}"
+  });
+}
+
+export async function addPaperBotTrustedTrader(body: {
+  username: string;
+  label?: string;
+}): Promise<PaperBotTrustedXTrader> {
+  const data = await paperBotFetch<{ trader: PaperBotTrustedXTrader }>("/paper-bot/learning/trusted-traders", {
+    method: "POST",
+    body: JSON.stringify(body)
+  });
+  return data.trader;
+}
+
+export async function removePaperBotTrustedTrader(id: number): Promise<void> {
+  await paperBotFetch<{ ok: boolean }>(`/paper-bot/learning/trusted-traders/${id}`, {
+    method: "DELETE"
+  });
+}
+
 export interface PaperBotAutoresearchLatest {
   metrics: PaperBotMetrics;
   nightlyContext: PaperBotNightlyContext;

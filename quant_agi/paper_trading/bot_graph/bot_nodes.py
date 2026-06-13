@@ -10,7 +10,13 @@ from autoresearch.grok_client import effective_grok_api_key, grok_json_object
 from config import resolved_grok_model, settings
 from paper_trading.bot_graph.bot_state import BotPlanState
 from paper_trading.market_session import is_entry_window, is_exit_window, parse_run_at_iso
-from paper_trading.quant_execution import evaluate_exit_reason
+from paper_trading.learning_memory import (
+    apply_regime_coaching_bias,
+    coaching_payload_for_graph,
+    entry_score_adjustment,
+    exit_urgency_boost,
+    trusted_symbol_score_boost,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +39,8 @@ Rules:
 - Max 3 exit proposals.
 - Only symbols from the held list.
 - urgency >= 0.85 only for clear risk (stop-level loss, rank collapse).
-- Do not propose live trading, leverage, or options."""
+- Do not propose live trading, leverage, or options.
+- When learning_coach is present, follow its exit_posture and avoid patterns."""
 
 ENTRY_SYSTEM = """You are the entry strategist for a US equities PAPER trading bot (educational, not advice).
 Given ranked candidates, cash headroom, regime, and open slots — propose entries for momentum leaders.
@@ -54,11 +61,19 @@ Rules:
 - Max 3 entry proposals, ordered best-first.
 - Only symbols from the candidate list (not already held).
 - Prefer higher rank scores and strategy confluence.
-- Do not propose live trading, leverage, or options."""
+- Do not propose live trading, leverage, or options.
+- When learning_coach is present, follow its entry_posture and agent_hints."""
 
 
 def _upper_symbols(symbols: list[str]) -> list[str]:
     return [str(s).upper().strip() for s in symbols if str(s).strip()]
+
+
+def _with_coaching(state: BotPlanState, payload: dict[str, Any]) -> dict[str, Any]:
+    coach = coaching_payload_for_graph(state.get("learning_memory"))
+    if not coach:
+        return payload
+    return {**payload, **coach}
 
 
 def load_context(state: BotPlanState) -> BotPlanState:
@@ -85,6 +100,7 @@ def universe_scout(state: BotPlanState) -> BotPlanState:
     rank_map = state.get("quant_rank_by_symbol") or {}
     prices = state.get("prices") or {}
     held = {str(p.get("symbol", "")).upper() for p in state.get("positions") or [] if p.get("symbol")}
+    memory = state.get("learning_memory")
 
     candidates: list[dict[str, Any]] = []
     for idx, sym in enumerate(universe):
@@ -92,7 +108,10 @@ def universe_scout(state: BotPlanState) -> BotPlanState:
             continue
         meta = rank_map.get(sym) if isinstance(rank_map.get(sym), dict) else {}
         score = float(meta.get("score", 0)) if meta else 0.0
+        score += trusted_symbol_score_boost(memory, sym)
         strategy = str(meta.get("strategy", "")) if meta else ""
+        if meta.get("x_trusted") and strategy == "x_trusted":
+            strategy = "x_trusted"
         px = float(prices.get(sym) or 0)
         candidates.append(
             {
@@ -101,6 +120,7 @@ def universe_scout(state: BotPlanState) -> BotPlanState:
                 "score": score,
                 "strategy": strategy,
                 "price_usd": px,
+                "x_trusted": bool(meta.get("x_trusted") or trusted_symbol_score_boost(memory, sym) > 0),
             }
         )
 
@@ -156,6 +176,8 @@ def regime_analyst(state: BotPlanState) -> BotPlanState:
         label = "cautious"
         detail = f"Weak tape (top-5 avg {avg_top:.0f}) — exits over new entries."
 
+    label, detail = apply_regime_coaching_bias(label, detail, state.get("learning_memory"))
+
     return {
         **state,
         "regime_label": label,
@@ -171,6 +193,7 @@ def _deterministic_exit_proposals(state: BotPlanState) -> tuple[list[dict[str, A
     proposals: list[dict[str, Any]] = []
 
     severity = {"stop_loss": 1.0, "rank_drop": 0.85, "rank_score_floor": 0.75, "profit_rotate": 0.65}
+    urg_boost = exit_urgency_boost(state.get("learning_memory"))
 
     for row in state.get("held_enriched") or []:
         sym = str(row.get("symbol", "")).upper()
@@ -186,7 +209,7 @@ def _deterministic_exit_proposals(state: BotPlanState) -> tuple[list[dict[str, A
         proposals.append(
             {
                 "symbol": sym,
-                "urgency": severity.get(reason, 0.6),
+                "urgency": round(min(1.0, severity.get(reason, 0.6) + urg_boost), 3),
                 "reason": reason,
                 "rationale": f"Policy exit signal: {reason}",
                 "source": "deterministic",
@@ -217,11 +240,14 @@ def _deterministic_entry_proposals(state: BotPlanState) -> tuple[list[dict[str, 
     if slots <= 0:
         return [], "Max open positions reached."
 
+    score_adj = entry_score_adjustment(state.get("learning_memory"))
+    min_score = 52.0 + score_adj
+
     proposals: list[dict[str, Any]] = []
     for cand in state.get("scout_candidates") or []:
         sym = str(cand.get("symbol", "")).upper()
         score = float(cand.get("score") or 0)
-        if score <= 0:
+        if score <= 0 or score < min_score:
             continue
         urgency = min(0.95, max(0.5, score / 100.0))
         if regime == "moderate":
@@ -312,12 +338,15 @@ def exit_strategist(state: BotPlanState) -> BotPlanState:
             "grok_used": bool(state.get("grok_used")),
         }
 
-    user_payload = {
-        "regime": state.get("regime_label"),
-        "regime_detail": state.get("regime_detail"),
-        "held_positions": state.get("held_enriched"),
-        "universe_top": (state.get("scout_candidates") or [])[:8],
-    }
+    user_payload = _with_coaching(
+        state,
+        {
+            "regime": state.get("regime_label"),
+            "regime_detail": state.get("regime_detail"),
+            "held_positions": state.get("held_enriched"),
+            "universe_top": (state.get("scout_candidates") or [])[:8],
+        },
+    )
     blob = _grok_strategist(system=EXIT_SYSTEM, user_payload=user_payload, parse_key="exits")
     grok_used = bool(state.get("grok_used"))
 
@@ -350,15 +379,18 @@ def entry_strategist(state: BotPlanState) -> BotPlanState:
     cash = float(state.get("cash_usd") or 0)
     reserve = float(policy.get("min_cash_reserve") or 500)
 
-    user_payload = {
-        "regime": state.get("regime_label"),
-        "regime_detail": state.get("regime_detail"),
-        "candidates": (state.get("scout_candidates") or [])[:12],
-        "cash_usd": cash,
-        "cash_headroom_usd": max(0.0, cash - reserve),
-        "open_positions": len(state.get("held_enriched") or []),
-        "max_open_positions": int(policy.get("max_open_positions") or 5),
-    }
+    user_payload = _with_coaching(
+        state,
+        {
+            "regime": state.get("regime_label"),
+            "regime_detail": state.get("regime_detail"),
+            "candidates": (state.get("scout_candidates") or [])[:12],
+            "cash_usd": cash,
+            "cash_headroom_usd": max(0.0, cash - reserve),
+            "open_positions": len(state.get("held_enriched") or []),
+            "max_open_positions": int(policy.get("max_open_positions") or 5),
+        },
+    )
     blob = _grok_strategist(system=ENTRY_SYSTEM, user_payload=user_payload, parse_key="entries")
     grok_used = bool(state.get("grok_used"))
 
@@ -495,12 +527,15 @@ def candidate_debate(state: BotPlanState) -> BotPlanState:
         }
 
     allowed = {str(c.get("symbol", "")).upper() for c in candidates if c.get("symbol")}
-    user_payload = {
-        "regime": state.get("regime_label"),
-        "regime_detail": state.get("regime_detail"),
-        "candidates": candidates,
-        "held_positions": state.get("held_enriched"),
-    }
+    user_payload = _with_coaching(
+        state,
+        {
+            "regime": state.get("regime_label"),
+            "regime_detail": state.get("regime_detail"),
+            "candidates": candidates,
+            "held_positions": state.get("held_enriched"),
+        },
+    )
     blob = _grok_strategist(system=DEBATE_SYSTEM, user_payload=user_payload, parse_key="debates")
     grok_used = bool(state.get("grok_used"))
     debate_used = bool(state.get("debate_used"))

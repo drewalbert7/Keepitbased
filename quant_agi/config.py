@@ -107,6 +107,11 @@ class Settings(BaseSettings):
     )
     grok_request_timeout_sec: int = Field(default=90, ge=15, le=300)
 
+    bot_learning_use_x_search: bool = Field(
+        default=True,
+        description="Use xAI x_search for X posts in bot learning (BOT_LEARNING_USE_X_SEARCH).",
+    )
+
     llm_monthly_budget_usd: float = Field(default=25.0)
     llm_call_max_tokens: int = Field(default=4_096)
 

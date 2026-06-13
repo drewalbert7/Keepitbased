@@ -6,6 +6,8 @@ const { resolveQuantAgiBaseUrl } = require('../utils/quantAgiBaseUrl');
 const deployListService = require('./deployListService');
 const { stampPaperBotFillReason, stampShadowOrderPayload } = require('../utils/paperBotNamespace');
 const { emitPaperBotUpdate } = require('./paperBotSocket');
+const xInvestorFeedService = require('./xInvestorFeedService');
+const trustedXTradersService = require('./trustedXTradersService');
 const { isUsStockRegularTradingHours } = require('../utils/researchAlertGates');
 
 function notifyPaperBotClients(userId, eventType, hint) {
@@ -38,6 +40,11 @@ const QUANT_AUTO_STRATEGIES = [
 ];
 const QUANT_AUTO_TOP_PER_STRATEGY = 8;
 const QUANT_AUTO_MAX_SYMBOLS = 20;
+const X_TRUSTED_UNIVERSE_MAX = (() => {
+  const n = parseInt(process.env.PAPER_BOT_X_TRUSTED_UNIVERSE_MAX, 10);
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 20) : 10;
+})();
+const X_TRUSTED_SCORE_BASE = 68;
 const VALID_UNIVERSE_MODES = new Set(['curated', 'deploy_list_only', 'quant_auto', 'quant_auto_agent']);
 
 function round2(n) {
@@ -304,7 +311,8 @@ function buildBotRunDayBody(ctx, accountRow, { killSwitchArmed } = {}) {
     quant_rank_by_symbol: ctx.quantRankBySymbol || {},
     quant_mode: quantMode,
     agent_mode: agentMode,
-    run_at_iso: new Date().toISOString()
+    run_at_iso: new Date().toISOString(),
+    learning_memory: accountRow.learning_memory || null
   };
 }
 
@@ -516,6 +524,193 @@ async function fetchQuantAutoUniverse() {
   };
 }
 
+function trustedSymbolsFromLearningMemory(learningMemory) {
+  const raw = learningMemory?.coaching_directives?.trusted_symbols;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((s) => String(s || '').toUpperCase().trim())
+    .filter((s) => /^[A-Z]{1,5}$/.test(s))
+    .slice(0, X_TRUSTED_UNIVERSE_MAX);
+}
+
+async function fetchTrustedPostsViaXSearch(handles) {
+  const uniq = [...new Set(handles.map((h) => String(h || '').replace(/^@/, '').toLowerCase()).filter(Boolean))];
+  if (!uniq.length) return [];
+
+  const base = resolveQuantAgiBaseUrl();
+  try {
+    const { data } = await axios.post(
+      `${base}/bot/x-trusted-posts`,
+      { handles: uniq },
+      { timeout: Math.max(config.QUANT_AGI_RANK_TIMEOUT_MS || 45000, 90000) }
+    );
+    return Array.isArray(data?.posts) ? data.posts : [];
+  } catch (err) {
+    logger.warn(`x_search trusted posts failed: ${err.message}`);
+    return [];
+  }
+}
+
+function postsToTweetShape(posts, accounts) {
+  const byUser = new Map(accounts.map((a) => [String(a.username).toLowerCase(), a]));
+  return posts.map((p, idx) => {
+    const handle =
+      String(p.monitor_username || p.author || '')
+        .replace(/^@/, '')
+        .toLowerCase() || 'unknown';
+    const acc = byUser.get(handle);
+    const text = String(p.snippet || p.title || '').trim();
+    return {
+      id: String(idx),
+      text,
+      authorUsername: handle,
+      createdAt: new Date().toISOString(),
+      cashtags: xInvestorFeedService.extractCashtags(text),
+      monitorLabel: acc?.label || handle,
+      monitorUsername: handle,
+      monitorSource: 'x_search',
+      sourceUrl: p.url || null
+    };
+  });
+}
+
+function aggregateTickerBuzz(tweets) {
+  const counts = new Map();
+  for (const tw of tweets) {
+    for (const t of tw.cashtags || []) {
+      counts.set(t, (counts.get(t) || 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .map(([symbol, mentions]) => ({ symbol, mentions }))
+    .sort((a, b) => b.mentions - a.mentions)
+    .slice(0, 12);
+}
+
+function mergeTrustedAccounts(userAccounts, envAccounts) {
+  const seen = new Set();
+  const out = [];
+  for (const acc of [...userAccounts, ...envAccounts]) {
+    const u = String(acc.username || '').toLowerCase();
+    if (!u || seen.has(u)) continue;
+    seen.add(u);
+    out.push(acc);
+  }
+  return out;
+}
+
+async function loadXTrustedPulse(userId) {
+  try {
+    const userAccounts = userId ? await trustedXTradersService.accountsForPulse(userId) : [];
+    const envAccounts = xInvestorFeedService.parseMonitoredAccounts().map((a) => ({
+      id: a.username,
+      username: a.username,
+      label: a.label,
+      source: 'env'
+    }));
+    const accounts = mergeTrustedAccounts(userAccounts, envAccounts);
+
+    if (!accounts.length) {
+      return {
+        configured: false,
+        xSearchOnly: true,
+        warning: 'Add trusted @handles below — posts are fetched via Grok x_search (no X API).',
+        accounts: [],
+        tickerBuzz: [],
+        tweets: []
+      };
+    }
+
+    const posts = await fetchTrustedPostsViaXSearch(accounts.map((a) => a.username));
+    const tweets = postsToTweetShape(posts, accounts);
+    const tickerBuzz = aggregateTickerBuzz(tweets);
+
+    return {
+      configured: true,
+      xSearchOnly: true,
+      warning: tweets.length
+        ? null
+        : 'No posts returned — ensure XAI_API_KEY or GROK_API_KEY is set for x_search.',
+      accounts,
+      tickerBuzz,
+      tweets
+    };
+  } catch (err) {
+    logger.warn(`X trusted pulse failed: ${err.message}`);
+    return {
+      configured: false,
+      xSearchOnly: true,
+      warning: err.message,
+      accounts: [],
+      tickerBuzz: [],
+      tweets: []
+    };
+  }
+}
+
+function mergeXTrustedUniverse(base, { tickerBuzz, learningMemory } = {}) {
+  const symbols = [...(base.symbols || [])];
+  const rankBySymbol = { ...(base.rankBySymbol || {}) };
+  const seen = new Set(symbols);
+  let added = 0;
+
+  const rows = [];
+  for (const row of tickerBuzz || []) {
+    const sym = String(row?.symbol || '').toUpperCase().trim();
+    if (!sym) continue;
+    rows.push({ sym, mentions: Number(row.mentions) || 1, source: 'x_live' });
+  }
+  for (const sym of trustedSymbolsFromLearningMemory(learningMemory)) {
+    rows.push({ sym, mentions: 2, source: 'x_learning' });
+  }
+
+  for (const row of rows) {
+    const { sym, mentions, source } = row;
+    if (seen.has(sym)) {
+      const prev = rankBySymbol[sym] || { score: 0, strategy: 'curated' };
+      rankBySymbol[sym] = {
+        ...prev,
+        x_trusted: true,
+        x_mentions: Math.max(Number(prev.x_mentions) || 0, mentions),
+        x_source: prev.x_source || source
+      };
+      continue;
+    }
+    if (added >= X_TRUSTED_UNIVERSE_MAX) continue;
+    symbols.push(sym);
+    seen.add(sym);
+    rankBySymbol[sym] = {
+      score: X_TRUSTED_SCORE_BASE + Math.min(12, mentions * 3),
+      strategy: 'x_trusted',
+      x_trusted: true,
+      x_mentions: mentions,
+      x_source: source
+    };
+    added += 1;
+  }
+
+  return { symbols, rankBySymbol, xTrustedAdded: added };
+}
+
+function wrapUniverseResolved(base, xPulse, learningMemory) {
+  const merged = mergeXTrustedUniverse(
+    { symbols: base.symbols, rankBySymbol: base.quantRankBySymbol || {} },
+    { tickerBuzz: xPulse?.tickerBuzz, learningMemory }
+  );
+  return {
+    symbols: merged.symbols,
+    mode: base.mode,
+    quantRankBySymbol: Object.keys(merged.rankBySymbol).length ? merged.rankBySymbol : base.quantRankBySymbol,
+    xTrustedMeta: {
+      configured: Boolean(xPulse?.configured),
+      accounts: xPulse?.accounts || [],
+      tickerBuzz: xPulse?.tickerBuzz || [],
+      symbolsAdded: merged.xTrustedAdded || 0,
+      warning: xPulse?.warning || null
+    }
+  };
+}
+
 async function resolveCuratedUniverse(userId, deployListOnly) {
   const deploySymbols = await loadDeployListSymbols(userId);
   if (deployListOnly) {
@@ -528,30 +723,49 @@ async function resolveCuratedUniverse(userId, deployListOnly) {
 
 async function resolveUniverse(userId, accountRow) {
   const mode = normalizeUniverseMode(accountRow);
+  const xPulse = await loadXTrustedPulse(userId);
+  const learningMemory = accountRow?.learning_memory || null;
+
   if (mode === 'quant_auto' || mode === 'quant_auto_agent') {
     const quant = await fetchQuantAutoUniverse();
     if (quant.symbols.length) {
-      return { symbols: quant.symbols, mode, quantRankBySymbol: quant.rankBySymbol };
+      return wrapUniverseResolved(
+        { symbols: quant.symbols, mode, quantRankBySymbol: quant.rankBySymbol },
+        xPulse,
+        learningMemory
+      );
     }
     logger.warn('Quant auto universe empty — falling back to curated watchlist + deploy list');
-    return {
-      symbols: await resolveCuratedUniverse(userId, false),
-      mode: 'quant_auto_fallback',
-      quantRankBySymbol: null
-    };
+    return wrapUniverseResolved(
+      {
+        symbols: await resolveCuratedUniverse(userId, false),
+        mode: 'quant_auto_fallback',
+        quantRankBySymbol: null
+      },
+      xPulse,
+      learningMemory
+    );
   }
   if (mode === 'deploy_list_only') {
-    return {
-      symbols: await resolveCuratedUniverse(userId, true),
-      mode,
-      quantRankBySymbol: null
-    };
+    return wrapUniverseResolved(
+      {
+        symbols: await resolveCuratedUniverse(userId, true),
+        mode,
+        quantRankBySymbol: null
+      },
+      xPulse,
+      learningMemory
+    );
   }
-  return {
-    symbols: await resolveCuratedUniverse(userId, false),
-    mode: 'curated',
-    quantRankBySymbol: null
-  };
+  return wrapUniverseResolved(
+    {
+      symbols: await resolveCuratedUniverse(userId, false),
+      mode: 'curated',
+      quantRankBySymbol: null
+    },
+    xPulse,
+    learningMemory
+  );
 }
 
 async function ensureAccount(userId) {
@@ -1316,6 +1530,266 @@ async function runBrainReflection(userId) {
   return getBrainMonitor(userId);
 }
 
+async function fetchLearningCapabilities() {
+  const base = resolveQuantAgiBaseUrl();
+  try {
+    const { data } = await axios.get(`${base}/bot/learning/capabilities`, {
+      timeout: config.QUANT_AGI_RANK_TIMEOUT_MS || 15000
+    });
+    return data?.capabilities || { arxiv: true, x_search: false, x: false };
+  } catch (err) {
+    logger.warn(`Learning capabilities fetch failed: ${err.message}`);
+    return { arxiv: true, x_search: false, x_monitor: false, x: false };
+  }
+}
+
+async function getBotLearningLatest(userId) {
+  const accountRow = await ensureAccount(userId);
+  const positionsRaw = await loadPositions(userId);
+  const symbols = positionsRaw.map((p) => p.symbol);
+  const priceMap = await fetchSymbolPrices(symbols);
+  const liveMetrics = await computeMetrics(accountRow, positionsRaw, priceMap);
+  const snapshotsRaw = await loadSnapshots(userId);
+  const tradeCount = await countTrades(userId);
+  const metrics = computePaperBotMetrics(
+    accountRow,
+    snapshotsRaw,
+    liveMetrics.equityUsd,
+    tradeCount
+  );
+  const nightlyContext = await buildNightlyContext(
+    userId,
+    accountRow,
+    snapshotsRaw,
+    metrics,
+    tradeCount
+  );
+
+  const [capabilitiesRaw, lastLearningEvent, xPulse, trustedTraders] = await Promise.all([
+    fetchLearningCapabilities(),
+    loadRecentEvents(userId, 8).then((rows) => rows.find((e) => e.eventType === 'bot_learning')),
+    loadXTrustedPulse(userId),
+    trustedXTradersService.listTrustedTraders(userId)
+  ]);
+
+  const capabilities = {
+    ...capabilitiesRaw,
+    x_monitor: Boolean(capabilitiesRaw.x_monitor || trustedTraders.length || xPulse?.accounts?.length),
+    x: Boolean(capabilitiesRaw.x || capabilitiesRaw.x_search || trustedTraders.length)
+  };
+
+  const pendingRules = (await loadRulesByStatus(userId, 'pending')).map(mapRule);
+  const learningPendingRules = pendingRules.filter(
+    (r) => r.source === 'autoresearch' || (r.ruleJson && r.ruleJson.bot_learning === true)
+  );
+
+  return {
+    metrics,
+    nightlyContext,
+    capabilities,
+    lastLearning: lastLearningEvent || null,
+    learningPendingRules,
+    activeLearningMemory: accountRow.learning_memory || null,
+    xTrusted: {
+      configured: Boolean(xPulse?.configured || trustedTraders.length),
+      xSearchOnly: true,
+      accounts: xPulse?.accounts || [],
+      tickerBuzz: (xPulse?.tickerBuzz || []).slice(0, 8),
+      trustedSymbols: trustedSymbolsFromLearningMemory(accountRow.learning_memory),
+      warning: xPulse?.warning || null
+    },
+    trustedTraders,
+    maxTrustedTraders: trustedXTradersService.MAX_TRUSTED,
+    autoLearning: {
+      schedulerEnabled: Boolean(config.ENABLE_PAPER_BOT_LEARNING_AUTO_RUN),
+      runsWhenBotOn: true,
+      autoApproveTightening: Boolean(config.PAPER_BOT_LEARNING_AUTO_APPROVE),
+      intervalHours: Math.round((config.PAPER_BOT_LEARNING_INTERVAL_MS || 86400000) / 3600000),
+      lastAutoLearningAt: accountRow.last_auto_learning_at || null,
+      marketOpen: isUsStockRegularTradingHours(),
+      botOn: Boolean(accountRow.auto_run_enabled && !accountRow.kill_switch_armed)
+    },
+    asOf: new Date().toISOString(),
+    disclaimer: config.PAPER_BOT_LEARNING_AUTO_APPROVE
+      ? 'Learning runs automatically after hours when the bot is ON. Conservative tightening rules may auto-apply; others stay in the inbox.'
+      : 'Learning runs automatically after hours when the bot is ON — review and approve rule proposals in the inbox.'
+  };
+}
+
+function isConservativeTightening(ruleType, newVal, currentPolicy) {
+  const cur = Number(currentPolicy[ruleType] ?? DEFAULT_POLICY[ruleType]);
+  if (!Number.isFinite(newVal)) return false;
+  switch (ruleType) {
+    case 'min_cash_reserve':
+      return newVal >= cur;
+    case 'max_notional_per_trade':
+    case 'max_position_pct':
+    case 'max_open_positions':
+      return newVal <= cur;
+    default:
+      return false;
+  }
+}
+
+async function autoApproveConservativeLearningRules(userId, ruleIds, mergedPolicy) {
+  if (!config.PAPER_BOT_LEARNING_AUTO_APPROVE || !ruleIds?.length) {
+    return [];
+  }
+  const approved = [];
+  for (const ruleId of ruleIds) {
+    if (approved.length >= 1) break;
+    const { rows } = await db.query(
+      `SELECT id, rule_json FROM paper_bot_rules
+       WHERE id = $1 AND user_id = $2 AND status = 'pending'`,
+      [ruleId, userId]
+    );
+    if (!rows.length) continue;
+    const rj = rows[0].rule_json || {};
+    if (!rj.bot_learning) continue;
+    const ruleType = rj.rule_type || rj.ruleType;
+    const val = Number(rj.value ?? rj[ruleType]);
+    if (!isConservativeTightening(ruleType, val, mergedPolicy)) continue;
+    await approveRule(userId, ruleId);
+    approved.push(ruleId);
+  }
+  return approved;
+}
+
+async function loadXMonitorPostsForLearning(userId) {
+  try {
+    const pulse = await loadXTrustedPulse(userId);
+    const tweets = Array.isArray(pulse?.tweets) ? pulse.tweets : [];
+    return {
+      posts: tweets.slice(0, 24).map((tw) => ({
+        id: tw.id,
+        text: tw.text,
+        authorUsername: tw.authorUsername || tw.monitorUsername,
+        createdAt: tw.createdAt,
+        monitorLabel: tw.monitorLabel,
+        cashtags: tw.cashtags || []
+      })),
+      accounts: pulse.accounts || [],
+      tickerBuzz: pulse.tickerBuzz || [],
+      configured: Boolean(pulse.configured)
+    };
+  } catch (err) {
+    logger.warn(`X monitor posts for learning failed: ${err.message}`);
+    return { posts: [], accounts: [], tickerBuzz: [], configured: false };
+  }
+}
+
+async function runBotLearningCycle(userId, { source = 'manual' } = {}) {
+  await ensureAccount(userId);
+  const latest = await getBotLearningLatest(userId);
+  const ctx = await buildRunContext(userId);
+  const { accountRow, mergedPolicy } = ctx;
+  const tradesRaw = await loadRecentTrades(userId, 25);
+  const agentPlanHistory = (await loadRecentEvents(userId, 12)).filter(
+    (e) => e.eventType === 'agent_plan_tick'
+  );
+  const xMonitorBundle = await loadXMonitorPostsForLearning(userId);
+
+  const base = resolveQuantAgiBaseUrl();
+  const { data } = await axios.post(
+    `${base}/bot/learning-cycle`,
+    {
+      agent_plans: agentPlanHistory.map((e) => e.payload || {}),
+      recent_trades: tradesRaw.map(mapTrade),
+      metrics: latest.metrics,
+      nightly_context: latest.nightlyContext,
+      current_policy: mergedPolicy,
+      universe_mode: normalizeUniverseMode(accountRow),
+      x_monitor_posts: xMonitorBundle.posts,
+      x_monitor_accounts: xMonitorBundle.accounts,
+      x_ticker_buzz: xMonitorBundle.tickerBuzz
+    },
+    { timeout: Math.max(config.QUANT_AGI_RANK_TIMEOUT_MS || 45000, 90000) }
+  );
+
+  if (!data?.ok) {
+    const err = new Error(data?.error || 'Bot learning cycle failed');
+    err.statusCode = 502;
+    throw err;
+  }
+
+  const proposals = Array.isArray(data.proposals) ? data.proposals : [];
+  const createdRuleIds = [];
+
+  for (const p of proposals) {
+    const ruleText = String(p.rule_text || p.ruleText || 'Learning lab proposal').slice(0, 500);
+    const ruleJson = {
+      ...(p.payload && typeof p.payload === 'object' ? p.payload : {}),
+      rule_type: p.rule_type || p.payload?.rule_type,
+      rationale: p.rationale || null,
+      bot_learning: true,
+      research_queries: data.research_queries || [],
+      source_count: Array.isArray(data.sources) ? data.sources.length : 0
+    };
+    const { rows } = await db.query(
+      `INSERT INTO paper_bot_rules (user_id, source, status, rule_text, rule_json)
+       VALUES ($1, 'autoresearch', 'pending', $2, $3::jsonb)
+       RETURNING id`,
+      [userId, ruleText, JSON.stringify(ruleJson)]
+    );
+    if (rows[0]?.id) createdRuleIds.push(rows[0].id);
+  }
+
+  let autoApprovedRuleIds = [];
+  if (source === 'auto' && createdRuleIds.length) {
+    autoApprovedRuleIds = await autoApproveConservativeLearningRules(
+      userId,
+      createdRuleIds,
+      mergedPolicy
+    );
+  }
+
+  await db.query(
+    `UPDATE paper_bot_accounts
+     SET last_auto_learning_at = NOW(),
+         learning_memory = $2::jsonb,
+         updated_at = NOW()
+     WHERE user_id = $1`,
+    [userId, JSON.stringify(data.learning_memory || null)]
+  );
+
+  await db.query(
+    `INSERT INTO paper_bot_events (user_id, event_type, payload)
+     VALUES ($1, 'bot_learning', $2)`,
+    [
+      userId,
+      JSON.stringify({
+        source,
+        summary: data.summary || null,
+        lessons: data.lessons || [],
+        agentHints: data.agent_hints || [],
+        coachingDirectives: data.coaching_directives || data.learning_memory?.coaching_directives || null,
+        trustedSymbols: data.coaching_directives?.trusted_symbols || data.trusted_x?.trusted_symbols || [],
+        trustedXAccounts: (xMonitorBundle.accounts || []).slice(0, 6),
+        learningMemoryUpdatedAt: data.learning_memory?.updated_at || null,
+        sources: (data.sources || []).slice(0, 12),
+        researchQueries: data.research_queries || [],
+        proposalCount: proposals.length,
+        createdRuleIds,
+        autoApprovedRuleIds,
+        grokUsed: Boolean(data.grok_used),
+        capabilities: data.capabilities || latest.capabilities
+      })
+    ]
+  );
+
+  notifyPaperBotClients(
+    userId,
+    'bot_learning',
+    autoApprovedRuleIds.length
+      ? `Auto-learning applied ${autoApprovedRuleIds.length} conservative rule(s)`
+      : proposals.length
+        ? `Learning cycle — ${proposals.length} proposal(s) in rules inbox`
+        : 'Learning cycle complete — review lessons in the learning lab'
+  );
+
+  return getBotLearningLatest(userId);
+}
+
 async function getRecentEvents(userId, limit = 15, options = {}) {
   return loadRecentEvents(userId, limit, options);
 }
@@ -1483,8 +1957,11 @@ async function buildNightlyContext(userId, accountRow, snapshotsRaw, metrics, tr
   );
   const tagRes = await db.query(
     `SELECT tag, COUNT(*)::int AS n FROM (
-       SELECT unnest(reason_tags) AS tag FROM paper_bot_trades
-       WHERE user_id = $1 AND reason_tags IS NOT NULL AND cardinality(reason_tags) > 0
+       SELECT jsonb_array_elements_text(reason_tags) AS tag FROM paper_bot_trades
+       WHERE user_id = $1
+         AND reason_tags IS NOT NULL
+         AND jsonb_typeof(reason_tags) = 'array'
+         AND jsonb_array_length(reason_tags) > 0
      ) t GROUP BY tag ORDER BY n DESC LIMIT 8`,
     [userId]
   );
@@ -2042,12 +2519,33 @@ async function removeAllPendingRules(userId) {
   return getState(userId);
 }
 
+async function listTrustedXTraders(userId) {
+  return trustedXTradersService.listTrustedTraders(userId);
+}
+
+async function addTrustedXTrader(userId, { username, label } = {}) {
+  const row = await trustedXTradersService.addTrustedTrader(userId, { username, label });
+  xInvestorFeedService.invalidateXPulseCache(userId);
+  return row;
+}
+
+async function removeTrustedXTrader(userId, traderId) {
+  const result = await trustedXTradersService.removeTrustedTrader(userId, traderId);
+  xInvestorFeedService.invalidateXPulseCache(userId);
+  return result;
+}
+
 module.exports = {
   DISARM_CONFIRM_PHRASE,
   getState,
   getPolicySnapshot,
   getBrainMonitor,
   runBrainReflection,
+  getBotLearningLatest,
+  runBotLearningCycle,
+  listTrustedXTraders,
+  addTrustedXTrader,
+  removeTrustedXTrader,
   getAutoresearchLatest,
   promoteAutoresearchPatch,
   resetAccount,

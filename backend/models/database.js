@@ -278,6 +278,36 @@ async function runInitializeDatabase() {
     `);
 
     await client.query(`
+      ALTER TABLE paper_bot_accounts ADD COLUMN IF NOT EXISTS last_auto_learning_at TIMESTAMPTZ
+    `);
+
+    await client.query(`
+      ALTER TABLE paper_bot_accounts ADD COLUMN IF NOT EXISTS learning_memory JSONB
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS paper_bot_trusted_x_traders (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        x_user_id VARCHAR(32) NOT NULL,
+        username VARCHAR(32) NOT NULL,
+        label VARCHAR(64),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(user_id, x_user_id),
+        UNIQUE(user_id, username)
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_paper_bot_trusted_x_user
+        ON paper_bot_trusted_x_traders(user_id, created_at ASC)
+    `);
+
+    await client.query(`
+      ALTER TABLE paper_bot_trusted_x_traders ALTER COLUMN x_user_id DROP NOT NULL
+    `);
+
+    await client.query(`
       ALTER TABLE paper_bot_accounts ADD COLUMN IF NOT EXISTS universe_mode VARCHAR(24) NOT NULL DEFAULT 'quant_auto'
     `);
 

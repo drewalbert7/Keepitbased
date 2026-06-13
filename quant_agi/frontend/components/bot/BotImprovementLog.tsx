@@ -39,8 +39,7 @@ export function BotImprovementLog({ refreshKey = 0 }: Props) {
       <div>
         <h3 className="text-sm font-semibold text-white/85">Bot improvement log</h3>
         <p className="mt-0.5 text-[11px] text-white/45">
-          Fills, rules, kill switch, simulate-day, and autoresearch promotions — your paper bot
-          story, not the autoresearch lab timeline in Zone C.
+          Fills, rules, kill switch, simulate-day, and learning cycles — your paper bot activity log.
         </p>
       </div>
 

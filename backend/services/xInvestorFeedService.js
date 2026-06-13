@@ -1,11 +1,11 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
 const config = require('../config');
+const trustedXTradersService = require('./trustedXTradersService');
 
-/** In-memory cache + single-flight lock */
-let cachePayload = null;
-let cacheExpiresAt = 0;
-let inflight = null;
+/** Per-key in-memory cache + single-flight lock */
+const cacheByKey = new Map();
+const inflightByKey = new Map();
 
 function parseMonitoredAccounts() {
   const raw = process.env.X_MONITORED_ACCOUNTS_JSON || '';
@@ -17,13 +17,25 @@ function parseMonitoredAccounts() {
       .map((a) => ({
         id: String(a.id || a.userId || '').trim(),
         username: String(a.username || a.handle || '').replace(/^@/, ''),
-        label: String(a.label || a.name || '').trim() || 'Source'
+        label: String(a.label || a.name || '').trim() || 'Source',
+        source: 'env'
       }))
       .filter((a) => /^\d+$/.test(a.id));
   } catch (e) {
     logger.warn('X_MONITORED_ACCOUNTS_JSON invalid JSON', e.message);
     return [];
   }
+}
+
+function mergeMonitoredAccounts(userAccounts, envAccounts) {
+  const seen = new Set();
+  const out = [];
+  for (const acc of [...userAccounts, ...envAccounts]) {
+    if (!acc?.id || seen.has(acc.id)) continue;
+    seen.add(acc.id);
+    out.push(acc);
+  }
+  return out;
 }
 
 function extractCashtags(text) {
@@ -82,66 +94,90 @@ async function fetchUserTweets(bearer, userId, maxResults = 8) {
   });
 }
 
+function cacheKeyFor(userId) {
+  return userId ? `user:${userId}` : 'env';
+}
+
+function emptyPulse({ configured, warning, bearerPresent }) {
+  return {
+    configured: Boolean(configured),
+    bearerPresent: Boolean(bearerPresent),
+    warning: warning || null,
+    accounts: [],
+    tweets: [],
+    tickerBuzz: [],
+    fetchedAt: new Date().toISOString(),
+    cached: false
+  };
+}
+
 /**
  * Returns cached-or-fresh X pulse for monitored investor accounts.
- * Requires X_API_BEARER_TOKEN (Twitter / X API v2 app bearer).
+ * When userId is set, merges UI-configured trusted traders with env X_MONITORED_ACCOUNTS_JSON.
  */
-async function getXPulse({ ttlMs = 90000 } = {}) {
+async function getXPulse({ userId, ttlMs = 90000 } = {}) {
+  const key = cacheKeyFor(userId);
   const now = Date.now();
-  if (cachePayload && now < cacheExpiresAt) {
-    return { ...cachePayload, cached: true };
+  const cached = cacheByKey.get(key);
+  if (cached && now < cached.expiresAt) {
+    return { ...cached.payload, cached: true };
   }
-  if (inflight) return inflight;
+  if (inflightByKey.get(key)) return inflightByKey.get(key);
 
   const bearer = config.X_API_BEARER_TOKEN || process.env.X_API_BEARER_TOKEN || '';
-  const accounts = parseMonitoredAccounts();
 
-  inflight = (async () => {
+  const job = (async () => {
     try {
+      const envAccounts = parseMonitoredAccounts();
+      let userAccounts = [];
+      if (userId) {
+        try {
+          userAccounts = await trustedXTradersService.accountsForPulse(userId);
+        } catch (err) {
+          logger.warn(`Trusted X traders load failed for user ${userId}: ${err.message}`);
+        }
+      }
+      const accounts = mergeMonitoredAccounts(userAccounts, envAccounts);
+
       if (!bearer) {
-        const empty = {
+        const payload = emptyPulse({
           configured: false,
+          bearerPresent: false,
           warning:
-            'Add X_API_BEARER_TOKEN and X_MONITORED_ACCOUNTS_JSON to enable live posts from investor accounts you trust.',
-          accounts: [],
-          tweets: [],
-          tickerBuzz: [],
-          fetchedAt: new Date().toISOString(),
-          cached: false
-        };
-        cachePayload = empty;
-        cacheExpiresAt = Date.now() + 60_000;
-        return empty;
+            'Add X_API_BEARER_TOKEN on the server to fetch posts from trusted X traders you add below.'
+        });
+        cacheByKey.set(key, { payload, expiresAt: Date.now() + 60_000 });
+        return payload;
       }
 
       if (accounts.length === 0) {
-        const empty = {
+        const payload = emptyPulse({
           configured: true,
-          warning:
-            'Bearer token set — add X_MONITORED_ACCOUNTS_JSON with [{ "id": "numeric_user_id", "username": "handle", "label": "Name" }, ...]. Find IDs via X developer portal or third-party lookup tools.',
-          accounts: [],
-          tweets: [],
-          tickerBuzz: [],
-          fetchedAt: new Date().toISOString(),
-          cached: false
-        };
-        cachePayload = empty;
-        cacheExpiresAt = Date.now() + 60_000;
-        return empty;
+          bearerPresent: true,
+          warning: userId
+            ? 'Add trusted trader @handles below — their cashtags feed learning and the bot universe.'
+            : 'Bearer token set — add trusted traders in the learning lab or X_MONITORED_ACCOUNTS_JSON in env.'
+        });
+        cacheByKey.set(key, { payload, expiresAt: Date.now() + 60_000 });
+        return payload;
       }
 
-      const cap = Math.min(accounts.length, 6);
+      const cap = Math.min(accounts.length, 8);
       const slice = accounts.slice(0, cap);
       const allTweets = [];
 
       for (const acc of slice) {
         try {
+          if (acc.viaXSearch || !/^\d+$/.test(String(acc.id))) {
+            continue;
+          }
           const tweets = await fetchUserTweets(bearer, acc.id, 8);
           for (const tw of tweets) {
             allTweets.push({
               ...tw,
               monitorLabel: acc.label,
-              monitorUsername: acc.username || tw.authorUsername
+              monitorUsername: acc.username || tw.authorUsername,
+              monitorSource: acc.source || 'env'
             });
           }
         } catch (err) {
@@ -151,45 +187,48 @@ async function getXPulse({ ttlMs = 90000 } = {}) {
 
       allTweets.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-      const tickerBuzz = aggregateTickers(allTweets);
-
       const payload = {
         configured: true,
+        bearerPresent: true,
         warning: null,
         accounts: slice.map((a) => ({
           id: a.id,
           username: a.username,
-          label: a.label
+          label: a.label,
+          source: a.source || 'env'
         })),
         tweets: allTweets.slice(0, 40),
-        tickerBuzz,
+        tickerBuzz: aggregateTickers(allTweets),
         fetchedAt: new Date().toISOString(),
         cached: false
       };
 
-      cachePayload = payload;
-      cacheExpiresAt = Date.now() + ttlMs;
+      cacheByKey.set(key, { payload, expiresAt: Date.now() + ttlMs });
       return payload;
     } finally {
-      inflight = null;
+      inflightByKey.delete(key);
     }
   })();
 
-  return inflight;
+  inflightByKey.set(key, job);
+  return job;
+}
+
+function invalidateXPulseCache(userId) {
+  if (userId) cacheByKey.delete(cacheKeyFor(userId));
+  cacheByKey.delete(cacheKeyFor(null));
 }
 
 /**
  * Recent posts from configured X monitors that cashtag the symbol (tool-backed for §11 dip emails).
- * @param {string} symbol
- * @returns {Promise<Array<{ id?: string, text: string, authorUsername?: string | null, createdAt?: string, monitorLabel?: string }>>}
  */
-async function getXSnippetsForSymbol(symbol) {
+async function getXSnippetsForSymbol(symbol, { userId } = {}) {
   const sym = String(symbol || '')
     .trim()
     .toUpperCase();
   if (!sym) return [];
 
-  const pulse = await getXPulse({ ttlMs: 90000 });
+  const pulse = await getXPulse({ userId, ttlMs: 90000 });
   const tweets = Array.isArray(pulse.tweets) ? pulse.tweets : [];
   const out = [];
 
@@ -214,6 +253,8 @@ async function getXSnippetsForSymbol(symbol) {
 
 module.exports = {
   getXPulse,
+  invalidateXPulseCache,
   extractCashtags,
-  getXSnippetsForSymbol
+  getXSnippetsForSymbol,
+  parseMonitoredAccounts
 };

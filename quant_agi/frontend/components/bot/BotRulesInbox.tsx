@@ -20,10 +20,10 @@ function ruleSourceBadge(rule: PaperBotRule) {
       </span>
     );
   }
-  if (rule.source === "autoresearch") {
+  if (rule.ruleJson?.bot_learning || rule.source === "autoresearch") {
     return (
       <span className="rounded-full bg-cyan-400/15 px-2 py-0.5 text-[10px] text-cyan-200">
-        Autoresearch
+        Learning lab
       </span>
     );
   }

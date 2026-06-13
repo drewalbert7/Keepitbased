@@ -2,7 +2,9 @@
 
 > **Single source of truth:** `keepitbased/todo.md` in this repo. When you or Cursor reference **`todo.md`**, use **this file only**. A stub at `/home/dstrad/todo.md` redirects here.
 
-Last updated: **2026-06-11** (Phase 4a + 4c + 5c shipped · UI polish deferred).
+Last updated: **2026-06-12** (Bot learning lab + trusted X traders · Grok x_search only · learning memory wired).
+
+**Session checkpoint (2026-06-12) — STOP FOR NIGHT · Bot learning lab + trusted X:** **Shipped:** Replaced Karpathy autoresearch strip with **Bot learning lab** (`bot_learning.py`, arXiv + **Grok x_search** — no paid X API). **Learning → coaching memory** (`learning_memory.py`, `learning_memory` JSONB on account) injected into LangGraph **plan-tick** (regime/entry/exit/debate + deterministic score nudges). **Auto-learning** when bot ON (`paperBotLearningAutoRun.js`, optional conservative auto-approve). **Trusted X traders UI** — per-user `@handles` in learning lab (`paper_bot_trusted_x_traders`, `trustedXTradersService.js`); posts via **`POST /bot/x-trusted-posts`** x_search; cashtags merge into universe beyond deploy list. **Zone C removed** — terminal bot-only (`TerminalPage.tsx`; deleted EventTimeline, CodeDiffPanel, StreamBootstrap, store). **Fixed:** `buildNightlyContext` JSONB `reason_tags`. **Capabilities verified:** `x_search: true`, Grok key loaded on `:8844`. **Not using:** `X_API_BEARER_TOKEN` for paper bot learning (too expensive). **Next:** smoke learning cycle with real handles · rename legacy `autoresearch` rule source to `bot_learning` · wire `agent_hints` gaps from brain reflection dedupe · optional min-data gate before auto-learning. **Ops:** `cd quant_agi/frontend && npm run build:deploy` · `pm2 restart keepitbased-api quant-agi-api`.
 
 **Session checkpoint (2026-06-11) — Quant AGI Bot multi-agent + brain monitor:** **Shipped:** Phase **4a** complete (namespace, shadow API only, improvement log, socket bridge, **Bot ON/OFF** + `paperBotAutoRun.js` cron). Phase **4c** quant execution (`quant_execution.py`, ET windows, rank rotation). Phase **5a+5b+5c** LangGraph **`bot_graph/`** (`POST /bot/plan-tick`, `agent_mode` on run-day) · universe **`quant_auto_agent`** · **`brain_reflection.py`** + `GET /paper-bot/brain` · **BotBrainPanel** monitor (regime, debate, dry-run, plan history, reflection). **Rules:** remove active/pending (`POST /rules/:id/remove`, clear pending) — fixed `rowCount` bug. **UI removed:** shadow broker panel, mode comparison. **Smoke:** rule removal in `smokePaperBotLedger.js` (needs `PAPER_BOT_TEST_*`). **Phase:** `5c-brain-monitor`. **Next (user reviewing):** UI elegance — tabbed brain, universe simplify, paper scorecard strip, move autoresearch strip to Zone C; **4a remainder:** proactive Grok daily rules + nightly `paper_bot_daily_close` cron. **Ops:** `cd quant_agi/frontend && npm run build:deploy` · `pm2 restart keepitbased-api quant-agi-api`.
 
@@ -218,9 +220,9 @@ npm run email:test-opportunity
 
 ### Session save spot (2026-06-11) — **continue here next time**
 
-**Product (start here):** **Quant AGI Bot** — **`/quant-agi` only** · Phases 0–3 ✅ · **4a core ✅** · **4c quant exec ✅** · **5c multi-agent brain ✅** · dashboard unchanged.
+**Product (start here):** **Quant AGI Bot** — **`/quant-agi` only** · Phases 0–3 ✅ · **4a core ✅** · **4c quant exec ✅** · **5c multi-agent brain ✅** · **learning lab ✅** · dashboard unchanged.
 
-**Recommended default experiment:** Universe **`quant_auto_agent`** (LangGraph entry/exit + policy caps) · Bot ON during RTH · review **Bot brain** + **rules inbox** weekly.
+**Recommended default experiment:** Universe **`quant_auto_agent`** · add **trusted X @handles** in learning lab · Bot ON during RTH · run **learning cycle** after hours · review **coaching memory** + rules inbox weekly.
 
 **Phase 4 split (canonical):** [`GROK_PAPER_TRADING_BOT_PLAN.md`](quant_agi/docs/GROK_PAPER_TRADING_BOT_PLAN.md) § Phase 4.
 
@@ -229,6 +231,7 @@ npm run email:test-opportunity
 | **4a** | Namespace · socket · improvement log · Bot ON/OFF auto-run · shadow API (no Zone B UI) | **✅ core** |
 | **4c** | Quant auto-pick execution (rank rotation, ET windows, equity sizing) | **✅** |
 | **5a–5c** | LangGraph plan-tick · Grok entry/exit · candidate debate · brain reflection · `GET /paper-bot/brain` | **✅** |
+| **5d** | Bot learning lab · arXiv + x_search · coaching memory → plan graph · trusted X UI · auto-learning cron | **✅** |
 | **4a tail** | Proactive Grok daily rules · nightly `paper_bot_daily_close` cron | **🔲** |
 | **4b (later)** | **DL-3** → broker paper (**DL-4**) | Planned |
 
@@ -241,9 +244,9 @@ npm run email:test-opportunity
 
 **Universe modes:** `curated` · `deploy_list_only` · `quant_auto` · **`quant_auto_agent`** (multi-agent).
 
-**Key APIs:** `POST /bot/plan-tick` · `POST /bot/brain-reflect` · `GET /paper-bot/brain` · `POST /paper-bot/rules/:id/remove` · `POST /paper-bot/rules/pending/clear`.
+**Key APIs:** `POST /bot/plan-tick` · `POST /bot/learning-cycle` · `POST /bot/x-trusted-posts` · `GET/POST/DELETE /paper-bot/learning/trusted-traders` · `POST /bot/brain-reflect` · `GET /paper-bot/brain` · `GET /paper-bot/learning/latest` · `POST /paper-bot/rules/:id/remove` · `POST /paper-bot/rules/pending/clear`.
 
-**UX polish (discussed, not shipped):** Tabbed brain (Next tick | Policy | History) · merge health into status bar · simplify universe dropdown · **paper scorecard** strip · move **AutoresearchDailyStrip** to Zone C · plain-language labels (not “dry-run”).
+**UX polish (discussed, not shipped):** Tabbed brain (Next tick | Policy | History) · merge health into status bar · simplify universe dropdown · **paper scorecard** strip · plain-language labels (not “dry-run”). ~~move AutoresearchDailyStrip to Zone C~~ — **Zone C removed**; learning lab stays in bot panel.
 
 **Verify:** `/quant-agi` signed in → Bot ON · quant_auto_agent · brain shows regime + next tick · remove rule works.
 

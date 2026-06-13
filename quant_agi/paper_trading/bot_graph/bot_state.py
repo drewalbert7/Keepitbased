@@ -40,3 +40,5 @@ class BotPlanState(TypedDict, total=False):
     trade_intents: List[Dict[str, Any]]
     rationale: str
     plan: Dict[str, Any]
+
+    learning_memory: Dict[str, Any]

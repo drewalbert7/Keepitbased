@@ -441,6 +441,7 @@ def _run_eval(
     quant_mode: bool = False,
     run_at_iso: Optional[str] = None,
     agent_mode: bool = False,
+    learning_memory: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     from paper_trading.bot_policy_engine import merge_active_rules
 
@@ -463,6 +464,7 @@ def _run_eval(
             universe_source=universe_source,
             quant_rank_by_symbol=quant_rank_by_symbol,
             run_at_iso=run_at_iso,
+            learning_memory=learning_memory,
         )
         if agent_plan_result.get("ok") and isinstance(agent_plan_result.get("plan"), dict):
             agent_plan = agent_plan_result["plan"]
@@ -557,6 +559,7 @@ def dry_run_payload(
     quant_mode: bool = False,
     run_at_iso: Optional[str] = None,
     agent_mode: bool = False,
+    learning_memory: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return _run_eval(
         cash_usd=cash_usd,
@@ -572,6 +575,7 @@ def dry_run_payload(
         quant_mode=quant_mode,
         run_at_iso=run_at_iso,
         agent_mode=agent_mode,
+        learning_memory=learning_memory,
     )
 
 
@@ -590,6 +594,7 @@ def run_day_payload(
     quant_mode: bool = False,
     run_at_iso: Optional[str] = None,
     agent_mode: bool = False,
+    learning_memory: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return dry_run_payload(
         cash_usd=cash_usd,
@@ -605,4 +610,5 @@ def run_day_payload(
         quant_mode=quant_mode,
         run_at_iso=run_at_iso,
         agent_mode=agent_mode,
+        learning_memory=learning_memory,
     )

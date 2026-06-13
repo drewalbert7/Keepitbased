@@ -335,7 +335,13 @@ export function PaperTradingBotPanel({ embed = false }: { embed?: boolean }) {
             </p>
           ) : null}
 
-          <AutoresearchDailyStrip refreshKey={brainRefresh} />
+          <AutoresearchDailyStrip
+            refreshKey={brainRefresh}
+            onLearningComplete={() => {
+              bumpBrain();
+              void load();
+            }}
+          />
 
           <p className="mt-3 border-t border-white/10 pt-3 text-[11px] leading-relaxed text-white/45">
             {state.disclaimer}

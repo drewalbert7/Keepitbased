@@ -72,6 +72,80 @@ router.get('/events', auth, paperBotLimiter, async (req, res) => {
   }
 });
 
+router.get('/learning/latest', auth, paperBotLimiter, async (req, res) => {
+  try {
+    const payload = await paperBotService.getBotLearningLatest(req.user.id);
+    return res.json(payload);
+  } catch (error) {
+    logger.error('GET paper-bot/learning/latest failed:', error);
+    return res.status(500).json({ message: 'Failed to load bot learning summary' });
+  }
+});
+
+router.post('/learning/run', auth, paperBotLimiter, async (req, res) => {
+  try {
+    const payload = await paperBotService.runBotLearningCycle(req.user.id);
+    return res.json(payload);
+  } catch (error) {
+    logger.error('POST paper-bot/learning/run failed:', error);
+    return res.status(error.statusCode || 500).json({
+      message: error.message || 'Bot learning cycle failed'
+    });
+  }
+});
+
+router.get('/learning/trusted-traders', auth, paperBotLimiter, async (req, res) => {
+  try {
+    const traders = await paperBotService.listTrustedXTraders(req.user.id);
+    return res.json({
+      traders,
+      maxTrustedTraders: require('../services/trustedXTradersService').MAX_TRUSTED
+    });
+  } catch (error) {
+    logger.error('GET paper-bot/learning/trusted-traders failed:', error);
+    return res.status(500).json({ message: 'Failed to load trusted traders' });
+  }
+});
+
+router.post(
+  '/learning/trusted-traders',
+  auth,
+  paperBotLimiter,
+  body('username').isString().trim().isLength({ min: 1, max: 32 }),
+  body('label').optional({ nullable: true }).isString().trim().isLength({ max: 64 }),
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ message: errors.array()[0]?.msg || 'Invalid handle' });
+    }
+    try {
+      const trader = await paperBotService.addTrustedXTrader(req.user.id, {
+        username: req.body.username,
+        label: req.body.label
+      });
+      return res.status(201).json({ trader });
+    } catch (error) {
+      logger.error('POST paper-bot/learning/trusted-traders failed:', error);
+      return res.status(error.statusCode || 500).json({
+        message: error.message || 'Failed to add trusted trader',
+        code: error.code
+      });
+    }
+  }
+);
+
+router.delete('/learning/trusted-traders/:id', auth, paperBotLimiter, async (req, res) => {
+  try {
+    await paperBotService.removeTrustedXTrader(req.user.id, req.params.id);
+    return res.json({ ok: true });
+  } catch (error) {
+    logger.error('DELETE paper-bot/learning/trusted-traders failed:', error);
+    return res.status(error.statusCode || 500).json({
+      message: error.message || 'Failed to remove trusted trader'
+    });
+  }
+});
+
 router.get('/autoresearch/latest', auth, paperBotLimiter, async (req, res) => {
   try {
     const payload = await paperBotService.getAutoresearchLatest(req.user.id);

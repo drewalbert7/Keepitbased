@@ -36,6 +36,7 @@ from keepitbased_integration.ticker_ref import fetch_ticker_reference
 from paper_trading.paper_simulator import dry_run_payload, run_day_payload
 from paper_trading.plan_tick import plan_tick_payload
 from paper_trading.brain_reflection import reflect_brain_payload
+from paper_trading.bot_learning import run_bot_learning_payload
 from paper_trading.grok_bot_advisor import interpret_user_note
 from paper_trading.paper_bot_metrics import (
     enrich_nightly_context,
@@ -853,6 +854,7 @@ class BotRunDayIn(BaseModel):
     quant_mode: bool = False
     run_at_iso: Optional[str] = None
     agent_mode: bool = False
+    learning_memory: dict[str, Any] = Field(default_factory=dict)
 
 
 class BotInterpretNoteIn(BaseModel):
@@ -870,6 +872,26 @@ class BotBrainReflectIn(BaseModel):
     metrics: dict[str, Any] = Field(default_factory=dict)
     current_policy: dict[str, Any] = Field(default_factory=dict)
     universe_mode: str = "quant_auto_agent"
+
+
+class BotLearningIn(BaseModel):
+    """Bot learning lab — external research + paper performance → teachable improvements."""
+
+    agent_plans: list[dict[str, Any]] = Field(default_factory=list)
+    recent_trades: list[dict[str, Any]] = Field(default_factory=list)
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    nightly_context: dict[str, Any] = Field(default_factory=dict)
+    current_policy: dict[str, Any] = Field(default_factory=dict)
+    universe_mode: str = "quant_auto_agent"
+    x_monitor_posts: list[dict[str, Any]] = Field(default_factory=list)
+    x_monitor_accounts: list[dict[str, Any]] = Field(default_factory=list)
+    x_ticker_buzz: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class BotXTrustedPostsIn(BaseModel):
+    """Fetch posts from trusted X handles via xAI x_search (no X API bearer)."""
+
+    handles: list[str] = Field(default_factory=list, max_length=12)
 
 
 class AlertIn(BaseModel):
@@ -1308,6 +1330,40 @@ def create_app() -> FastAPI:
             universe_mode=payload.universe_mode,
         )
 
+    @app.get("/bot/learning/capabilities")
+    async def bot_learning_capabilities() -> dict[str, Any]:
+        """Report which external research backends are configured."""
+        from autoresearch.web_research import research_capabilities
+
+        caps = research_capabilities()
+        return {"ok": True, "capabilities": caps}
+
+    @app.post("/bot/x-trusted-posts")
+    async def bot_x_trusted_posts(payload: BotXTrustedPostsIn) -> dict[str, Any]:
+        """Recent posts from trusted @handles via xAI x_search (no X/Twitter API bearer)."""
+        from autoresearch.x_research import search_x_posts_for_handles, x_search_enabled
+
+        handles = [str(h).strip().lstrip("@") for h in payload.handles if str(h).strip()][:12]
+        if not handles:
+            return {"ok": True, "posts": [], "x_search": x_search_enabled()}
+        posts = search_x_posts_for_handles(handles, max_per_handle=4)
+        return {"ok": True, "posts": posts, "x_search": x_search_enabled(), "handle_count": len(handles)}
+
+    @app.post("/bot/learning-cycle")
+    async def bot_learning_cycle(payload: BotLearningIn) -> dict[str, Any]:
+        """Research arXiv + X posts and synthesize bot learning + rule proposals."""
+        return run_bot_learning_payload(
+            agent_plans=payload.agent_plans,
+            recent_trades=payload.recent_trades,
+            metrics=payload.metrics,
+            nightly_context=payload.nightly_context,
+            current_policy=payload.current_policy,
+            universe_mode=payload.universe_mode,
+            x_monitor_posts=payload.x_monitor_posts,
+            x_monitor_accounts=payload.x_monitor_accounts,
+            x_ticker_buzz=payload.x_ticker_buzz,
+        )
+
     @app.post("/bot/plan-tick")
     async def bot_plan_tick(payload: BotRunDayIn) -> dict[str, Any]:
         """Multi-agent LangGraph plan for quant auto-pick (audit only — no fills)."""
@@ -1326,6 +1382,7 @@ def create_app() -> FastAPI:
             universe_source=universe_source,
             quant_rank_by_symbol=payload.quant_rank_by_symbol or {},
             run_at_iso=payload.run_at_iso,
+            learning_memory=payload.learning_memory or None,
         )
 
     @app.post("/bot/run-day")
@@ -1348,6 +1405,7 @@ def create_app() -> FastAPI:
             quant_mode=bool(payload.quant_mode),
             run_at_iso=payload.run_at_iso,
             agent_mode=bool(payload.agent_mode),
+            learning_memory=payload.learning_memory or None,
         )
 
     @app.post("/diag/paper-bot/scorecard")
@@ -1409,6 +1467,7 @@ def create_app() -> FastAPI:
             quant_mode=bool(payload.quant_mode),
             run_at_iso=payload.run_at_iso,
             agent_mode=bool(payload.agent_mode),
+            learning_memory=payload.learning_memory or None,
         )
 
     @app.post("/bot/interpret-note")

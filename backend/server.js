@@ -204,9 +204,12 @@ scheduleDailyWatchlistDigest(alertService);
 scheduleEmailOutboxWorker(priceMonitor);
 
 const paperBotAutoRun = require('./services/paperBotAutoRun');
+const paperBotLearningAutoRun = require('./services/paperBotLearningAutoRun');
 const paperBotService = require('./services/paperBotService');
 paperBotAutoRun.bindPaperBotService(paperBotService);
 paperBotAutoRun.schedulePaperBotAutoRun();
+paperBotLearningAutoRun.bindPaperBotService(paperBotService);
+paperBotLearningAutoRun.schedulePaperBotLearningAutoRun();
 
 // Error handling
 app.use((err, req, res, next) => {
