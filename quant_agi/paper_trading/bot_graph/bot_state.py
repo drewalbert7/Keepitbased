@@ -25,6 +25,13 @@ class BotPlanState(TypedDict, total=False):
     allow_entries: bool
     allow_exits: bool
 
+    x_research_snippets: List[Dict[str, Any]]
+    research_brief: str
+    research_entry_themes: List[str]
+    research_exit_themes: List[str]
+    research_recommendations: List[Dict[str, Any]]
+    research_used_grok: bool
+
     entry_proposals: List[Dict[str, Any]]
     exit_proposals: List[Dict[str, Any]]
     entry_rationale: str

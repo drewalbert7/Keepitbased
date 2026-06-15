@@ -23,7 +23,7 @@ def test_plan_tick_deterministic_entry_candidates():
     assert result["ok"] is True
     assert result["skipped"] is False
     plan = result.get("plan") or {}
-    assert plan.get("phase") == "5c"
+    assert plan.get("phase") == "5d"
     assert isinstance(result.get("trade_intents"), list)
 
 

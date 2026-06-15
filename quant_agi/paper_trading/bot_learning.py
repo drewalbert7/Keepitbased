@@ -11,8 +11,13 @@ from autoresearch.x_research import build_trusted_x_context
 from config import resolved_grok_model, settings
 from paper_trading.grok_bot_advisor import _normalize_proposals
 from paper_trading.learning_memory import build_learning_memory_from_cycle
+from paper_trading.learning_outcomes import attach_outcome_gated_memory
 
 LEARNING_SYSTEM = """You are the research coach for a US equities PAPER trading bot (educational).
+Your lessons directly teach the multi-agent plan graph (research_strategist, entry_strategist,
+exit_strategist, candidate_debate) how to choose trades — optimal entry timing, exit discipline,
+and which symbols to favor or avoid on the next session.
+
 You receive:
 1) Recent paper-trading performance and agent activity
 2) Trusted X monitor accounts you follow (source_type x_monitor) — PRIORITIZE these over arXiv and generic X search
@@ -21,6 +26,9 @@ You receive:
 Synthesize practical lessons and conservative policy tweaks the human operator can approve.
 Ground lessons from trusted X monitors in specific post themes; cite @handles when used.
 Extract cashtags ($TICKER) from trusted monitors into coaching_directives.trusted_symbols (max 8).
+
+Each lesson must teach trade-level behavior: when to enter (patient vs aggressive), when to exit
+(trim vs hold winners), and which names match paper momentum + trusted trader themes.
 
 Return a single JSON object:
 {
@@ -57,10 +65,13 @@ Rules:
 - When trusted X monitor posts exist, at least one lesson must reference a monitored @handle.
 - trusted_symbols must come from cashtags in trusted monitor posts — do not invent tickers.
 - coaching_directives must be actionable for a paper momentum bot — no live trading advice.
+- entry_posture / exit_posture must reflect paper lessons (e.g. patient entries after drawdown, protect_capital exits).
+- priority_themes should name trade setups the research agent can weight (e.g. "semis momentum", "avoid chase").
 - Prefer prefer_cautious + patient + protect_capital after drawdowns; do not flip to aggressive without strong evidence.
 - Proposals must be conservative sizing caps only — no leverage, options, or live trading.
 - If X search returned nothing, still use arXiv sources and internal metrics.
-- Prefer tightening after losses; do not propose aggressive size-ups without strong evidence."""
+- Prefer tightening after losses; do not propose aggressive size-ups without strong evidence.
+- Coaching tightens only when prior cycle improved paper metrics over the next N trades (outcome gate)."""
 
 
 def _derive_research_queries(
@@ -166,8 +177,31 @@ def _heuristic_coaching_directives(
     }
 
 
-def _attach_learning_memory(payload: dict[str, Any], *, source: str = "manual") -> dict[str, Any]:
+def _attach_learning_memory(
+    payload: dict[str, Any],
+    *,
+    source: str = "manual",
+    previous_learning_memory: dict[str, Any] | None = None,
+    recent_trades: list[dict[str, Any]] | None = None,
+    current_metrics: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if previous_learning_memory or recent_trades or current_metrics:
+        return attach_outcome_gated_memory(
+            payload,
+            previous_memory=previous_learning_memory,
+            recent_trades=recent_trades,
+            current_metrics=current_metrics,
+            source=source,
+        )
     memory = build_learning_memory_from_cycle(payload, source=source)
+    directives = memory.get("coaching_directives") or {}
+    memory["effective_directives"] = directives
+    memory["proposed_directives"] = directives
+    memory["signal_hierarchy"] = {
+        "rank": "primary",
+        "coach": "overlay",
+        "x_whisper": "weak_overlay",
+    }
     return {**payload, "learning_memory": memory}
 
 
@@ -178,6 +212,8 @@ def _heuristic_learning(
     queries_run: list[str],
     capabilities: dict[str, bool],
     trusted_x: dict[str, Any] | None = None,
+    previous_learning_memory: dict[str, Any] | None = None,
+    recent_trades: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     cum_pnl = float(metrics.get("cumPnlUsd") or metrics.get("cum_pnl_usd") or 0)
     lessons: list[dict[str, Any]] = []
@@ -255,7 +291,13 @@ def _heuristic_learning(
         "capabilities": capabilities,
         "grok_used": False,
     }
-    return _attach_learning_memory(base, source="heuristic")
+    return _attach_learning_memory(
+        base,
+        source="heuristic",
+        previous_learning_memory=previous_learning_memory,
+        recent_trades=recent_trades,
+        current_metrics=metrics,
+    )
 
 
 def run_bot_learning_payload(
@@ -269,6 +311,7 @@ def run_bot_learning_payload(
     x_monitor_posts: list[dict[str, Any]] | None = None,
     x_monitor_accounts: list[dict[str, Any]] | None = None,
     x_ticker_buzz: list[dict[str, Any]] | None = None,
+    previous_learning_memory: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Research external sources and synthesize bot learning output."""
     plans = list(agent_plans or [])
@@ -362,7 +405,13 @@ def run_bot_learning_payload(
                     "capabilities": caps,
                     "grok_used": True,
                 }
-                return _attach_learning_memory(base, source="grok")
+                return _attach_learning_memory(
+                    base,
+                    source="grok",
+                    previous_learning_memory=previous_learning_memory,
+                    recent_trades=trades,
+                    current_metrics=m,
+                )
 
     return _heuristic_learning(
         metrics=m,
@@ -370,4 +419,6 @@ def run_bot_learning_payload(
         queries_run=queries_run,
         capabilities=caps,
         trusted_x=trusted_x,
+        previous_learning_memory=previous_learning_memory,
+        recent_trades=trades,
     )

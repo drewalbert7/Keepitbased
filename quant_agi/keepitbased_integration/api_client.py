@@ -855,6 +855,7 @@ class BotRunDayIn(BaseModel):
     run_at_iso: Optional[str] = None
     agent_mode: bool = False
     learning_memory: dict[str, Any] = Field(default_factory=dict)
+    x_research_snippets: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class BotInterpretNoteIn(BaseModel):
@@ -886,6 +887,7 @@ class BotLearningIn(BaseModel):
     x_monitor_posts: list[dict[str, Any]] = Field(default_factory=list)
     x_monitor_accounts: list[dict[str, Any]] = Field(default_factory=list)
     x_ticker_buzz: list[dict[str, Any]] = Field(default_factory=list)
+    previous_learning_memory: dict[str, Any] = Field(default_factory=dict)
 
 
 class BotXTrustedPostsIn(BaseModel):
@@ -1362,6 +1364,7 @@ def create_app() -> FastAPI:
             x_monitor_posts=payload.x_monitor_posts,
             x_monitor_accounts=payload.x_monitor_accounts,
             x_ticker_buzz=payload.x_ticker_buzz,
+            previous_learning_memory=payload.previous_learning_memory or None,
         )
 
     @app.post("/bot/plan-tick")
@@ -1383,6 +1386,7 @@ def create_app() -> FastAPI:
             quant_rank_by_symbol=payload.quant_rank_by_symbol or {},
             run_at_iso=payload.run_at_iso,
             learning_memory=payload.learning_memory or None,
+            x_research_snippets=payload.x_research_snippets or None,
         )
 
     @app.post("/bot/run-day")
@@ -1406,6 +1410,7 @@ def create_app() -> FastAPI:
             run_at_iso=payload.run_at_iso,
             agent_mode=bool(payload.agent_mode),
             learning_memory=payload.learning_memory or None,
+            x_research_snippets=payload.x_research_snippets or None,
         )
 
     @app.post("/diag/paper-bot/scorecard")
@@ -1468,6 +1473,7 @@ def create_app() -> FastAPI:
             run_at_iso=payload.run_at_iso,
             agent_mode=bool(payload.agent_mode),
             learning_memory=payload.learning_memory or None,
+            x_research_snippets=payload.x_research_snippets or None,
         )
 
     @app.post("/bot/interpret-note")

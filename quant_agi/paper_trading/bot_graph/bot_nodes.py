@@ -10,6 +10,13 @@ from autoresearch.grok_client import effective_grok_api_key, grok_json_object
 from config import resolved_grok_model, settings
 from paper_trading.bot_graph.bot_state import BotPlanState
 from paper_trading.market_session import is_entry_window, is_exit_window, parse_run_at_iso
+from paper_trading.bot_graph.research_agent import (
+    apply_research_to_entries,
+    apply_research_to_exits,
+    research_payload_for_strategists,
+    research_weight_map,
+    run_research_agent,
+)
 from paper_trading.learning_memory import (
     apply_regime_coaching_bias,
     coaching_payload_for_graph,
@@ -40,7 +47,8 @@ Rules:
 - Only symbols from the held list.
 - urgency >= 0.85 only for clear risk (stop-level loss, rank collapse).
 - Do not propose live trading, leverage, or options.
-- When learning_coach is present, follow its exit_posture and avoid patterns."""
+- When learning_coach is present, follow its exit_posture and avoid patterns.
+- When research_agent is present, prioritize its exit_candidates and exit_themes."""
 
 ENTRY_SYSTEM = """You are the entry strategist for a US equities PAPER trading bot (educational, not advice).
 Given ranked candidates, cash headroom, regime, and open slots — propose entries for momentum leaders.
@@ -62,7 +70,8 @@ Rules:
 - Only symbols from the candidate list (not already held).
 - Prefer higher rank scores and strategy confluence.
 - Do not propose live trading, leverage, or options.
-- When learning_coach is present, follow its entry_posture and agent_hints."""
+- When learning_coach is present, follow its entry_posture and agent_hints.
+- When research_agent is present, favor enter_candidates and deprioritize avoid list."""
 
 
 def _upper_symbols(symbols: list[str]) -> list[str]:
@@ -187,6 +196,41 @@ def regime_analyst(state: BotPlanState) -> BotPlanState:
     }
 
 
+def research_strategist(state: BotPlanState) -> BotPlanState:
+    """Synthesize papers + trusted X + coaching into weighted position guidance."""
+    if state.get("error"):
+        return state
+
+    result = run_research_agent(
+        scout_candidates=state.get("scout_candidates") or [],
+        held_enriched=state.get("held_enriched") or [],
+        regime_label=state.get("regime_label") or "moderate",
+        regime_detail=state.get("regime_detail") or "",
+        learning_memory=state.get("learning_memory"),
+        x_research_snippets=state.get("x_research_snippets"),
+    )
+    used_grok = bool(result.get("research_used_grok"))
+    return {
+        **state,
+        "research_brief": result.get("brief") or "",
+        "research_entry_themes": result.get("entry_themes") or [],
+        "research_exit_themes": result.get("exit_themes") or [],
+        "research_recommendations": result.get("positions") or [],
+        "research_used_grok": used_grok,
+        "grok_used": bool(state.get("grok_used")) or used_grok,
+    }
+
+
+def _research_avoid_symbols(state: BotPlanState) -> set[str]:
+    avoids: set[str] = set()
+    for rec in state.get("research_recommendations") or []:
+        if str(rec.get("action")).lower() == "avoid" and float(rec.get("weight") or 0) >= 0.65:
+            sym = str(rec.get("symbol", "")).upper()
+            if sym:
+                avoids.add(sym)
+    return avoids
+
+
 def _deterministic_exit_proposals(state: BotPlanState) -> tuple[list[dict[str, Any]], str]:
     universe = _upper_symbols(state.get("universe_symbols") or [])
     rank_map = state.get("quant_rank_by_symbol") or {}
@@ -217,6 +261,7 @@ def _deterministic_exit_proposals(state: BotPlanState) -> tuple[list[dict[str, A
         )
 
     proposals.sort(key=lambda p: -float(p.get("urgency") or 0))
+    proposals = apply_research_to_exits(proposals, state.get("research_recommendations"))
     summary = (
         f"Deterministic exits: {len(proposals)} symbol(s) with policy signals."
         if proposals
@@ -244,8 +289,11 @@ def _deterministic_entry_proposals(state: BotPlanState) -> tuple[list[dict[str, 
     min_score = 52.0 + score_adj
 
     proposals: list[dict[str, Any]] = []
+    avoids = _research_avoid_symbols(state)
     for cand in state.get("scout_candidates") or []:
         sym = str(cand.get("symbol", "")).upper()
+        if sym in avoids:
+            continue
         score = float(cand.get("score") or 0)
         if score <= 0 or score < min_score:
             continue
@@ -264,6 +312,7 @@ def _deterministic_entry_proposals(state: BotPlanState) -> tuple[list[dict[str, 
         if len(proposals) >= min(3, slots):
             break
 
+    proposals = apply_research_to_entries(proposals, state.get("research_recommendations"))
     summary = (
         f"Deterministic entries: top {len(proposals)} candidate(s) by rank score."
         if proposals
@@ -341,6 +390,7 @@ def exit_strategist(state: BotPlanState) -> BotPlanState:
     user_payload = _with_coaching(
         state,
         {
+            **research_payload_for_strategists(state),
             "regime": state.get("regime_label"),
             "regime_detail": state.get("regime_detail"),
             "held_positions": state.get("held_enriched"),
@@ -352,6 +402,7 @@ def exit_strategist(state: BotPlanState) -> BotPlanState:
 
     if blob and isinstance(blob.get("exits"), list):
         proposals = _normalize_proposals(blob["exits"], allowed_symbols=held_syms, kind="exit")
+        proposals = apply_research_to_exits(proposals, state.get("research_recommendations"))
         summary = str(blob.get("summary") or "Grok exit strategist.")
         if proposals:
             grok_used = True
@@ -382,6 +433,7 @@ def entry_strategist(state: BotPlanState) -> BotPlanState:
     user_payload = _with_coaching(
         state,
         {
+            **research_payload_for_strategists(state),
             "regime": state.get("regime_label"),
             "regime_detail": state.get("regime_detail"),
             "candidates": (state.get("scout_candidates") or [])[:12],
@@ -396,6 +448,7 @@ def entry_strategist(state: BotPlanState) -> BotPlanState:
 
     if blob and isinstance(blob.get("entries"), list):
         proposals = _normalize_proposals(blob["entries"], allowed_symbols=cand_syms, kind="entry")
+        proposals = apply_research_to_entries(proposals, state.get("research_recommendations"))
         summary = str(blob.get("summary") or "Grok entry strategist.")
         if proposals:
             grok_used = True
@@ -426,7 +479,8 @@ Return a single JSON object:
 Rules:
 - Max 3 symbols from the candidate list.
 - verdict enter only when momentum thesis is clearly supported.
-- Not investment advice; paper simulation only."""
+- Not investment advice; paper simulation only.
+- When research_agent is present, align verdicts with enter/avoid guidance and cite research themes."""
 
 
 def _top_entry_candidates(state: BotPlanState, limit: int = 3) -> list[dict[str, Any]]:
@@ -439,6 +493,7 @@ def _top_entry_candidates(state: BotPlanState, limit: int = 3) -> list[dict[str,
 def _deterministic_debate(state: BotPlanState, candidates: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], str]:
     regime = state.get("regime_label") or "moderate"
     regime_penalty = {"risk_on": 0, "moderate": 8, "cautious": 22, "closed": 40}.get(regime, 10)
+    research_by_sym = research_weight_map(state.get("research_recommendations"))
     debates: list[dict[str, Any]] = []
 
     for cand in candidates[:3]:
@@ -450,6 +505,16 @@ def _deterministic_debate(state: BotPlanState, candidates: list[dict[str, Any]])
             rank_score = float(cand.get("urgency") or 0.5) * 100.0
         bull = max(0.0, min(100.0, rank_score))
         bear = max(0.0, min(100.0, 100.0 - bull + regime_penalty))
+        rec = research_by_sym.get(sym)
+        if rec:
+            action = str(rec.get("action") or "hold").lower()
+            weight = float(rec.get("weight") or 0.5)
+            if action == "enter":
+                bull = min(100.0, bull + 6 * weight)
+                bear = max(0.0, bear - 4 * weight)
+            elif action == "avoid":
+                bear = min(100.0, bear + 10 * weight)
+                bull = max(0.0, bull - 8 * weight)
         if bull >= bear + 18 and regime != "cautious":
             verdict = "enter"
         elif bull >= bear + 5:
@@ -530,6 +595,7 @@ def candidate_debate(state: BotPlanState) -> BotPlanState:
     user_payload = _with_coaching(
         state,
         {
+            **research_payload_for_strategists(state),
             "regime": state.get("regime_label"),
             "regime_detail": state.get("regime_detail"),
             "candidates": candidates,
@@ -649,7 +715,11 @@ def risk_manager(state: BotPlanState) -> BotPlanState:
         )
         prop = next((p for p in state.get("exit_proposals") or [] if str(p.get("symbol")).upper() == sym), {})
         urgency = float(prop.get("urgency") or 0)
-        if policy_reason or urgency >= 0.85:
+        research_exit = (
+            str(prop.get("research_action") or "").lower() == "exit"
+            and float(prop.get("research_weight") or 0) >= 0.72
+        )
+        if policy_reason or urgency >= 0.85 or research_exit:
             validated_exits.append(sym)
         if len(validated_exits) >= max_sells:
             break
@@ -706,6 +776,7 @@ def execution_planner(state: BotPlanState) -> BotPlanState:
         )
 
     rationale_parts = [
+        state.get("research_brief") or "",
         state.get("regime_detail") or "",
         state.get("debate_summary") or "",
         state.get("exit_rationale") or "",
@@ -714,10 +785,15 @@ def execution_planner(state: BotPlanState) -> BotPlanState:
     rationale = " ".join(p for p in rationale_parts if p).strip()
 
     plan = {
-        "phase": "5c",
+        "phase": "5d",
         "regime_label": state.get("regime_label"),
         "regime_detail": state.get("regime_detail"),
         "grok_used": bool(state.get("grok_used")),
+        "research_used_grok": bool(state.get("research_used_grok")),
+        "research_brief": state.get("research_brief"),
+        "research_entry_themes": state.get("research_entry_themes") or [],
+        "research_exit_themes": state.get("research_exit_themes") or [],
+        "research_recommendations": state.get("research_recommendations") or [],
         "debate_used": bool(state.get("debate_used")),
         "allow_entries": state.get("allow_entries"),
         "allow_exits": state.get("allow_exits"),

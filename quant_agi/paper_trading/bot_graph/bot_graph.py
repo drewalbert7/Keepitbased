@@ -10,6 +10,7 @@ from paper_trading.bot_graph.bot_nodes import (
     load_context,
     reconcile,
     regime_analyst,
+    research_strategist,
     risk_manager,
     universe_scout,
 )
@@ -22,6 +23,7 @@ def build_bot_plan_graph():
     graph.add_node("load_context", load_context)
     graph.add_node("universe_scout", universe_scout)
     graph.add_node("regime_analyst", regime_analyst)
+    graph.add_node("research_strategist", research_strategist)
     graph.add_node("exit_strategist", exit_strategist)
     graph.add_node("entry_strategist", entry_strategist)
     graph.add_node("candidate_debate", candidate_debate)
@@ -32,7 +34,8 @@ def build_bot_plan_graph():
     graph.add_edge(START, "load_context")
     graph.add_edge("load_context", "universe_scout")
     graph.add_edge("universe_scout", "regime_analyst")
-    graph.add_edge("regime_analyst", "exit_strategist")
+    graph.add_edge("regime_analyst", "research_strategist")
+    graph.add_edge("research_strategist", "exit_strategist")
     graph.add_edge("exit_strategist", "entry_strategist")
     graph.add_edge("entry_strategist", "candidate_debate")
     graph.add_edge("candidate_debate", "reconcile")

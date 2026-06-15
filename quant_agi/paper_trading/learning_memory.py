@@ -6,6 +6,22 @@ from datetime import datetime, timezone
 from typing import Any
 
 
+# Signal hierarchy: rank tape primary; learning coach overlay; trusted X whisper only.
+TRUSTED_SYMBOL_SCORE_BOOST = 6.0
+X_WHISPER_UNIVERSE_SCORE_CAP = 4.0
+
+
+def effective_coaching_directives(memory: dict[str, Any] | None) -> dict[str, Any]:
+    """Directives plan-tick applies — respects outcome gate (effective vs proposed)."""
+    if not memory or not isinstance(memory, dict):
+        return {}
+    eff = memory.get("effective_directives")
+    if isinstance(eff, dict) and eff:
+        return eff
+    coach = memory.get("coaching_directives")
+    return coach if isinstance(coach, dict) else {}
+
+
 def build_learning_memory_from_cycle(data: dict[str, Any], *, source: str = "manual") -> dict[str, Any]:
     """Normalize learning-cycle output for storage and plan-tick injection."""
     directives = data.get("coaching_directives") if isinstance(data.get("coaching_directives"), dict) else {}
@@ -47,15 +63,23 @@ def coaching_payload_for_graph(memory: dict[str, Any] | None) -> dict[str, Any]:
         return {}
     if not memory.get("summary") and not memory.get("agent_hints") and not memory.get("lessons"):
         return {}
-    return {
+    directives = effective_coaching_directives(memory)
+    payload: dict[str, Any] = {
         "learning_coach": {
             "summary": memory.get("summary"),
             "lessons": memory.get("lessons") or [],
             "agent_hints": memory.get("agent_hints") or [],
-            "coaching_directives": memory.get("coaching_directives") or {},
+            "coaching_directives": directives,
             "updated_at": memory.get("updated_at"),
         }
     }
+    hierarchy = memory.get("signal_hierarchy")
+    if isinstance(hierarchy, dict):
+        payload["signal_hierarchy"] = hierarchy
+    gate = memory.get("outcome_gate")
+    if isinstance(gate, dict) and gate.get("previous_cycle"):
+        payload["outcome_gate"] = gate.get("previous_cycle")
+    return payload
 
 
 def apply_regime_coaching_bias(
@@ -64,7 +88,7 @@ def apply_regime_coaching_bias(
     memory: dict[str, Any] | None,
 ) -> tuple[str, str]:
     """Nudge regime label using stored learning directives (deterministic safety layer)."""
-    directives = (memory or {}).get("coaching_directives") or {}
+    directives = effective_coaching_directives(memory)
     bias = str(directives.get("regime_bias") or "neutral").lower().strip()
     if bias == "prefer_cautious":
         if label == "risk_on":
@@ -78,7 +102,7 @@ def apply_regime_coaching_bias(
 
 def entry_score_adjustment(memory: dict[str, Any] | None) -> float:
     """Delta applied to candidate scores in deterministic entry path (+ stricter, - looser)."""
-    posture = str(((memory or {}).get("coaching_directives") or {}).get("entry_posture") or "balanced").lower()
+    posture = str(effective_coaching_directives(memory).get("entry_posture") or "balanced").lower()
     if posture == "patient":
         return 8.0
     if posture == "aggressive_leader":
@@ -88,13 +112,16 @@ def entry_score_adjustment(memory: dict[str, Any] | None) -> float:
 
 def trusted_symbol_score_boost(memory: dict[str, Any] | None, symbol: str) -> float:
     """Boost scout rank score for symbols flagged by trusted X monitors."""
-    trusted = ((memory or {}).get("coaching_directives") or {}).get("trusted_symbols") or []
+    trusted = effective_coaching_directives(memory).get("trusted_symbols") or []
     sym = str(symbol or "").upper().strip()
     if sym and sym in {str(s).upper() for s in trusted}:
-        return 15.0
+        return TRUSTED_SYMBOL_SCORE_BOOST
     return 0.0
+
+
+def exit_urgency_boost(memory: dict[str, Any] | None) -> float:
     """Add to exit urgency when coach says protect capital."""
-    posture = str(((memory or {}).get("coaching_directives") or {}).get("exit_posture") or "balanced").lower()
+    posture = str(effective_coaching_directives(memory).get("exit_posture") or "balanced").lower()
     if posture == "protect_capital":
         return 0.08
     if posture == "let_winners_run":

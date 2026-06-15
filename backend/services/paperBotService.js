@@ -312,7 +312,8 @@ function buildBotRunDayBody(ctx, accountRow, { killSwitchArmed } = {}) {
     quant_mode: quantMode,
     agent_mode: agentMode,
     run_at_iso: new Date().toISOString(),
-    learning_memory: accountRow.learning_memory || null
+    learning_memory: accountRow.learning_memory || null,
+    x_research_snippets: ctx.xResearchSnippets || []
   };
 }
 
@@ -343,7 +344,8 @@ async function buildRunContext(userId) {
     mergedPolicy,
     positionsPayload,
     universeSource: universeSourceLabel(universeResolved.mode),
-    quantRankBySymbol: universeResolved.quantRankBySymbol
+    quantRankBySymbol: universeResolved.quantRankBySymbol,
+    xResearchSnippets: universeResolved.xResearchSnippets || []
   };
 }
 
@@ -692,6 +694,16 @@ function mergeXTrustedUniverse(base, { tickerBuzz, learningMemory } = {}) {
   return { symbols, rankBySymbol, xTrustedAdded: added };
 }
 
+function formatResearchSnippets(tweets) {
+  if (!Array.isArray(tweets)) return [];
+  return tweets.slice(0, 8).map((tw) => ({
+    author: tw.authorUsername || tw.monitorUsername || tw.author || '',
+    text: String(tw.text || '').slice(0, 400),
+    cashtags: Array.isArray(tw.cashtags) ? tw.cashtags : [],
+    monitorLabel: tw.monitorLabel || null
+  }));
+}
+
 function wrapUniverseResolved(base, xPulse, learningMemory) {
   const merged = mergeXTrustedUniverse(
     { symbols: base.symbols, rankBySymbol: base.quantRankBySymbol || {} },
@@ -707,7 +719,8 @@ function wrapUniverseResolved(base, xPulse, learningMemory) {
       tickerBuzz: xPulse?.tickerBuzz || [],
       symbolsAdded: merged.xTrustedAdded || 0,
       warning: xPulse?.warning || null
-    }
+    },
+    xResearchSnippets: formatResearchSnippets(xPulse?.tweets)
   };
 }
 
@@ -1590,6 +1603,10 @@ async function getBotLearningLatest(userId) {
     lastLearning: lastLearningEvent || null,
     learningPendingRules,
     activeLearningMemory: accountRow.learning_memory || null,
+    outcomeGate:
+      accountRow.learning_memory?.outcome_gate?.previous_cycle ||
+      accountRow.learning_memory?.outcome_gate ||
+      null,
     xTrusted: {
       configured: Boolean(xPulse?.configured || trustedTraders.length),
       xSearchOnly: true,
@@ -1701,7 +1718,8 @@ async function runBotLearningCycle(userId, { source = 'manual' } = {}) {
       universe_mode: normalizeUniverseMode(accountRow),
       x_monitor_posts: xMonitorBundle.posts,
       x_monitor_accounts: xMonitorBundle.accounts,
-      x_ticker_buzz: xMonitorBundle.tickerBuzz
+      x_ticker_buzz: xMonitorBundle.tickerBuzz,
+      previous_learning_memory: accountRow.learning_memory || null
     },
     { timeout: Math.max(config.QUANT_AGI_RANK_TIMEOUT_MS || 45000, 90000) }
   );
@@ -1735,7 +1753,12 @@ async function runBotLearningCycle(userId, { source = 'manual' } = {}) {
   }
 
   let autoApprovedRuleIds = [];
-  if (source === 'auto' && createdRuleIds.length) {
+  const outcomeGate = data.outcome_gate || data.learning_memory?.outcome_gate?.previous_cycle || null;
+  const gateAllowsTightening =
+    !outcomeGate ||
+    outcomeGate.status === 'passed' ||
+    outcomeGate.status === 'insufficient_data';
+  if (source === 'auto' && createdRuleIds.length && gateAllowsTightening) {
     autoApprovedRuleIds = await autoApproveConservativeLearningRules(
       userId,
       createdRuleIds,
@@ -1763,6 +1786,9 @@ async function runBotLearningCycle(userId, { source = 'manual' } = {}) {
         lessons: data.lessons || [],
         agentHints: data.agent_hints || [],
         coachingDirectives: data.coaching_directives || data.learning_memory?.coaching_directives || null,
+        effectiveCoachingDirectives:
+          data.effective_coaching_directives || data.learning_memory?.effective_directives || null,
+        outcomeGate: data.outcome_gate || data.learning_memory?.outcome_gate?.previous_cycle || null,
         trustedSymbols: data.coaching_directives?.trusted_symbols || data.trusted_x?.trusted_symbols || [],
         trustedXAccounts: (xMonitorBundle.accounts || []).slice(0, 6),
         learningMemoryUpdatedAt: data.learning_memory?.updated_at || null,

@@ -21,6 +21,7 @@ def plan_tick_payload(
     quant_rank_by_symbol: dict[str, Any] | None = None,
     run_at_iso: Optional[str] = None,
     learning_memory: dict[str, Any] | None = None,
+    x_research_snippets: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Run multi-agent plan graph; returns audit-friendly plan (no fills)."""
     policy = active_policy or merge_active_rules(active_rules or [])
@@ -92,6 +93,8 @@ def plan_tick_payload(
     }
     if learning_memory and isinstance(learning_memory, dict):
         initial["learning_memory"] = learning_memory
+    if x_research_snippets:
+        initial["x_research_snippets"] = x_research_snippets
 
     final = graph.invoke(initial)
     plan = final.get("plan") if isinstance(final.get("plan"), dict) else {}
