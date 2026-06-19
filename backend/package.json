@@ -16,7 +16,8 @@
     "setup:supabase-chat": "node scripts/setupSupabaseChat.js",
     "build:tw-aliases": "node scripts/buildTwEnglishAliases.js",
     "smoke:quant-agi-rank": "node scripts/smokeQuantAgiDashboardRank.js",
-    "smoke:paper-bot": "node scripts/smokePaperBotLedger.js"
+    "smoke:paper-bot": "node scripts/smokePaperBotLedger.js",
+    "smoke:paper-bot-learning": "node scripts/smokePaperBotLearningLoop.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.1",

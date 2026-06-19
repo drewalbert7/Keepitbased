@@ -10,6 +10,7 @@ import {
   type PaperBotLearningSource,
   type PaperBotTrustedXTrader
 } from "../../lib/paperBotApi";
+import { OutcomeGatePanel } from "./OutcomeGatePanel";
 
 type Props = {
   refreshKey?: number;
@@ -144,7 +145,7 @@ export function AutoresearchDailyStrip({ refreshKey = 0, onLearningComplete }: P
 
   if (!data) return null;
 
-  const { metrics, capabilities, lastLearning, learningPendingRules, autoLearning, activeLearningMemory, xTrusted, trustedTraders = [], maxTrustedTraders = 12 } = data;
+  const { metrics, capabilities, lastLearning, learningPendingRules, autoLearning, activeLearningMemory, outcomeGate, outcomeProgress, xTrusted, trustedTraders = [], maxTrustedTraders = 12 } = data;
   const payload = lastLearning?.payload;
   const coach = activeLearningMemory?.coaching_directives;
   const trustedSymbols = coach?.trusted_symbols?.length
@@ -361,6 +362,8 @@ export function AutoresearchDailyStrip({ refreshKey = 0, onLearningComplete }: P
           </p>
         </div>
       ) : null}
+
+      <OutcomeGatePanel priorGate={outcomeGate} memory={activeLearningMemory} progress={outcomeProgress} />
 
       {activeLearningMemory?.summary ? (
         <div className="mt-3 rounded-md border border-emerald-500/25 bg-emerald-500/5 p-2">

@@ -210,6 +210,13 @@ async function run() {
     'Search for apple should include AAPL'
   );
 
+  const googleSearch = await get('/search', { q: 'google' });
+  assert(googleSearch.status === 200, `Google name search should return 200, got ${googleSearch.status}`);
+  assert(
+    googleSearch.data.results.some((r) => ['GOOGL', 'GOOG'].includes(String(r.symbol).toUpperCase())),
+    'Search for google should include Alphabet (GOOGL/GOOG)'
+  );
+
   console.log('Chart regression checks passed.');
 }
 

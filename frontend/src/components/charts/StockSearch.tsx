@@ -75,7 +75,7 @@ export const StockSearch: React.FC<StockSearchProps> = ({ onSelectStock, current
       <div className="relative">
         <input
           type="text"
-          placeholder="Search stocks (e.g., AAPL, Tesla)..."
+          placeholder="Search by company name or ticker (e.g. Apple, TSLA)..."
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);

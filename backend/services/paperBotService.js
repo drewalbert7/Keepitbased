@@ -1556,6 +1556,16 @@ async function fetchLearningCapabilities() {
   }
 }
 
+function buildOutcomeProgress(learningMemory, tradeCount) {
+  const og = learningMemory?.outcome_gate;
+  if (!og || typeof og !== 'object') return null;
+  const windowTrades = Number(og.window_trades) || 10;
+  const baselineTrades = Number(og.baseline?.trade_count) || 0;
+  if (!og.baseline) return { windowTrades, tradesSinceBaseline: 0 };
+  const tradesSinceBaseline = Math.max(0, Number(tradeCount) - baselineTrades);
+  return { windowTrades, tradesSinceBaseline };
+}
+
 async function getBotLearningLatest(userId) {
   const accountRow = await ensureAccount(userId);
   const positionsRaw = await loadPositions(userId);
@@ -1596,6 +1606,8 @@ async function getBotLearningLatest(userId) {
     (r) => r.source === 'autoresearch' || (r.ruleJson && r.ruleJson.bot_learning === true)
   );
 
+  const outcomeProgress = buildOutcomeProgress(accountRow.learning_memory, tradeCount);
+
   return {
     metrics,
     nightlyContext,
@@ -1607,6 +1619,7 @@ async function getBotLearningLatest(userId) {
       accountRow.learning_memory?.outcome_gate?.previous_cycle ||
       accountRow.learning_memory?.outcome_gate ||
       null,
+    outcomeProgress,
     xTrusted: {
       configured: Boolean(xPulse?.configured || trustedTraders.length),
       xSearchOnly: true,

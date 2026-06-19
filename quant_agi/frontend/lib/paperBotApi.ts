@@ -570,6 +570,39 @@ export interface PaperBotLearningCoachingDirectives {
   trusted_symbols?: string[];
 }
 
+export interface PaperBotOutcomeGateMetrics {
+  cum_pnl_usd?: number;
+  cumPnlUsd?: number;
+  sharpe_proxy?: number;
+  sharpeProxy?: number;
+  max_drawdown_pct?: number;
+  maxDrawdownPct?: number;
+  trade_count?: number;
+  tradeCount?: number;
+  recorded_at?: string;
+}
+
+export interface PaperBotOutcomeGateDelta {
+  cum_pnl_usd?: number;
+  sharpe_proxy?: number;
+  max_drawdown_pct?: number;
+  trade_count?: number;
+}
+
+/** Evaluation of prior coaching cycle, or current measurement window metadata. */
+export interface PaperBotOutcomeGate {
+  status: "passed" | "failed" | "pending" | "insufficient_data" | string;
+  window_trades?: number;
+  trades_since_baseline?: number;
+  message?: string | null;
+  baseline?: PaperBotOutcomeGateMetrics | null;
+  after?: PaperBotOutcomeGateMetrics | null;
+  delta?: PaperBotOutcomeGateDelta | null;
+  evaluated_at?: string | null;
+  apply_note?: string | null;
+  previous_cycle?: PaperBotOutcomeGate | null;
+}
+
 export interface PaperBotTrustedXTrader {
   id: number;
   xUserId: string;
@@ -594,6 +627,10 @@ export interface PaperBotLearningMemory {
   lessons?: PaperBotLearningLesson[];
   agent_hints?: string[];
   coaching_directives?: PaperBotLearningCoachingDirectives;
+  proposed_directives?: PaperBotLearningCoachingDirectives;
+  effective_directives?: PaperBotLearningCoachingDirectives;
+  outcome_gate?: PaperBotOutcomeGate;
+  signal_hierarchy?: { rank?: string; coach?: string; x_whisper?: string };
   research_queries?: string[];
   source_count?: number;
   grok_used?: boolean;
@@ -633,6 +670,10 @@ export interface PaperBotLearningLatest {
   } | null;
   learningPendingRules: PaperBotRule[];
   activeLearningMemory: PaperBotLearningMemory | null;
+  /** Prior coaching cycle evaluation (passed / failed / pending / insufficient_data). */
+  outcomeGate: PaperBotOutcomeGate | null;
+  /** Live progress toward the next outcome measurement window. */
+  outcomeProgress: { windowTrades: number; tradesSinceBaseline: number } | null;
   xTrusted: PaperBotXTrustedMeta;
   trustedTraders: PaperBotTrustedXTrader[];
   maxTrustedTraders: number;

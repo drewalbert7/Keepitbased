@@ -128,7 +128,7 @@ export const WatchlistStockSearchInput: React.FC<WatchlistStockSearchInputProps>
     open &&
     (loading ||
       hits.length > 0 ||
-      (searchAvailable && value.trim().length >= 2 && !loading));
+      (searchAvailable && value.trim().length >= 1 && !loading));
 
   return (
     <div ref={rootRef} className="relative w-full">
@@ -207,9 +207,9 @@ export const WatchlistStockSearchInput: React.FC<WatchlistStockSearchInputProps>
                 </button>
               </li>
             ))}
-          {!loading && hits.length === 0 && value.trim().length >= 2 && (
+          {!loading && hits.length === 0 && value.trim().length >= 1 && (
             <li className="px-3 py-2 text-xs text-kib-muted">
-              No matches — enter a valid US ticker and press Add (we verify against market data).
+              No matches — try the company name or a valid US ticker, then press Add.
             </li>
           )}
         </ul>

@@ -201,6 +201,23 @@ async function main() {
     }
   }
 
+  const learningLatest = await axios.get(`${API}/paper-bot/learning/latest`, { headers });
+  if (!Object.prototype.hasOwnProperty.call(learningLatest.data || {}, 'outcomeGate')) {
+    console.error('FAIL learning/latest missing outcomeGate key');
+    process.exit(1);
+  }
+  if (!Object.prototype.hasOwnProperty.call(learningLatest.data || {}, 'outcomeProgress')) {
+    console.error('FAIL learning/latest missing outcomeProgress key');
+    process.exit(1);
+  }
+  console.log(
+    `OK   learning/latest shape gate=${learningLatest.data.outcomeGate?.status || 'none'} progress=${
+      learningLatest.data.outcomeProgress
+        ? `${learningLatest.data.outcomeProgress.tradesSinceBaseline}/${learningLatest.data.outcomeProgress.windowTrades}`
+        : 'n/a'
+    }`
+  );
+
   await axios.post(`${API}/paper-bot/kill-switch`, { armed: true }, { headers });
   console.log('OK   kill switch re-armed');
 
