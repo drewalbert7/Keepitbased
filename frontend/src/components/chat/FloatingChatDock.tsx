@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ChatBubbleLeftRightIcon, MinusIcon, ArrowsPointingOutIcon } from '@heroicons/react/24/outline';
 import { useChat } from '../../contexts/ChatContext';
 import { ChatConversation } from './ChatConversation';
@@ -186,6 +187,14 @@ export const FloatingChatDock: React.FC = () => {
         >
           <MinusIcon className="h-5 w-5" aria-hidden />
         </button>
+        <Link
+          to="/chat"
+          data-chat-dock-control
+          className="rounded-md p-1.5 text-kib-muted hover:bg-white/[0.08] hover:text-kib-cyber"
+          title="Open full chat"
+        >
+          <ArrowsPointingOutIcon className="h-5 w-5" aria-hidden />
+        </Link>
       </header>
 
       <div className="relative flex min-h-0 flex-1 flex-col px-2 pb-2 pt-1">

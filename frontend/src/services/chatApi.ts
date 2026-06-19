@@ -35,3 +35,19 @@ export async function toggleChatReaction(messageId: string, emoji: string): Prom
   const { data } = await axios.post<{ toggled: 'on' | 'off' }>('/chat/reactions/toggle', { messageId, emoji });
   return data;
 }
+
+export type ChatLinkPreviewData = {
+  url: string;
+  title: string;
+  description: string | null;
+  image: string | null;
+  siteName: string;
+};
+
+export async function fetchLinkPreview(url: string): Promise<ChatLinkPreviewData> {
+  const { data } = await axios.get<{ preview: ChatLinkPreviewData }>('/chat/link-preview', {
+    params: { url },
+    timeout: 12000
+  });
+  return data.preview;
+}

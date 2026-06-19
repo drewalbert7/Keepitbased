@@ -116,6 +116,75 @@ async function assertTradableUsStock(symbol) {
 }
 
 /**
+ * @param {string} q
+ * @returns {boolean}
+ */
+function looksLikeTicker(q) {
+  const s = String(q || '').trim();
+  return /^[A-Z][A-Z0-9.\-]{0,9}$/i.test(s);
+}
+
+/**
+ * Prefer exact tickers and common stock over ETF noise from Massive text search.
+ * @param {string} query
+ * @param {object} row
+ * @returns {number}
+ */
+function scoreSearchHit(query, row) {
+  const q = String(query || '').trim().toUpperCase();
+  const ql = String(query || '').trim().toLowerCase();
+  const ticker = String(row.ticker || '').toUpperCase();
+  const name = String(row.name || '').toLowerCase();
+  let score = 0;
+
+  if (ticker === q) score += 1000;
+  else if (ticker.startsWith(q)) score += 800;
+  else if (name.startsWith(ql)) score += 700;
+  else if (ticker.includes(q)) score += 400;
+  else if (name.includes(ql)) score += 300;
+  else score += 50;
+
+  const type = String(row.type || '').toUpperCase();
+  if (type === 'CS' || type === 'ADRC') score += 80;
+  else if (type === 'ETF' || type === 'ETN' || type === 'ETS') score -= 30;
+
+  if (row.primary_exchange && ['XNAS', 'XNYS', 'ARCX', 'BATS'].includes(String(row.primary_exchange))) {
+    score += 10;
+  }
+  return score;
+}
+
+/**
+ * @param {string} query
+ * @param {Array<object>} rows
+ * @param {number} [limit]
+ */
+function rankSearchResults(query, rows, limit = 12) {
+  const seen = new Set();
+  const out = [];
+  for (const row of [...(rows || [])].sort((a, b) => scoreSearchHit(query, b) - scoreSearchHit(query, a))) {
+    const ticker = String(row.ticker || '').toUpperCase();
+    if (!ticker || seen.has(ticker)) continue;
+    seen.add(ticker);
+    out.push(row);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/**
+ * @param {object} r
+ */
+function mapReferenceRow(r) {
+  return {
+    ticker: String(r.ticker).toUpperCase(),
+    name: String(r.name || '').trim(),
+    primary_exchange: String(r.primary_exchange || ''),
+    type: String(r.type || '')
+  };
+}
+
+/**
  * @param {string} rawQuery
  * @returns {Promise<Array<{ ticker: string; name: string; primary_exchange: string }>>}
  */
@@ -130,30 +199,46 @@ async function searchUsStocks(rawQuery) {
     return [];
   }
 
+  const merged = [];
+
+  if (looksLikeTicker(q)) {
+    const exact = String(q).toUpperCase();
+    try {
+      const data = await polygonGet(`/v3/reference/tickers/${encodeURIComponent(exact)}`);
+      if (data.status === 'OK' && data.results && data.results.market === 'stocks' && data.results.active) {
+        merged.push(mapReferenceRow(data.results));
+      }
+    } catch (e) {
+      if (e.response?.status !== 404) {
+        logger.warn(`exact ticker lookup failed for ${exact}: ${e.message}`);
+      }
+    }
+  }
+
   try {
     const data = await polygonGet('/v3/reference/tickers', {
       search: q,
       market: 'stocks',
       active: true,
-      limit: 15,
-      sort: 'ticker',
-      order: 'asc'
+      limit: 50
     });
-    if (data.status !== 'OK' || !Array.isArray(data.results)) {
-      return [];
+    if (data.status === 'OK' && Array.isArray(data.results)) {
+      for (const r of data.results) {
+        if (r && r.market === 'stocks' && r.active === true && r.ticker) {
+          merged.push(mapReferenceRow(r));
+        }
+      }
     }
-    return data.results
-      .filter((r) => r && r.market === 'stocks' && r.active === true && r.ticker)
-      .map((r) => ({
-        ticker: String(r.ticker).toUpperCase(),
-        name: String(r.name || '').trim(),
-        primary_exchange: String(r.primary_exchange || '')
-      }))
-      .slice(0, 12);
   } catch (e) {
     logger.warn(`stock search failed: ${e.message}`);
-    return [];
+    if (!merged.length) return [];
   }
+
+  return rankSearchResults(q, merged, 12).map(({ ticker, name, primary_exchange }) => ({
+    ticker,
+    name,
+    primary_exchange
+  }));
 }
 
 module.exports = {

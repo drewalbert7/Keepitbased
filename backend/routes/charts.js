@@ -7,6 +7,7 @@ const config = require('../config');
 const openbbClient = require('../services/openbbClient');
 const { getRedisClient } = require('../utils/redis');
 const { resolveUsStockSnapshotTicker } = require('../utils/stockSnapshotQuote');
+const { searchUsStocks, getApiKey } = require('../services/stockReferenceService');
 
 const getMarketDataApiKey = () => config.POLYGON_API_KEY || config.MASSIVE_API_KEY;
 
@@ -813,29 +814,23 @@ router.get('/technical/:symbol', async (req, res) => {
   }
 });
 
-// Search stocks
+// Search stocks (shared ranking with dashboard watchlist — Massive /v3/reference/tickers)
 router.get('/search', async (req, res) => {
   try {
-    const { q } = req.query;
-    
-    if (!q || q.length < 2) {
-      return res.status(400).json({ message: 'Query must be at least 2 characters' });
+    const raw = req.query.q;
+    const q = typeof raw === 'string' ? raw.trim().slice(0, 64) : '';
+    if (q.length < 1) {
+      return res.status(400).json({ message: 'Query is required' });
     }
-    
-    const response = await makeMassiveRequest('/v3/reference/tickers', {
-      search: q,
-      market: 'stocks',
-      active: true,
-      limit: 10
-    });
 
-    const results = (response.results || []).map((item) => ({
-      symbol: item.ticker,
-      name: item.name,
-      exchange: item.primary_exchange || item.market || 'US'
+    const hits = await searchUsStocks(q);
+    const results = hits.map((r) => ({
+      symbol: r.ticker,
+      name: r.name,
+      exchange: r.primary_exchange || 'US'
     }));
 
-    res.json({ results });
+    res.json({ results, searchAvailable: !!getApiKey() });
   } catch (error) {
     logger.error(`Error searching stocks: ${error.message}`);
     res.status(500).json({ message: 'Search failed' });

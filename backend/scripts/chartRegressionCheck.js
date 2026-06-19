@@ -198,9 +198,17 @@ async function run() {
     );
   }
 
-  const badSearch = await get('/search', { q: 'a' });
-  assert(badSearch.status === 400, `Short search should return 400, got ${badSearch.status}`);
-  assert(typeof badSearch.data?.message === 'string', 'Short search error should include message');
+  const emptySearch = await get('/search', { q: '' });
+  assert(emptySearch.status === 400, `Empty search should return 400, got ${emptySearch.status}`);
+  assert(typeof emptySearch.data?.message === 'string', 'Empty search error should include message');
+
+  const appleSearch = await get('/search', { q: 'apple' });
+  assert(appleSearch.status === 200, `Stock search should return 200, got ${appleSearch.status}`);
+  assert(Array.isArray(appleSearch.data?.results), 'Search response should include results array');
+  assert(
+    appleSearch.data.results.some((r) => String(r.symbol).toUpperCase() === 'AAPL'),
+    'Search for apple should include AAPL'
+  );
 
   console.log('Chart regression checks passed.');
 }

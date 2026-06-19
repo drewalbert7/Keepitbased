@@ -2,7 +2,9 @@
 
 > **Single source of truth:** `keepitbased/todo.md` in this repo. When you or Cursor reference **`todo.md`**, use **this file only**. A stub at `/home/dstrad/todo.md` redirects here.
 
-Last updated: **2026-06-15** (Research agent + outcome gate · rank primary / coach overlay / X whisper).
+Last updated: **2026-06-19** (Resume Here sync · landing CTA · PM2 deploy reminder).
+
+**Session checkpoint (2026-06-19) — Ops + doc sync:** **Fixed:** Landing **Open charts** → **Sign in to open charts** (`/login`). **Resume Here** section updated (5e research + outcome gate). **Deploy:** `pm2 restart keepitbased-api quant-agi-api` after `f0e601c1` so research agent + outcome gate run in prod. **Still open:** outcome gate UI · smoke learning→tick · SES/DNS · rank → `buildAgentWatchlistContext`.
 
 **Session checkpoint (2026-06-15) — STOP FOR NIGHT · Research agent + measured outcome gate:** **Shipped:** **`research_strategist`** LangGraph node (`research_agent.py`) — papers + trusted X snippets + `learning_memory` → weighted position guidance before entry/exit strategists; `x_research_snippets` on plan-tick from universe resolve (no double x_search). **Signal hierarchy enforced:** rank tape primary, coach overlay, X whisper (reduced scout/research/debate nudges). **`learning_outcomes.py`** — north-star gate: prior coaching must improve paper metrics over next **N** trades (default 10) before tightening; `effective_directives` vs `proposed_directives`; auto-approve conservative rules blocked on gate **failed**. **Learning lab** prompts teach trade-level entry/exit; plan audit phase **5d** includes `research_brief` + recommendations. **Fixed:** `exit_urgency_boost` in `learning_memory.py`. **Tests:** `test_research_agent.py`, `test_learning_outcomes.py`. **Next:** smoke full cycle (learning → RTH ticks consume memory) · expose outcome gate in learning lab UI · optional `bot_learning_outcome_window_trades` in config · rename `autoresearch` rule source · richer market regime (breadth/vol). **Ops:** `pm2 restart keepitbased-api quant-agi-api` · `cd quant_agi/frontend && npm run build:deploy` if UI touched.
 
@@ -220,11 +222,13 @@ npm run email:test-opportunity
 
 ## Resume Here Next Session
 
-### Session save spot (2026-06-11) — **continue here next time**
+### Session save spot (2026-06-19) — **continue here next time**
 
-**Product (start here):** **Quant AGI Bot** — **`/quant-agi` only** · Phases 0–3 ✅ · **4a core ✅** · **4c quant exec ✅** · **5c multi-agent brain ✅** · **learning lab ✅** · dashboard unchanged.
+**Product (start here):** **Quant AGI Bot** — **`/quant-agi` only** · Phases 0–3 ✅ · **4a core ✅** · **4c quant exec ✅** · **5a–5c multi-agent brain ✅** · **5d learning lab ✅** · **5e research agent + outcome gate ✅** · main dashboard unchanged.
 
-**Recommended default experiment:** Universe **`quant_auto_agent`** · add **trusted X @handles** in learning lab · Bot ON during RTH · run **learning cycle** after hours · review **coaching memory** + rules inbox weekly.
+**Signal hierarchy (enforced in code):** rank tape **primary** · coaching memory **overlay** · trusted X **whisper** · outcome gate blocks tightening until next **N** paper trades improve metrics (default 10).
+
+**Recommended default experiment:** Universe **`quant_auto_agent`** · trusted X @handles in learning lab · Bot ON during RTH · learning cycle after hours · verify plan shows **`research_brief`** + **`outcome_gate`** in learning latest.
 
 **Phase 4 split (canonical):** [`GROK_PAPER_TRADING_BOT_PLAN.md`](quant_agi/docs/GROK_PAPER_TRADING_BOT_PLAN.md) § Phase 4.
 
@@ -234,6 +238,8 @@ npm run email:test-opportunity
 | **4c** | Quant auto-pick execution (rank rotation, ET windows, equity sizing) | **✅** |
 | **5a–5c** | LangGraph plan-tick · Grok entry/exit · candidate debate · brain reflection · `GET /paper-bot/brain` | **✅** |
 | **5d** | Bot learning lab · arXiv + x_search · coaching memory → plan graph · trusted X UI · auto-learning cron | **✅** |
+| **5e** | **`research_strategist`** · `x_research_snippets` on tick · **`learning_outcomes.py`** outcome gate · rank/coach/X weight caps | **✅** |
+| **5f (next)** | Outcome gate in learning lab UI · smoke full learning→RTH tick loop · rename `autoresearch` rule source → `bot_learning` | **🔲** |
 | **4a tail** | Proactive Grok daily rules · nightly `paper_bot_daily_close` cron | **🔲** |
 | **4b (later)** | **DL-3** → broker paper (**DL-4**) | Planned |
 
@@ -248,15 +254,21 @@ npm run email:test-opportunity
 
 **Key APIs:** `POST /bot/plan-tick` · `POST /bot/learning-cycle` · `POST /bot/x-trusted-posts` · `GET/POST/DELETE /paper-bot/learning/trusted-traders` · `POST /bot/brain-reflect` · `GET /paper-bot/brain` · `GET /paper-bot/learning/latest` · `POST /paper-bot/rules/:id/remove` · `POST /paper-bot/rules/pending/clear`.
 
-**UX polish (discussed, not shipped):** Tabbed brain (Next tick | Policy | History) · merge health into status bar · simplify universe dropdown · **paper scorecard** strip · plain-language labels (not “dry-run”). ~~move AutoresearchDailyStrip to Zone C~~ — **Zone C removed**; learning lab stays in bot panel.
+**UX polish (discussed, not shipped):** Tabbed brain (Next tick | Policy | History) · merge health into status bar · simplify universe dropdown · **paper scorecard** strip · plain-language labels (not “dry-run”) · **outcome gate status** in learning lab strip. **Zone C removed** — learning lab stays in bot panel only.
 
-**Verify:** `/quant-agi` signed in → Bot ON · quant_auto_agent · brain shows regime + next tick · remove rule works.
+**Verify:** `/quant-agi` signed in → Bot ON · `quant_auto_agent` · brain shows regime + research brief on plan · learning latest shows `outcomeGate` · remove rule works.
 
-**Smoke:** `cd backend && npm run smoke:paper-bot` (set `PAPER_BOT_TEST_EMAIL` / `PAPER_BOT_TEST_PASSWORD`) · after frontend: `cd quant_agi/frontend && npm run build:deploy`
+**Smoke:** `cd backend && npm run smoke:paper-bot` (set `PAPER_BOT_TEST_EMAIL` / `PAPER_BOT_TEST_PASSWORD`) · after quant frontend: `cd quant_agi/frontend && npm run build:deploy`
 
-**Parallel (non-blocking):** rank → **`buildAgentWatchlistContext`**; SES/DNS; DL-3 design.
+**Ops after bot/sidecar code pull:** `pm2 restart keepitbased-api quant-agi-api` · after main CRA landing: `cd frontend && npm run build` + reload static/nginx per **`deploy-production.sh`**
 
-### Session save spot (2026-06-08) — prior
+**Parallel (non-blocking):** rank → **`buildAgentWatchlistContext`** (§ [Quant AGI — unified stock selection](#quant-agi--unified-stock-selection-for-dashboard-langgraph)); SES/DNS (`npm run email:check-dns`); DL-3 design.
+
+### Session save spot (2026-06-15) — research agent + outcome gate
+
+**Shipped:** `research_strategist` · `learning_outcomes.py` · signal hierarchy · plan phase **5d** audit fields. **Git:** `f0e601c1`.
+
+### Session save spot (2026-06-11) — prior (multi-agent + brain)
 
 **Ops (fixed):** Site outage was **PM2 down** + **Hetzner firewall** missing public **80/443**. Recovery: **`pm2 resurrect && pm2 save`**; Hetzner inbound **22** from **`66.190.174.124/32`**, **80/443** from anywhere. **SSH + Cursor:** § [Admin SSH + Cursor](#admin-ssh--cursor-2026-06-01). Full runbook: § [Production ops](#production-ops-smoke--recovery).
 

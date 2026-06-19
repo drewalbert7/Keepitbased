@@ -22,7 +22,7 @@ export const StockSearch: React.FC<StockSearchProps> = ({ onSelectStock, current
 
   const debouncedSearch = useCallback(
     debounce(async (searchQuery: string) => {
-      if (searchQuery.length < 2) {
+      if (searchQuery.length < 1) {
         setResults([]);
         return;
       }
@@ -99,7 +99,7 @@ export const StockSearch: React.FC<StockSearchProps> = ({ onSelectStock, current
             onClick={() => setIsOpen(false)}
           />
           <div className="absolute z-20 w-full mt-1 bg-gray-800/95 border border-gray-700 rounded-xl shadow-2xl max-h-96 overflow-y-auto backdrop-blur">
-            {query.length >= 2 ? (
+            {query.length >= 1 ? (
               results.length > 0 ? (
                 <div>
                   <div className="px-4 py-2 text-sm text-gray-400 border-b border-gray-700">

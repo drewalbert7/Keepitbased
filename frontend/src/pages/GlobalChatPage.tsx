@@ -6,7 +6,7 @@ import { ChatConversation } from '../components/chat/ChatConversation';
  */
 const GlobalChatPage: React.FC = () => {
   return (
-    <div className="mx-auto flex h-[calc(100dvh-3.5rem)] max-w-4xl flex-col px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-4 sm:px-6">
+    <div className="mx-auto flex h-[calc(100dvh-3.5rem)] max-w-3xl flex-col px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-4 sm:px-6">
       <ChatConversation />
     </div>
   );

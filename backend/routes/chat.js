@@ -5,6 +5,7 @@ const auth = require('../middleware/auth');
 const db = require('../models/database');
 const logger = require('../utils/logger');
 const { getAdminClient, isChatConfigured } = require('../services/supabaseChat');
+const { getLinkPreview } = require('../services/chatLinkPreview');
 
 const router = express.Router();
 
@@ -23,6 +24,14 @@ const reactionLimiter = rateLimit({
   max: 120,
   standardHeaders: true,
   legacyHeaders: false
+});
+
+const previewLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Too many link previews; try again shortly.'
 });
 
 function chat503(res) {
@@ -83,6 +92,19 @@ router.get('/messages', auth, async (req, res) => {
   }));
 
   res.json({ messages: rows.reverse() });
+});
+
+/** GET /api/chat/link-preview?url=https://… — Open Graph card for shared links */
+router.get('/link-preview', auth, previewLimiter, async (req, res) => {
+  const raw = typeof req.query.url === 'string' ? req.query.url.trim() : '';
+  if (!raw || raw.length > 2048) {
+    return res.status(400).json({ message: 'Valid url query parameter required' });
+  }
+  const result = await getLinkPreview(raw);
+  if (!result.ok) {
+    return res.status(400).json({ message: result.error || 'Could not preview link' });
+  }
+  return res.json({ preview: result.preview });
 });
 
 function aggregateReactions(reactionRows) {

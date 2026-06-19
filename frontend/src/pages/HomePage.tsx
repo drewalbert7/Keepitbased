@@ -95,10 +95,10 @@ const HomePage: React.FC = () => {
                       Start with your invite
                     </Link>
                     <Link
-                      to="/charts"
+                      to="/login"
                       className="btn-secondary text-center text-base sm:text-lg py-3.5 px-7 inline-flex items-center justify-center"
                     >
-                      Open charts
+                      Sign in to open charts
                     </Link>
                   </div>
                   <p className="mt-5 text-sm text-kib-muted/90 leading-relaxed">
@@ -402,8 +402,8 @@ const HomePage: React.FC = () => {
                 </p>
               </div>
               <div className="flex flex-wrap gap-x-8 gap-y-3 text-sm">
-                <Link to="/charts" className="text-kib-muted hover:text-kib-cyber transition-colors">
-                  Charts
+                <Link to="/login" className="text-kib-muted hover:text-kib-cyber transition-colors">
+                  Charts (sign in)
                 </Link>
                 <Link to="/dashboard" className="text-kib-muted hover:text-kib-cyber transition-colors">
                   Dashboard
