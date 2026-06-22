@@ -25,6 +25,64 @@ export interface QuantSuggestedPosition {
   strategy_factors?: Record<string, unknown>;
 }
 
+export interface AntiChaseFactors {
+  chase_risk?: boolean;
+  penalty_points?: number;
+  week52_position?: number;
+  momentum_20d_pct?: number | null;
+  reasons?: string[];
+}
+
+export interface RankBacktestHorizon {
+  ok?: boolean;
+  trading_days?: number;
+  basket_return_pct?: number | null;
+  benchmark_return_pct?: number | null;
+  excess_return_pct?: number | null;
+  top_symbols?: string[];
+  holdout_start?: string;
+  holdout_end?: string;
+}
+
+export interface RankBacktestResult {
+  ok?: boolean;
+  strategy?: string;
+  top_symbols_today?: string[];
+  trailing?: {
+    horizons?: Record<string, RankBacktestHorizon>;
+  };
+  holdout?: {
+    horizons?: Record<string, RankBacktestHorizon>;
+    disclaimer?: string;
+  };
+  universe_meta?: {
+    mode?: string;
+    dynamic_added?: number;
+    universe_size?: number;
+  };
+}
+
+export interface SuggestionOutcomeItem {
+  symbol: string;
+  strategy: string;
+  returnPct: number | null;
+  spyReturnPct: number | null;
+  excessReturnPct: number | null;
+  ageDays: number;
+  entryPrice: number | null;
+  currentPrice: number | null;
+}
+
+export interface SuggestionOutcomesSummary {
+  ok: boolean;
+  totalLogged: number;
+  withReturns: number;
+  avgReturnPct: number | null;
+  avgSpyReturnPct: number | null;
+  avgExcessReturnPct: number | null;
+  items: SuggestionOutcomeItem[];
+}
+
 export interface RankMeta {
   accepted_count: number;
   excluded_count: number;
@@ -42,6 +100,11 @@ export interface MarketUniverseRankResult {
   positions: QuantSuggestedPosition[];
   meta: RankMeta;
   strategyMeta: RankStrategyMeta;
+  universeMeta?: {
+    mode?: string;
+    dynamic_added?: number;
+    universe_size?: number;
+  };
 }
 
 const RANK_POLL_MS = 8000;
@@ -100,7 +163,11 @@ function mapPayload(payload: Record<string, unknown>, strategy: RankStrategyId):
       id: sid,
       label: String(payload.strategy_label || sid),
       disclaimer: String(payload.strategy_disclaimer || '')
-    }
+    },
+    universeMeta:
+      payload.universe_meta && typeof payload.universe_meta === 'object'
+        ? (payload.universe_meta as MarketUniverseRankResult['universeMeta'])
+        : undefined
   };
 }
 
@@ -125,6 +192,61 @@ export async function fetchMarketUniverseRank(
     throw new Error(String(data.message || data.detail || 'Quant rank unavailable'));
   }
   return result;
+}
+
+export async function fetchRankBacktest(
+  strategy: RankStrategyId,
+  topK = 5,
+  signal?: AbortSignal
+): Promise<RankBacktestResult> {
+  const { data } = await axios.get<RankBacktestResult>('/quant-agi/market-universe-rank-backtest', {
+    params: { strategy, top_k: topK },
+    signal,
+    timeout: 120000
+  });
+  if (!data || data.ok === false) {
+    throw new Error('Backtest unavailable');
+  }
+  return data;
+}
+
+export async function logQuantSuggestionAdd(payload: {
+  symbol: string;
+  strategy: RankStrategyId;
+  rankScore?: number;
+  rankPosition?: number;
+  entryPrice?: number | null;
+}): Promise<void> {
+  await axios.post('/quant-agi/suggestion-log', {
+    symbol: payload.symbol,
+    strategy: payload.strategy,
+    rankScore: payload.rankScore,
+    rankPosition: payload.rankPosition,
+    entryPrice: payload.entryPrice ?? undefined,
+    source: 'dashboard_add'
+  });
+}
+
+export async function fetchSuggestionOutcomes(limit = 20): Promise<SuggestionOutcomesSummary> {
+  const { data } = await axios.get<SuggestionOutcomesSummary>('/quant-agi/suggestion-outcomes', {
+    params: { limit }
+  });
+  return data;
+}
+
+export function antiChaseFromFactors(
+  factors: Record<string, unknown> | undefined
+): AntiChaseFactors | null {
+  const raw = factors?.anti_chase;
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  return {
+    chase_risk: Boolean(o.chase_risk),
+    penalty_points: typeof o.penalty_points === 'number' ? o.penalty_points : undefined,
+    week52_position: typeof o.week52_position === 'number' ? o.week52_position : undefined,
+    momentum_20d_pct: typeof o.momentum_20d_pct === 'number' ? o.momentum_20d_pct : null,
+    reasons: Array.isArray(o.reasons) ? o.reasons.map((x) => String(x)) : undefined
+  };
 }
 
 export function ruleBreakerBreakdown(

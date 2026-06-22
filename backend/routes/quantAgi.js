@@ -1,5 +1,5 @@
 const express = require('express');
-const { query, validationResult } = require('express-validator');
+const { query, body, validationResult } = require('express-validator');
 const axios = require('axios');
 const rateLimit = require('express-rate-limit');
 const auth = require('../middleware/auth');
@@ -26,6 +26,29 @@ const rankLimiter = rateLimit({
   keyGenerator: (req) => `quant-rank:${req.user?.id ?? req.ip}`
 });
 
+const backtestLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many backtest requests, retry shortly' },
+  keyGenerator: (req) => `quant-bt:${req.user?.id ?? req.ip}`
+});
+
+const suggestionLogLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many suggestion log requests, retry shortly' },
+  keyGenerator: (req) => `quant-sug:${req.user?.id ?? req.ip}`
+});
+
+const {
+  logSuggestionAdd,
+  getUserSuggestionOutcomes,
+  VALID_STRATEGIES: SUGGESTION_STRATEGIES
+} = require('../services/quantSuggestionLogService');
 router.get(
   '/market-universe-rank',
   auth,
@@ -68,6 +91,102 @@ router.get(
     }
   }
 );
+
+router.get(
+  '/market-universe-rank-backtest',
+  auth,
+  backtestLimiter,
+  [
+    query('strategy').optional().isString().trim(),
+    query('top_k').optional().isInt({ min: 3, max: 10 })
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      let strategy = String(req.query.strategy || 'momentum_liquidity').trim();
+      if (!RANK_STRATEGIES.has(strategy)) {
+        strategy = 'momentum_liquidity';
+      }
+
+      const topK = Number(req.query.top_k) || 5;
+      const base = resolveQuantAgiBaseUrl();
+      const timeout = Math.max(config.QUANT_AGI_RANK_TIMEOUT_MS || 45000, 90000);
+
+      const { data } = await axios.get(`${base}/diag/market-universe-rank-backtest`, {
+        params: { strategy, top_k: topK },
+        timeout,
+        validateStatus: (s) => s >= 200 && s < 300
+      });
+
+      return res.json(data && typeof data === 'object' ? data : { ok: false });
+    } catch (err) {
+      const status = err.response?.status;
+      logger.warn(`Quant AGI backtest proxy failed: ${err.message}${status ? ` (${status})` : ''}`);
+      return res.status(status && status >= 400 && status < 600 ? status : 502).json({
+        ok: false,
+        message: 'Quant AGI backtest unavailable',
+        detail: err.message
+      });
+    }
+  }
+);
+
+router.post(
+  '/suggestion-log',
+  auth,
+  suggestionLogLimiter,
+  [
+    body('symbol').isString().trim().isLength({ min: 1, max: 12 }),
+    body('strategy').isString().trim(),
+    body('rankScore').optional().isFloat(),
+    body('rankPosition').optional().isInt({ min: 1, max: 100 }),
+    body('entryPrice').optional().isFloat({ min: 0.0001 }),
+    body('source').optional().isString().trim().isLength({ max: 32 })
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const strategy = String(req.body.strategy || '').trim();
+      if (!SUGGESTION_STRATEGIES.has(strategy)) {
+        return res.status(400).json({ message: 'Invalid strategy' });
+      }
+
+      const row = await logSuggestionAdd({
+        userId: req.user.id,
+        symbol: req.body.symbol,
+        strategy,
+        rankScore: req.body.rankScore,
+        rankPosition: req.body.rankPosition,
+        entryPrice: req.body.entryPrice,
+        source: req.body.source || 'dashboard_add'
+      });
+
+      return res.status(201).json({ ok: true, log: row });
+    } catch (err) {
+      logger.warn(`suggestion-log failed: ${err.message}`);
+      return res.status(err.statusCode || 500).json({ message: err.message || 'Could not log suggestion' });
+    }
+  }
+);
+
+router.get('/suggestion-outcomes', auth, suggestionLogLimiter, async (req, res) => {
+  try {
+    const limit = Number(req.query.limit) || 40;
+    const outcomes = await getUserSuggestionOutcomes(req.user.id, { limit });
+    return res.json({ ok: true, ...outcomes });
+  } catch (err) {
+    logger.warn(`suggestion-outcomes failed: ${err.message}`);
+    return res.status(500).json({ message: 'Could not load suggestion outcomes' });
+  }
+});
 
 const sidecarLimiter = rateLimit({
   windowMs: 60 * 1000,

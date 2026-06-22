@@ -8,6 +8,7 @@ const { mergeNotificationPreferences } = require('../utils/notificationPreferenc
 const { buildAgentWatchlistContext } = require('./agentWatchlistContext');
 const { getResearchArtifactsForUser } = require('./researchArtifactsReader');
 const { fetchDailyQuantAgiSuggestions } = require('./quantAgiDailySuggestions');
+const { fetchTrustedTradersDigestForEmail } = require('./trustedTradersDigestService');
 
 let running = false;
 
@@ -102,6 +103,13 @@ async function runDailyWatchlistDigestTick(alertService) {
         logger.warn(`Daily digest: Quant AGI suggestions skipped user ${row.id}: ${qe.message}`);
       }
 
+      let trustedTradersPack = { traders: [], sections: [], tickerBuzz: [], summaryLine: null };
+      try {
+        trustedTradersPack = await fetchTrustedTradersDigestForEmail(row.id);
+      } catch (te) {
+        logger.warn(`Daily digest: trusted traders skipped user ${row.id}: ${te.message}`);
+      }
+
       let digest;
       let pyMeta = {};
       try {
@@ -140,7 +148,8 @@ async function runDailyWatchlistDigestTick(alertService) {
           userId: row.id,
           quantAgiSuggestions: quantAgiPack.suggestions,
           quantAgiSections: quantAgiPack.sections,
-          quantAgiMeta: quantAgiPack.meta
+          quantAgiMeta: quantAgiPack.meta,
+          trustedTradersDigest: trustedTradersPack
         });
         sent += 1;
       } catch (e) {

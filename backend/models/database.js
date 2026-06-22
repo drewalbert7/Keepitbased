@@ -504,6 +504,31 @@ async function runInitializeDatabase() {
     `);
 
     await client.query(`
+      CREATE TABLE IF NOT EXISTS quant_rank_suggestion_log (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        symbol VARCHAR(20) NOT NULL,
+        strategy VARCHAR(48) NOT NULL,
+        rank_score DECIMAL(14,6),
+        rank_position INTEGER,
+        entry_price DECIMAL(15,8),
+        spy_entry_price DECIMAL(15,8),
+        source VARCHAR(32) NOT NULL DEFAULT 'dashboard_add',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_quant_suggestion_log_user_created
+        ON quant_rank_suggestion_log(user_id, created_at DESC)
+    `);
+
+    await client.query(`
+      ALTER TABLE quant_rank_suggestion_log
+      ADD COLUMN IF NOT EXISTS spy_entry_price DECIMAL(15,8)
+    `);
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS app_settings (
         key VARCHAR(128) PRIMARY KEY,
         value TEXT NOT NULL,

@@ -33,6 +33,13 @@ from keepitbased_integration.quant_strategies import (
 from keepitbased_integration.sec_filing_scan import fetch_recent_filing_keyword_score
 from keepitbased_integration.signal_enhancer import EnhancedAlertSignal, SignalEnhancer
 from keepitbased_integration.ticker_ref import fetch_ticker_reference
+from keepitbased_integration.anti_chase import (
+    apply_anti_chase_to_composite,
+    apply_anti_chase_to_tape_score,
+    compute_anti_chase_metrics,
+)
+from keepitbased_integration.market_universe_discovery import resolve_rank_universe
+from keepitbased_integration.rank_backtest import rank_backtest_holdout, trailing_returns_for_symbols
 from paper_trading.paper_simulator import dry_run_payload, run_day_payload
 from paper_trading.plan_tick import plan_tick_payload
 from paper_trading.brain_reflection import reflect_brain_payload
@@ -48,6 +55,7 @@ from autoresearch.git_manager import GitExperimentManager
 
 _enhancer: SignalEnhancer | None = None
 _rank_cache_entries: dict[str, tuple[float, dict[str, Any]]] = {}
+_backtest_cache_entries: dict[str, tuple[float, dict[str, Any]]] = {}
 _scorecard_cache: dict[str, Any] = {"ts": 0.0, "payload": None}
 
 DEFAULT_STOCK_UNIVERSE = [
@@ -193,6 +201,81 @@ def _blend_momentum_with_valuation(tape_score: float, fundamentals_weight: float
     return tape_score + fundamentals_weight * 1.75 * tilt
 
 
+def _apply_anti_chase_row(
+    row: dict[str, Any],
+    hist: Any,
+    raw_score: float,
+    *,
+    mode: Literal["tape", "composite"],
+) -> float:
+    if not settings.quant_agi_anti_chase_enabled:
+        return raw_score
+    mom = row.get("momentum_20d_pct")
+    metrics = compute_anti_chase_metrics(hist, momentum_20d_pct=mom)
+    if mode == "tape":
+        adj, ac = apply_anti_chase_to_tape_score(raw_score, metrics)
+    else:
+        adj, ac = apply_anti_chase_to_composite(raw_score, metrics)
+    sf = row.get("strategy_factors")
+    if not isinstance(sf, dict):
+        sf = {}
+        row["strategy_factors"] = sf
+    sf["anti_chase"] = ac
+    if ac.get("chase_risk"):
+        why = list(row.get("why") or [])
+        reasons = ac.get("reasons") or ["extended vs 52w range"]
+        why.append(f"Anti-chase guard −{ac['penalty_points']:.1f} pts: {', '.join(reasons)}")
+        row["why"] = why
+    row["score"] = adj
+    return adj
+
+
+def _rank_backtest_payload(
+    strategy: RankStrategyId,
+    top_k: int,
+    now: float,
+    key: Optional[str],
+) -> dict[str, Any]:
+    fb = KeepItBasedDataFetcher()
+    lim = max(3, min(10, int(top_k)))
+    universe, universe_meta = resolve_rank_universe(strategy, DEFAULT_STOCK_UNIVERSE, key)
+
+    if strategy == "photonics_chokepoint":
+        rank_payload = _rank_photonics_payload(fb, key, lim, 2.0, 125_000.0, now)
+    elif strategy == "rule_breaker_gardner":
+        rank_payload = _rank_rule_breaker_payload(fb, key, lim, 5.0, 8_000_000.0, now)
+    elif strategy == "rule_breaker_gardner_early":
+        rank_payload = _rank_rule_breaker_early_payload(fb, key, lim, 3.0, 400_000.0, now)
+    else:
+        mom_fw = round(float(settings.quant_agi_momentum_fundamentals_weight), 4)
+        rank_payload = _rank_momentum_payload(fb, key, lim, 5.0, 8_000_000.0, mom_fw, now)
+
+    top_symbols = [
+        str(p.get("symbol", "")).upper()
+        for p in (rank_payload.get("positions") or [])
+        if isinstance(p, dict) and p.get("symbol")
+    ][:lim]
+
+    trailing = trailing_returns_for_symbols(top_symbols, fb)
+    holdout = rank_backtest_holdout(
+        universe,
+        fb,
+        score_fn=lambda h: _rank_symbol(h)[0],
+        top_k=lim,
+    )
+
+    return {
+        "ok": True,
+        "strategy": strategy,
+        "strategy_label": rank_payload.get("strategy_label"),
+        "top_symbols_today": top_symbols,
+        "universe_meta": universe_meta,
+        "trailing": trailing,
+        "holdout": holdout,
+        "as_of_epoch_ms": int(now * 1000),
+    }
+
+
 def _rank_momentum_payload(
     fb: KeepItBasedDataFetcher,
     key: Optional[str],
@@ -209,7 +292,8 @@ def _rank_momentum_payload(
         "liquidity_below_min": 0,
         "insufficient_history": 0,
     }
-    for sym in DEFAULT_STOCK_UNIVERSE:
+    universe, universe_meta = resolve_rank_universe("momentum_liquidity", DEFAULT_STOCK_UNIVERSE, key)
+    for sym in universe:
         hist = fb.load_history(sym, refresh=False, asset_type="stock")
         src = fb.last_history_source
         if ("volume" not in hist.columns or hist.volume.dropna().empty) and key:
@@ -299,6 +383,15 @@ def _rank_momentum_payload(
                 ),
             }
         )
+        _apply_anti_chase_row(ranked[-1], hist, float(ranked[-1]["score"]), mode="tape")
+        sc = float(ranked[-1]["score"])
+        ranked[-1]["position_hint"] = (
+            "high conviction"
+            if sc >= 1.25
+            else "watch candidate"
+            if sc >= 0.45
+            else "exploratory only"
+        )
 
     ranked.sort(key=lambda r: float(r.get("score", 0.0)), reverse=True)
     return {
@@ -314,7 +407,8 @@ def _rank_momentum_payload(
         "market_data_api_url": settings.market_data_api_url,
         "api_key_present": bool(key),
         "synthetic_forced": settings.quant_agi_synthetic_history_only,
-        "universe_size": len(DEFAULT_STOCK_UNIVERSE),
+        "universe_size": len(universe),
+        "universe_meta": universe_meta,
         "liquidity_gate": {"min_price": min_px, "min_avg_dollar_vol_20d": min_adv},
         "fundamentals_blend": {"momentum_weight": float(fundamentals_weight)},
         "accepted_count": len(ranked),
@@ -345,7 +439,8 @@ def _rank_rule_breaker_payload(
         "liquidity_below_min": 0,
         "insufficient_history": 0,
     }
-    for sym in DEFAULT_STOCK_UNIVERSE:
+    universe, universe_meta = resolve_rank_universe("rule_breaker_gardner", DEFAULT_STOCK_UNIVERSE, key)
+    for sym in universe:
         hist = fb.load_history(sym, refresh=False, asset_type="stock")
         src = fb.last_history_source
         if ("volume" not in hist.columns or hist.volume.dropna().empty) and key:
@@ -437,6 +532,11 @@ def _rank_rule_breaker_payload(
                 ),
             }
         )
+        _apply_anti_chase_row(ranked[-1], hist, composite, mode="composite")
+        sc = float(ranked[-1]["score"])
+        ranked[-1]["position_hint"] = (
+            "rule breaker focus" if sc >= 72.0 else "watch candidate" if sc >= 58.0 else "exploratory only"
+        )
 
     ranked.sort(key=lambda r: float(r.get("score", 0.0)), reverse=True)
     return {
@@ -453,7 +553,8 @@ def _rank_rule_breaker_payload(
         "market_data_api_url": settings.market_data_api_url,
         "api_key_present": bool(key),
         "synthetic_forced": settings.quant_agi_synthetic_history_only,
-        "universe_size": len(DEFAULT_STOCK_UNIVERSE),
+        "universe_size": len(universe),
+        "universe_meta": universe_meta,
         "liquidity_gate": {"min_price": min_px, "min_avg_dollar_vol_20d": min_adv},
         "accepted_count": len(ranked),
         "excluded_count": sum(excluded_counts.values()),
@@ -486,6 +587,8 @@ def _rank_rule_breaker_early_payload(
         "market_cap_band": 0,
         "inactive_reference": 0,
     }
+    universe, universe_meta = resolve_rank_universe("rule_breaker_gardner_early", DEFAULT_STOCK_UNIVERSE, key)
+    _ = universe
     for sym in GARDNER_EARLY_STOCK_UNIVERSE:
         ref = fetch_ticker_reference(sym, api_key=key, refresh=False) if key else None
         if ref is not None and ref.get("active") is False:
@@ -608,6 +711,15 @@ def _rank_rule_breaker_early_payload(
                 ),
             }
         )
+        _apply_anti_chase_row(ranked[-1], hist, composite, mode="composite")
+        sc = float(ranked[-1]["score"])
+        ranked[-1]["position_hint"] = (
+            "early rule breaker focus"
+            if sc >= 72.0
+            else "early watch candidate"
+            if sc >= 58.0
+            else "exploratory only"
+        )
 
     ranked.sort(key=lambda r: float(r.get("score", 0.0)), reverse=True)
     return {
@@ -624,6 +736,7 @@ def _rank_rule_breaker_early_payload(
         "api_key_present": bool(key),
         "synthetic_forced": settings.quant_agi_synthetic_history_only,
         "universe_size": len(GARDNER_EARLY_STOCK_UNIVERSE),
+        "universe_meta": universe_meta,
         "liquidity_gate": {"min_price": min_px, "min_avg_dollar_vol_20d": min_adv},
         "market_cap_band": {
             "min_usd": 150_000_000,
@@ -801,8 +914,14 @@ def _rank_photonics_payload(
                 ),
             }
         )
+        _apply_anti_chase_row(ranked[-1], hist, composite, mode="composite")
+        sc = float(ranked[-1]["score"])
+        ranked[-1]["position_hint"] = (
+            "chokepoint focus" if sc >= 72.0 else "watch candidate" if sc >= 58.0 else "exploratory only"
+        )
 
     ranked.sort(key=lambda r: float(r.get("score", 0.0)), reverse=True)
+    _, photonics_meta = resolve_rank_universe("photonics_chokepoint", DEFAULT_STOCK_UNIVERSE, key)
     return {
         "ok": True,
         "strategy": "photonics_chokepoint",
@@ -818,6 +937,7 @@ def _rank_photonics_payload(
         "api_key_present": bool(key),
         "synthetic_forced": settings.quant_agi_synthetic_history_only,
         "universe_size": len(PHOTONICS_CHOKEPOINT_UNIVERSE),
+        "universe_meta": photonics_meta,
         "liquidity_gate": {"min_price": min_px, "min_avg_dollar_vol_20d": min_adv},
         "accepted_count": len(ranked),
         "excluded_count": sum(excluded_counts.values()),
@@ -1273,6 +1393,31 @@ def create_app() -> FastAPI:
             payload = _rank_momentum_payload(fb, key, lim, min_px, min_adv, mom_fw, now)
 
         _rank_cache_entries[cache_key] = (now, payload)
+        return payload
+
+    @app.get("/diag/market-universe-rank-backtest")
+    async def diag_market_universe_rank_backtest(
+        strategy: RankStrategyId = "momentum_liquidity",
+        top_k: int = 5,
+        *,
+        refresh: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Backtest panel data: trailing returns for today's top picks + tape holdout top-5 vs SPY (3/6/12m).
+        Cached ~6h by default (``QUANT_AGI_RANK_BACKTEST_CACHE_SEC``).
+        """
+        now = time.time()
+        ttl_sec = float(settings.quant_agi_rank_backtest_cache_sec)
+        lim = max(3, min(10, int(top_k)))
+        cache_key = f"bt|{strategy}|k{lim}"
+        if not refresh:
+            ent = _backtest_cache_entries.get(cache_key)
+            if ent is not None and (now - ent[0]) < ttl_sec:
+                return ent[1]
+
+        key = effective_market_api_key(settings.polygon_api_key)
+        payload = _rank_backtest_payload(strategy, lim, now, key)
+        _backtest_cache_entries[cache_key] = (now, payload)
         return payload
 
     @app.post("/v1/coding-chat")

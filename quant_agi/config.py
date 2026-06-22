@@ -152,6 +152,33 @@ class Settings(BaseSettings):
             "into tape rank. 0 = tape only; higher = fundamentals tilt ordering more."
         ),
     )
+    quant_agi_dynamic_universe_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("QUANT_AGI_DYNAMIC_UNIVERSE_ENABLED"),
+        description="Merge Massive reference screener names into momentum/gardner universes.",
+    )
+    quant_agi_dynamic_universe_max_symbols: int = Field(
+        default=48,
+        ge=0,
+        le=120,
+        validation_alias=AliasChoices("QUANT_AGI_DYNAMIC_UNIVERSE_MAX_SYMBOLS"),
+    )
+    quant_agi_dynamic_universe_min_market_cap: float = Field(
+        default=2_000_000_000.0,
+        ge=50_000_000.0,
+        validation_alias=AliasChoices("QUANT_AGI_DYNAMIC_UNIVERSE_MIN_MARKET_CAP"),
+    )
+    quant_agi_anti_chase_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("QUANT_AGI_ANTI_CHASE_ENABLED"),
+        description="Penalize names extended vs 52w range and/or extreme 20D momentum.",
+    )
+    quant_agi_rank_backtest_cache_sec: float = Field(
+        default=21_600.0,
+        ge=60.0,
+        le=86400.0,
+        validation_alias=AliasChoices("QUANT_AGI_RANK_BACKTEST_CACHE_SEC"),
+    )
 
     @field_validator("keepitbased_python_service_url", mode="after")
     @staticmethod

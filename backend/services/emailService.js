@@ -682,6 +682,9 @@ class EmailService {
         ? payload.quantAgiSuggestions
         : [];
       const quantSections = Array.isArray(payload.quantAgiSections) ? payload.quantAgiSections : [];
+      const trustedDigest = payload.trustedTradersDigest || {};
+      const trustedSections = Array.isArray(trustedDigest.sections) ? trustedDigest.sections : [];
+      const trustedTraderList = Array.isArray(trustedDigest.traders) ? trustedDigest.traders : [];
 
       const renderQuantPick = (p) => {
         const sym = escapeHtml(String(p.symbol || '').toUpperCase());
@@ -751,6 +754,72 @@ class EmailService {
             .join('')
         : quantSuggestions.map(renderQuantPick).join('');
 
+      const baseUrl = appBaseUrl();
+
+      const trustedTraderBlocks = trustedSections
+        .map((sec) => {
+          const handleRaw = String(sec.username || '').toLowerCase();
+          const labelRaw = String(sec.label || sec.username || '');
+          const handle = escapeHtml(handleRaw);
+          const label = escapeHtml(labelRaw);
+          const postsHtml = (sec.posts || [])
+            .map((p) => {
+              const rawUrl = sanitizeXPostUrl(p.url) || (p.url ? String(p.url).trim() : null);
+              const url = rawUrl ? escapeHtml(rawUrl) : '';
+              const tags =
+                Array.isArray(p.cashtags) && p.cashtags.length
+                  ? `<p style="margin:0 0 6px;font-size:12px;color:#0f766e;font-weight:600;">${escapeHtml(
+                      p.cashtags.map((s) => `$${s}`).join(' · ')
+                    )}</p>`
+                  : '';
+              const excerpt = prose(p.snippet || p.title || '');
+              if (!url && excerpt === '—') return '';
+              return `
+            <div style="margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #e2e8f0;">
+              ${tags}
+              <div style="font-size: 14px; color: #334155; line-height: 1.5; margin-bottom: 6px;">${excerpt}</div>
+              ${
+                url
+                  ? `<a href="${url}" style="color: #0f766e; font-size: 13px; font-weight: 600;">Read post on X →</a>`
+                  : ''
+              }
+            </div>`;
+            })
+            .join('');
+          if (!postsHtml) return '';
+          return `
+            <div style="border: 1px solid #7c3aed33; border-radius: 10px; padding: 14px; margin-bottom: 14px; background: #faf5ff;">
+              <p style="margin: 0 0 8px; font-size: 15px; font-weight: 700; color: #5b21b6;">@${handle}${labelRaw && labelRaw.toLowerCase() !== handleRaw ? ` <span style="font-weight:500;color:#7c3aed;font-size:13px;">(${label})</span>` : ''}</p>
+              ${postsHtml}
+            </div>`;
+        })
+        .join('');
+
+      const trustedTradersSection =
+        trustedTraderList.length > 0
+          ? `
+            <h2 style="font-size: 15px; color: #0f172a; margin: 22px 0 10px;">Your trusted X traders</h2>
+            <p style="font-size: 12px; color: #64748b; margin: 0 0 12px;">
+              Pulled from <strong>your</strong> learning-lab list (${escapeHtml(
+                trustedTraderList.map((t) => `@${t.username}`).join(', ')
+              )}) via Grok x_search — educational summaries only; verify on X before acting.
+            </p>
+            ${
+              trustedDigest.summaryLine
+                ? `<p style="font-size: 14px; color: #334155; line-height: 1.5; margin: 0 0 14px;">${prose(
+                    trustedDigest.summaryLine
+                  )}</p>`
+                : ''
+            }
+            ${
+              trustedTraderBlocks ||
+              `<p style="color: #64748b; font-size: 14px;">No recent posts returned for your handles this run. Check that trusted traders are set in Quant AGI → Learning lab.</p>`
+            }
+            <p style="font-size: 12px; margin: 8px 0 0;">
+              <a href="${baseUrl}/quant-agi" style="color: #7c3aed;">Manage trusted traders in Quant AGI</a>
+            </p>`
+          : '';
+
       let topPicks = Array.isArray(digest.topStockPicks) ? digest.topStockPicks : [];
       if (!topPicks.length && Array.isArray(digest.suggestedAdditions)) {
         topPicks = digest.suggestedAdditions.slice(0, 2).map((s) => ({
@@ -783,7 +852,6 @@ class EmailService {
         })
         .join('');
 
-      const baseUrl = appBaseUrl();
       const dateLabel = new Date().toLocaleDateString('en-US', {
         weekday: 'long',
         year: 'numeric',
@@ -824,6 +892,8 @@ class EmailService {
               and <strong>AI &amp; photonics chokepoint</strong>. No momentum-only screen. Educational only.
             </p>
             ${quantSectionBlocks || '<p style="color: #64748b; font-size: 14px;">Quant AGI ranks unavailable this run (sidecar offline or data gap).</p>'}
+
+            ${trustedTradersSection}
 
             <h2 style="font-size: 15px; color: #0f172a; margin: 22px 0 10px;">Pertinent headlines (ingested feeds)</h2>
             <p style="font-size: 12px; color: #64748b; margin: 0 0 12px;">Wire/vendor headlines stored for your symbols — verify originals before trading.</p>
@@ -869,9 +939,27 @@ class EmailService {
               .map((p) => `${p.symbol} (${p.strategyShortLabel || p.strategy})`)
               .join(', ')}`
           : 'Quant AGI ideas: unavailable this run',
+        trustedSections.length
+          ? `Trusted X traders: ${trustedSections
+              .map((s) => {
+                const links = (s.posts || [])
+                  .map((p) => p.url)
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .join(' | ');
+                return `@${s.username}${links ? ` — ${links}` : ''}`;
+              })
+              .join('\n')}`
+          : trustedTraderList.length
+            ? `Trusted X traders on your list: ${trustedTraderList.map((t) => `@${t.username}`).join(', ')} (no posts fetched this run)`
+            : null,
+        trustedDigest.summaryLine || null,
         `Open app: ${baseUrl}/`,
+        `Manage trusted traders: ${baseUrl}/quant-agi`,
         `Manage or unsubscribe: ${profilePreferencesUrl()}`
-      ].join('\n\n');
+      ]
+        .filter(Boolean)
+        .join('\n\n');
 
       const delivered = await deliverMarketingMail({
         to: toAddress,
