@@ -5,6 +5,7 @@ const { resolveQuantAgiBaseUrl } = require('../utils/quantAgiBaseUrl');
 const trustedXTradersService = require('./trustedXTradersService');
 
 const CASHTAG_RE = /\$([A-Z]{1,5})\b/g;
+const HANDLE_FROM_X_URL_RE = /(?:x\.com|twitter\.com)\/([A-Za-z0-9_]{1,15})(?:\/status\/|\/i\/status\/)/i;
 const MAX_POSTS_TOTAL = 10;
 const MAX_POSTS_PER_TRADER = 3;
 
@@ -14,6 +15,18 @@ function extractCashtags(text) {
     set.add(m[1]);
   }
   return [...set];
+}
+
+function normalizeHandle(raw) {
+  return String(raw || '')
+    .trim()
+    .replace(/^@/, '')
+    .toLowerCase();
+}
+
+function handleFromXUrl(raw) {
+  const m = String(raw || '').match(HANDLE_FROM_X_URL_RE);
+  return m ? m[1].toLowerCase() : '';
 }
 
 function normalizePostUrl(raw, handle) {
@@ -27,15 +40,23 @@ function normalizePostUrl(raw, handle) {
       /* fall through */
     }
   }
-  const h = String(handle || '')
-    .replace(/^@/, '')
-    .toLowerCase();
+  const h = normalizeHandle(handle);
   return h ? `https://x.com/${h}` : null;
 }
 
+function resolvePostHandle(raw) {
+  const fromMonitor = normalizeHandle(raw.monitor_username);
+  if (fromMonitor) return fromMonitor;
+  const fromAuthor = normalizeHandle(raw.author);
+  if (fromAuthor) return fromAuthor;
+  return handleFromXUrl(raw.url);
+}
+
 async function fetchPostsForHandles(handles) {
-  const uniq = [...new Set(handles.map((h) => String(h || '').replace(/^@/, '').toLowerCase()).filter(Boolean))];
-  if (!uniq.length) return [];
+  const uniq = [...new Set(handles.map((h) => normalizeHandle(h)).filter(Boolean))];
+  if (!uniq.length) {
+    return { posts: [], error: null, errorCode: null, xSearch: false };
+  }
 
   const base = resolveQuantAgiBaseUrl();
   try {
@@ -44,10 +65,21 @@ async function fetchPostsForHandles(handles) {
       { handles: uniq.slice(0, trustedXTradersService.MAX_TRUSTED) },
       { timeout: Math.max(config.QUANT_AGI_RANK_TIMEOUT_MS || 45000, 90000) }
     );
-    return Array.isArray(data?.posts) ? data.posts : [];
+    return {
+      posts: Array.isArray(data?.posts) ? data.posts : [],
+      error: data?.error ? String(data.error) : null,
+      errorCode: data?.error_code ? String(data.error_code) : null,
+      xSearch: Boolean(data?.x_search)
+    };
   } catch (err) {
-    logger.warn(`Trusted traders digest x_search failed: ${err.message}`);
-    return [];
+    const msg = err.response?.data?.error || err.response?.data?.message || err.message;
+    logger.warn(`Trusted traders digest x_search failed: ${msg}`);
+    return {
+      posts: [],
+      error: String(msg),
+      errorCode: 'request_failed',
+      xSearch: false
+    };
   }
 }
 
@@ -58,8 +90,11 @@ async function fetchPostsForHandles(handles) {
  */
 function buildTraderSections(traders, posts) {
   const byHandle = new Map();
+  const trustedSet = new Set();
   for (const t of traders) {
-    byHandle.set(String(t.username).toLowerCase(), {
+    const h = normalizeHandle(t.username);
+    trustedSet.add(h);
+    byHandle.set(h, {
       username: t.username,
       label: t.label || t.username,
       posts: []
@@ -67,18 +102,19 @@ function buildTraderSections(traders, posts) {
   }
 
   for (const raw of posts) {
-    const handle = String(raw.monitor_username || raw.author || '')
-      .replace(/^@/, '')
-      .toLowerCase();
+    const handle = resolvePostHandle(raw);
+    if (!handle || !trustedSet.has(handle)) continue;
     const bucket = byHandle.get(handle);
     if (!bucket) continue;
-    const snippet = String(raw.snippet || raw.title || '').trim();
+    const snippet = String(raw.snippet || raw.text || raw.title || '').trim();
+    const url = normalizePostUrl(raw.url, handle);
     const cashtags = extractCashtags(snippet);
     bucket.posts.push({
-      url: normalizePostUrl(raw.url, handle),
+      url,
       snippet: snippet.slice(0, 280),
       cashtags,
-      title: String(raw.title || '').trim()
+      title: String(raw.title || '').trim(),
+      source: raw.source || 'x_search'
     });
   }
 
@@ -117,6 +153,67 @@ function aggregateTickerBuzz(sections) {
 }
 
 /**
+ * When dedicated x_search returns nothing, reuse digest Grok xPostLinks for trusted handles.
+ */
+function supplementTrustedDigestFromDigestLinks(pack, digest) {
+  if (!pack?.traders?.length || !digest || typeof digest !== 'object') return pack;
+  if (pack.sections?.length) return pack;
+
+  const links = Array.isArray(digest.xPostLinks) ? digest.xPostLinks : [];
+  if (!links.length) return pack;
+
+  const trustedHandles = new Set(pack.traders.map((t) => normalizeHandle(t.username)));
+  const supplementalPosts = [];
+  for (const link of links) {
+    if (!link || typeof link !== 'object') continue;
+    const url = String(link.url || '').trim();
+    const handle = handleFromXUrl(url);
+    if (!handle || !trustedHandles.has(handle)) continue;
+    supplementalPosts.push({
+      monitor_username: handle,
+      url,
+      snippet: String(link.note || '').trim(),
+      title: String(link.note || `@${handle}: post`).trim(),
+      source: 'digest_x_post_links'
+    });
+  }
+
+  if (!supplementalPosts.length) return pack;
+
+  const sections = buildTraderSections(pack.traders, supplementalPosts);
+  if (!sections.length) return pack;
+
+  const tickerBuzz = aggregateTickerBuzz(sections);
+  return {
+    ...pack,
+    sections,
+    tickerBuzz,
+    postCount: sections.reduce((n, s) => n + s.posts.length, 0),
+    summaryLine: tickerBuzz.length
+      ? `Tickers your trusted traders mentioned: ${tickerBuzz.map((r) => `$${r.symbol}`).join(', ')}`
+      : 'Recent posts from your trusted X traders (from daily digest x_search links).',
+    supplementedFromDigest: true
+  };
+}
+
+function userFacingFetchError(error, errorCode) {
+  if (!error) return null;
+  const lower = String(error).toLowerCase();
+  if (
+    errorCode === 'credits_or_permission' ||
+    lower.includes('spending limit') ||
+    lower.includes('available credits') ||
+    lower.includes('permission-denied')
+  ) {
+    return 'Grok x_search is temporarily unavailable (xAI API credits or spending limit). Posts will return when the API quota is restored.';
+  }
+  if (errorCode === 'disabled' || errorCode === 'no_api_key') {
+    return 'Grok x_search is not configured on the server (set XAI_API_KEY or GROK_API_KEY on quant-agi-api).';
+  }
+  return `Could not fetch trusted trader posts this run: ${String(error).slice(0, 220)}`;
+}
+
+/**
  * Per-user trusted trader posts for daily digest email.
  * @param {number} userId
  */
@@ -126,8 +223,8 @@ async function fetchTrustedTradersDigestForEmail(userId) {
     return { traders: [], sections: [], tickerBuzz: [], summaryLine: null };
   }
 
-  const posts = await fetchPostsForHandles(traders.map((t) => t.username));
-  const sections = buildTraderSections(traders, posts);
+  const fetchResult = await fetchPostsForHandles(traders.map((t) => t.username));
+  const sections = buildTraderSections(traders, fetchResult.posts);
   const tickerBuzz = aggregateTickerBuzz(sections);
 
   let summaryLine = null;
@@ -137,18 +234,24 @@ async function fetchTrustedTradersDigestForEmail(userId) {
     summaryLine = 'Recent posts from your trusted X traders — tap each link for the full thread.';
   }
 
+  const fetchError = sections.length ? null : userFacingFetchError(fetchResult.error, fetchResult.errorCode);
+
   return {
     traders: traders.map((t) => ({ username: t.username, label: t.label || t.username })),
     sections,
     tickerBuzz,
     summaryLine,
-    postCount: sections.reduce((n, s) => n + s.posts.length, 0)
+    postCount: sections.reduce((n, s) => n + s.posts.length, 0),
+    fetchError,
+    xSearchEnabled: fetchResult.xSearch
   };
 }
 
 module.exports = {
   fetchTrustedTradersDigestForEmail,
+  supplementTrustedDigestFromDigestLinks,
   buildTraderSections,
   extractCashtags,
-  normalizePostUrl
+  normalizePostUrl,
+  handleFromXUrl
 };

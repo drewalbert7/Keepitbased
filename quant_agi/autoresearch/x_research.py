@@ -110,10 +110,20 @@ def _posts_from_citations(citations: list[str]) -> list[dict[str, str]]:
 
 
 _CASHTAG_RE = re.compile(r"\$([A-Z]{1,5})\b")
+_HANDLE_FROM_X_URL_RE = re.compile(r"(?:x\.com|twitter\.com)/([A-Za-z0-9_]{1,15})(?:/status/|/i/status/)", re.I)
 
 
 def extract_cashtags(text: str) -> list[str]:
     return list(dict.fromkeys(_CASHTAG_RE.findall(str(text or "").upper())))
+
+
+def handle_from_x_url(url: str) -> str:
+    m = _HANDLE_FROM_X_URL_RE.search(str(url or ""))
+    return m.group(1).lower() if m else ""
+
+
+def normalize_x_handle(raw: str) -> str:
+    return str(raw or "").strip().lstrip("@").lower()
 
 
 def build_trusted_x_context(
@@ -291,26 +301,51 @@ def search_x_posts(
     return out[:max_results]
 
 
+def _x_search_http_error_message(ex: urllib.error.HTTPError) -> str:
+    try:
+        body = ex.read().decode("utf-8", errors="replace")
+        parsed = json.loads(body) if body else {}
+        if isinstance(parsed, dict):
+            err = str(parsed.get("error") or parsed.get("message") or "").strip()
+            code = str(parsed.get("code") or "").strip()
+            if err:
+                return f"{code}: {err}" if code else err
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        pass
+    return f"HTTP {ex.code}"
+
+
 def search_x_posts_for_handles(
     handles: list[str],
     *,
     max_per_handle: int = 4,
-) -> list[dict[str, str]]:
+) -> dict[str, Any]:
     """
     Fetch recent posts from specific X handles via xAI x_search (XAI/GROK key — no X API bearer).
-    Used for paper bot trusted traders — Grok x_search only (no X/Twitter API).
+    Returns posts plus error metadata for UI/email when x_search is unavailable.
     """
+    empty: dict[str, Any] = {
+        "posts": [],
+        "error": None,
+        "error_code": None,
+        "x_search_enabled": x_search_enabled(),
+        "handles_requested": 0,
+    }
     if not x_search_enabled():
-        return []
+        empty["error"] = "x_search disabled (BOT_LEARNING_USE_X_SEARCH or API key)"
+        empty["error_code"] = "disabled"
+        return empty
 
     api_key = effective_grok_api_key(settings.grok_api_key)
     if not api_key:
-        return []
+        empty["error"] = "Grok/XAI API key not configured"
+        empty["error_code"] = "no_api_key"
+        return empty
 
     clean = []
     seen: set[str] = set()
     for raw in handles:
-        h = str(raw or "").strip().lstrip("@").lower()
+        h = normalize_x_handle(raw)
         if not h or h in seen:
             continue
         seen.add(h)
@@ -318,7 +353,9 @@ def search_x_posts_for_handles(
         if len(clean) >= 8:
             break
     if not clean:
-        return []
+        empty["error"] = "No valid handles"
+        empty["error_code"] = "no_handles"
+        return empty
 
     now = datetime.now(timezone.utc)
     from_date = (now - timedelta(days=14)).strftime("%Y-%m-%d")
@@ -329,6 +366,9 @@ def search_x_posts_for_handles(
     headers = {"Authorization": f"Bearer {api_key}"}
 
     out: list[dict[str, str]] = []
+    last_error: str | None = None
+    last_code: str | None = None
+
     for handle in clean:
         user = (
             f"Find recent posts from X user @{handle} about trading, equities, market outlook, or cashtags. "
@@ -344,7 +384,16 @@ def search_x_posts_for_handles(
         }
         try:
             data = _post_json(f"{base_url}/responses", payload, headers=headers, timeout=timeout)
-        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as ex:
+        except urllib.error.HTTPError as ex:
+            last_error = _x_search_http_error_message(ex)
+            last_code = "http_error"
+            if ex.code == 403:
+                last_code = "credits_or_permission"
+            _LOG.warning("x_search for @%s failed: %s", handle, last_error)
+            continue
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as ex:
+            last_error = str(ex)
+            last_code = "network_error"
             _LOG.warning("x_search for @%s failed: %s", handle, ex)
             continue
 
@@ -353,12 +402,14 @@ def search_x_posts_for_handles(
         parsed = _parse_json_object(text) if text else None
         posts = parsed.get("posts") if isinstance(parsed, dict) and isinstance(parsed.get("posts"), list) else []
 
+        added_for_handle = 0
         for row in posts:
             if not isinstance(row, dict):
                 continue
             url = str(row.get("url") or "").strip()
             text_excerpt = str(row.get("text") or row.get("snippet") or "").strip()
             author = str(row.get("author") or f"@{handle}").strip()
+            url_handle = handle_from_x_url(url) or handle
             if not url and not text_excerpt:
                 continue
             out.append(
@@ -368,26 +419,35 @@ def search_x_posts_for_handles(
                     "snippet": text_excerpt[:600],
                     "source_type": "x_monitor",
                     "author": author if author.startswith("@") else f"@{handle}",
-                    "monitor_username": handle,
+                    "monitor_username": url_handle,
                 }
             )
-            if len(out) >= max_per_handle * len(clean):
+            added_for_handle += 1
+            if added_for_handle >= max_per_handle:
                 break
 
-        if not any(p.get("monitor_username") == handle for p in out) and citations:
+        if added_for_handle == 0 and citations:
             for url in citations[:max_per_handle]:
                 u = str(url or "").strip()
                 if not u:
                     continue
+                url_handle = handle_from_x_url(u) or handle
                 out.append(
                     {
-                        "title": f"@{handle}: X post",
+                        "title": f"@{url_handle}: X post",
                         "url": u,
                         "snippet": "",
                         "source_type": "x_monitor",
-                        "author": f"@{handle}",
-                        "monitor_username": handle,
+                        "author": f"@{url_handle}",
+                        "monitor_username": url_handle,
                     }
                 )
 
-    return out[: max(1, max_per_handle) * len(clean)]
+    cap = max(1, max_per_handle) * len(clean)
+    return {
+        "posts": out[:cap],
+        "error": last_error if not out and last_error else None,
+        "error_code": last_code if not out and last_error else None,
+        "x_search_enabled": True,
+        "handles_requested": len(clean),
+    }

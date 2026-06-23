@@ -8,7 +8,7 @@ const { mergeNotificationPreferences } = require('../utils/notificationPreferenc
 const { buildAgentWatchlistContext } = require('./agentWatchlistContext');
 const { getResearchArtifactsForUser } = require('./researchArtifactsReader');
 const { fetchDailyQuantAgiSuggestions } = require('./quantAgiDailySuggestions');
-const { fetchTrustedTradersDigestForEmail } = require('./trustedTradersDigestService');
+const { fetchTrustedTradersDigestForEmail, supplementTrustedDigestFromDigestLinks } = require('./trustedTradersDigestService');
 
 let running = false;
 
@@ -139,6 +139,12 @@ async function runDailyWatchlistDigestTick(alertService) {
         failed += 1;
         await sleep(config.DAILY_WATCHLIST_DIGEST_STAGGER_MS);
         continue;
+      }
+
+      try {
+        trustedTradersPack = supplementTrustedDigestFromDigestLinks(trustedTradersPack, digest);
+      } catch (te) {
+        logger.warn(`Daily digest: trusted traders supplement skipped user ${row.id}: ${te.message}`);
       }
 
       try {

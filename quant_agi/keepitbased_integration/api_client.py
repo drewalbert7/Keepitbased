@@ -1493,8 +1493,16 @@ def create_app() -> FastAPI:
         handles = [str(h).strip().lstrip("@") for h in payload.handles if str(h).strip()][:12]
         if not handles:
             return {"ok": True, "posts": [], "x_search": x_search_enabled()}
-        posts = search_x_posts_for_handles(handles, max_per_handle=4)
-        return {"ok": True, "posts": posts, "x_search": x_search_enabled(), "handle_count": len(handles)}
+        result = search_x_posts_for_handles(handles, max_per_handle=4)
+        posts = result.get("posts") if isinstance(result, dict) else []
+        return {
+            "ok": True,
+            "posts": posts if isinstance(posts, list) else [],
+            "x_search": x_search_enabled(),
+            "handle_count": len(handles),
+            "error": result.get("error") if isinstance(result, dict) else None,
+            "error_code": result.get("error_code") if isinstance(result, dict) else None,
+        }
 
     @app.post("/bot/learning-cycle")
     async def bot_learning_cycle(payload: BotLearningIn) -> dict[str, Any]:

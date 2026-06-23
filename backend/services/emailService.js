@@ -812,8 +812,17 @@ class EmailService {
                 : ''
             }
             ${
+              trustedDigest.fetchError
+                ? `<p style="font-size: 13px; color: #b45309; line-height: 1.5; margin: 0 0 14px; padding: 10px 12px; background: #fffbeb; border-radius: 8px; border: 1px solid #fcd34d;">${prose(
+                    trustedDigest.fetchError
+                  )}</p>`
+                : ''
+            }
+            ${
               trustedTraderBlocks ||
-              `<p style="color: #64748b; font-size: 14px;">No recent posts returned for your handles this run. Check that trusted traders are set in Quant AGI → Learning lab.</p>`
+              (trustedDigest.fetchError
+                ? ''
+                : `<p style="color: #64748b; font-size: 14px;">No recent posts returned for your handles this run. Check that trusted traders are set in Quant AGI → Learning lab.</p>`)
             }
             <p style="font-size: 12px; margin: 8px 0 0;">
               <a href="${baseUrl}/quant-agi" style="color: #7c3aed;">Manage trusted traders in Quant AGI</a>
