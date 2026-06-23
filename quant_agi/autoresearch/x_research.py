@@ -372,11 +372,19 @@ def search_x_posts_for_handles(
     for handle in clean:
         user = (
             f"Find recent posts from X user @{handle} about trading, equities, market outlook, or cashtags. "
-            f"Date window: {from_date} to {to_date}. Return up to {max_per_handle} posts as JSON."
+            f"Date window: {from_date} to {to_date}. Return up to {max_per_handle} posts as JSON. "
+            f"Every post must be authored by @{handle} only."
         )
         payload = {
             "model": model,
-            "tools": [{"type": "x_search", "from_date": from_date, "to_date": to_date}],
+            "tools": [
+                {
+                    "type": "x_search",
+                    "from_date": from_date,
+                    "to_date": to_date,
+                    "allowed_x_handles": [handle],
+                }
+            ],
             "input": [
                 {"role": "system", "content": _X_SEARCH_FETCH_SYSTEM},
                 {"role": "user", "content": user},
@@ -409,17 +417,25 @@ def search_x_posts_for_handles(
             url = str(row.get("url") or "").strip()
             text_excerpt = str(row.get("text") or row.get("snippet") or "").strip()
             author = str(row.get("author") or f"@{handle}").strip()
-            url_handle = handle_from_x_url(url) or handle
+            url_handle = handle_from_x_url(url)
+            author_handle = normalize_x_handle(author)
+            if url_handle and url_handle != handle:
+                continue
+            if author_handle and author_handle != handle:
+                continue
+            if not url_handle and not author_handle:
+                continue
+            resolved_handle = url_handle or author_handle or handle
             if not url and not text_excerpt:
                 continue
             out.append(
                 {
-                    "title": f"@{handle}: {text_excerpt[:100]}{'…' if len(text_excerpt) > 100 else ''}",
+                    "title": f"@{resolved_handle}: {text_excerpt[:100]}{'…' if len(text_excerpt) > 100 else ''}",
                     "url": url,
                     "snippet": text_excerpt[:600],
                     "source_type": "x_monitor",
-                    "author": author if author.startswith("@") else f"@{handle}",
-                    "monitor_username": url_handle,
+                    "author": author if author.startswith("@") else f"@{resolved_handle}",
+                    "monitor_username": resolved_handle,
                 }
             )
             added_for_handle += 1
@@ -431,15 +447,17 @@ def search_x_posts_for_handles(
                 u = str(url or "").strip()
                 if not u:
                     continue
-                url_handle = handle_from_x_url(u) or handle
+                url_handle = handle_from_x_url(u)
+                if not url_handle or url_handle != handle:
+                    continue
                 out.append(
                     {
-                        "title": f"@{url_handle}: X post",
+                        "title": f"@{handle}: X post",
                         "url": u,
                         "snippet": "",
                         "source_type": "x_monitor",
-                        "author": f"@{url_handle}",
-                        "monitor_username": url_handle,
+                        "author": f"@{handle}",
+                        "monitor_username": handle,
                     }
                 )
 
