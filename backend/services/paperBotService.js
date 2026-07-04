@@ -8,6 +8,10 @@ const { stampPaperBotFillReason, stampShadowOrderPayload } = require('../utils/p
 const { emitPaperBotUpdate } = require('./paperBotSocket');
 const xInvestorFeedService = require('./xInvestorFeedService');
 const trustedXTradersService = require('./trustedXTradersService');
+const {
+  fetchTrustedPostsForHandles,
+  invalidateTrustedPostsCache
+} = require('./trustedXPostsCache');
 const { isUsStockRegularTradingHours } = require('../utils/researchAlertGates');
 
 function notifyPaperBotClients(userId, eventType, hint) {
@@ -317,10 +321,10 @@ function buildBotRunDayBody(ctx, accountRow, { killSwitchArmed } = {}) {
   };
 }
 
-async function buildRunContext(userId) {
+async function buildRunContext(userId, { allowTrustedFetch = false } = {}) {
   const accountRow = await ensureAccount(userId);
   const positionsRaw = await loadPositions(userId);
-  const universeResolved = await resolveUniverse(userId, accountRow);
+  const universeResolved = await resolveUniverse(userId, accountRow, { allowTrustedFetch });
   const universe = universeResolved.symbols;
   const priceSymbols = [...new Set([...universe, ...positionsRaw.map((p) => p.symbol)])];
   const priceMap = await fetchSymbolPrices(priceSymbols);
@@ -535,21 +539,68 @@ function trustedSymbolsFromLearningMemory(learningMemory) {
     .slice(0, X_TRUSTED_UNIVERSE_MAX);
 }
 
-async function fetchTrustedPostsViaXSearch(handles) {
-  const uniq = [...new Set(handles.map((h) => String(h || '').replace(/^@/, '').toLowerCase()).filter(Boolean))];
-  if (!uniq.length) return [];
+async function fetchTrustedPostsViaXSearch(handles, { forceRefresh = false, allowFetch = true } = {}) {
+  const result = await fetchTrustedPostsForHandles(handles, { forceRefresh, allowFetch });
+  return result.posts;
+}
 
-  const base = resolveQuantAgiBaseUrl();
+async function loadXTrustedPulse(userId, { forceRefresh = false, allowFetch = true } = {}) {
   try {
-    const { data } = await axios.post(
-      `${base}/bot/x-trusted-posts`,
-      { handles: uniq },
-      { timeout: Math.max(config.QUANT_AGI_RANK_TIMEOUT_MS || 45000, 90000) }
-    );
-    return Array.isArray(data?.posts) ? data.posts : [];
+    const userAccounts = userId ? await trustedXTradersService.accountsForPulse(userId) : [];
+    const envAccounts = xInvestorFeedService.parseMonitoredAccounts().map((a) => ({
+      id: a.username,
+      username: a.username,
+      label: a.label,
+      source: 'env'
+    }));
+    const accounts = mergeTrustedAccounts(userAccounts, envAccounts);
+
+    if (!accounts.length) {
+      return {
+        configured: false,
+        xSearchOnly: true,
+        warning: 'Add trusted @handles below — posts are fetched via Grok x_search (no X API).',
+        accounts: [],
+        tickerBuzz: [],
+        tweets: [],
+        cacheHit: false
+      };
+    }
+
+    const fetchResult = await fetchTrustedPostsForHandles(accounts.map((a) => a.username), {
+      forceRefresh,
+      allowFetch
+    });
+    const posts = fetchResult.posts;
+    const tweets = postsToTweetShape(posts, accounts);
+    const tickerBuzz = aggregateTickerBuzz(tweets);
+    const cacheNote = fetchResult.fromCache ? ' (cached)' : fetchResult.skipped ? ' (cache-only)' : '';
+
+    return {
+      configured: true,
+      xSearchOnly: true,
+      warning: tweets.length
+        ? null
+        : fetchResult.skipped
+          ? 'Trusted X posts refresh on learning cycles and digest — not every bot tick.'
+          : `No posts returned — ensure XAI_API_KEY or GROK_API_KEY is set for x_search.${cacheNote}`,
+      accounts,
+      tickerBuzz,
+      tweets,
+      cacheHit: Boolean(fetchResult.fromCache),
+      fetchSkipped: Boolean(fetchResult.skipped)
+    };
   } catch (err) {
-    logger.warn(`x_search trusted posts failed: ${err.message}`);
-    return [];
+    logger.warn(`X trusted pulse failed: ${err.message}`);
+    return {
+      configured: false,
+      xSearchOnly: true,
+      warning: err.message,
+      accounts: [],
+      tickerBuzz: [],
+      tweets: [],
+      cacheHit: false
+    };
   }
 }
 
@@ -599,55 +650,6 @@ function mergeTrustedAccounts(userAccounts, envAccounts) {
     out.push(acc);
   }
   return out;
-}
-
-async function loadXTrustedPulse(userId) {
-  try {
-    const userAccounts = userId ? await trustedXTradersService.accountsForPulse(userId) : [];
-    const envAccounts = xInvestorFeedService.parseMonitoredAccounts().map((a) => ({
-      id: a.username,
-      username: a.username,
-      label: a.label,
-      source: 'env'
-    }));
-    const accounts = mergeTrustedAccounts(userAccounts, envAccounts);
-
-    if (!accounts.length) {
-      return {
-        configured: false,
-        xSearchOnly: true,
-        warning: 'Add trusted @handles below — posts are fetched via Grok x_search (no X API).',
-        accounts: [],
-        tickerBuzz: [],
-        tweets: []
-      };
-    }
-
-    const posts = await fetchTrustedPostsViaXSearch(accounts.map((a) => a.username));
-    const tweets = postsToTweetShape(posts, accounts);
-    const tickerBuzz = aggregateTickerBuzz(tweets);
-
-    return {
-      configured: true,
-      xSearchOnly: true,
-      warning: tweets.length
-        ? null
-        : 'No posts returned — ensure XAI_API_KEY or GROK_API_KEY is set for x_search.',
-      accounts,
-      tickerBuzz,
-      tweets
-    };
-  } catch (err) {
-    logger.warn(`X trusted pulse failed: ${err.message}`);
-    return {
-      configured: false,
-      xSearchOnly: true,
-      warning: err.message,
-      accounts: [],
-      tickerBuzz: [],
-      tweets: []
-    };
-  }
 }
 
 function mergeXTrustedUniverse(base, { tickerBuzz, learningMemory } = {}) {
@@ -734,9 +736,9 @@ async function resolveCuratedUniverse(userId, deployListOnly) {
   return mergeUniverseSymbols(deploySymbols, watchSymbols);
 }
 
-async function resolveUniverse(userId, accountRow) {
+async function resolveUniverse(userId, accountRow, { allowTrustedFetch = false } = {}) {
   const mode = normalizeUniverseMode(accountRow);
-  const xPulse = await loadXTrustedPulse(userId);
+  const xPulse = await loadXTrustedPulse(userId, { allowFetch: allowTrustedFetch });
   const learningMemory = accountRow?.learning_memory || null;
 
   if (mode === 'quant_auto' || mode === 'quant_auto_agent') {
@@ -1081,16 +1083,45 @@ async function setTradeDeployListOnly(userId, enabled) {
   });
 }
 
+async function recordAutoRunAttempt(userId, { failed = false, error = null, skipped = false } = {}) {
+  await db.query(
+    `UPDATE paper_bot_accounts SET last_auto_run_at = NOW(), updated_at = NOW() WHERE user_id = $1`,
+    [userId]
+  );
+  await db.query(
+    `INSERT INTO paper_bot_events (user_id, event_type, payload)
+     VALUES ($1, 'auto_run_tick', $2)`,
+    [
+      userId,
+      JSON.stringify({
+        skipped: Boolean(skipped || failed),
+        failed: Boolean(failed),
+        reason: failed ? String(error || 'auto_run_failed').slice(0, 500) : skipped ? String(error || 'skipped').slice(0, 500) : null
+      })
+    ]
+  );
+}
+
 async function simulateDay(userId, { source = 'manual' } = {}) {
-  const ctx = await buildRunContext(userId);
+  const ctx = await buildRunContext(userId, { allowTrustedFetch: false });
   const { accountRow, universe, priceMap, activeRulesPayload, positionsPayload, universeSource } =
     ctx;
   const base = resolveQuantAgiBaseUrl();
 
   const runBody = buildBotRunDayBody(ctx, accountRow);
-  const { data } = await axios.post(`${base}/bot/run-day`, runBody, {
-    timeout: config.QUANT_AGI_RANK_TIMEOUT_MS || 45000
-  });
+  let data;
+  try {
+    ({ data } = await axios.post(`${base}/bot/run-day`, runBody, {
+      timeout: config.QUANT_AGI_RANK_TIMEOUT_MS || 45000
+    }));
+  } catch (err) {
+    const msg = err.response?.data?.error || err.response?.data?.message || err.message;
+    if (source === 'auto') {
+      await recordAutoRunAttempt(userId, { failed: true, error: msg });
+      notifyPaperBotClients(userId, 'auto_run_tick', `Auto-run failed — ${String(msg).slice(0, 120)}`);
+    }
+    throw err;
+  }
 
   if (runBody.agent_mode && data?.agent_plan_result) {
     await db.query(
@@ -1123,15 +1154,7 @@ async function simulateDay(userId, { source = 'manual' } = {}) {
       [userId, JSON.stringify({ reason: data.reason || 'skipped' })]
     );
     if (source === 'auto') {
-      await db.query(
-        `UPDATE paper_bot_accounts SET last_auto_run_at = NOW(), updated_at = NOW() WHERE user_id = $1`,
-        [userId]
-      );
-      await db.query(
-        `INSERT INTO paper_bot_events (user_id, event_type, payload)
-         VALUES ($1, 'auto_run_tick', $2)`,
-        [userId, JSON.stringify({ skipped: true, reason: data.reason || 'skipped' })]
-      );
+      await recordAutoRunAttempt(userId, { skipped: true, error: data.reason || 'skipped' });
       notifyPaperBotClients(userId, 'auto_run_tick', data.reason || 'Auto-run skipped');
     } else {
       notifyPaperBotClients(userId, 'run_day_skipped', data.reason || 'Simulate day skipped');
@@ -1156,15 +1179,7 @@ async function simulateDay(userId, { source = 'manual' } = {}) {
   );
 
   if (source === 'auto') {
-    await db.query(
-      `UPDATE paper_bot_accounts SET last_auto_run_at = NOW(), updated_at = NOW() WHERE user_id = $1`,
-      [userId]
-    );
-    await db.query(
-      `INSERT INTO paper_bot_events (user_id, event_type, payload)
-       VALUES ($1, 'auto_run_tick', $2)`,
-      [userId, JSON.stringify({ fillCount: fills.length, skipped: false })]
-    );
+    await recordAutoRunAttempt(userId, { skipped: false });
     notifyPaperBotClients(
       userId,
       'auto_run_tick',
@@ -1591,7 +1606,7 @@ async function getBotLearningLatest(userId) {
   const [capabilitiesRaw, lastLearningEvent, xPulse, trustedTraders] = await Promise.all([
     fetchLearningCapabilities(),
     loadRecentEvents(userId, 8).then((rows) => rows.find((e) => e.eventType === 'bot_learning')),
-    loadXTrustedPulse(userId),
+    loadXTrustedPulse(userId, { allowFetch: true }),
     trustedXTradersService.listTrustedTraders(userId)
   ]);
 
@@ -1687,7 +1702,7 @@ async function autoApproveConservativeLearningRules(userId, ruleIds, mergedPolic
 
 async function loadXMonitorPostsForLearning(userId) {
   try {
-    const pulse = await loadXTrustedPulse(userId);
+    const pulse = await loadXTrustedPulse(userId, { forceRefresh: true, allowFetch: true });
     const tweets = Array.isArray(pulse?.tweets) ? pulse.tweets : [];
     return {
       posts: tweets.slice(0, 24).map((tw) => ({
@@ -1711,7 +1726,7 @@ async function loadXMonitorPostsForLearning(userId) {
 async function runBotLearningCycle(userId, { source = 'manual' } = {}) {
   await ensureAccount(userId);
   const latest = await getBotLearningLatest(userId);
-  const ctx = await buildRunContext(userId);
+  const ctx = await buildRunContext(userId, { allowTrustedFetch: false });
   const { accountRow, mergedPolicy } = ctx;
   const tradesRaw = await loadRecentTrades(userId, 25);
   const agentPlanHistory = (await loadRecentEvents(userId, 12)).filter(
@@ -2565,12 +2580,14 @@ async function listTrustedXTraders(userId) {
 async function addTrustedXTrader(userId, { username, label } = {}) {
   const row = await trustedXTradersService.addTrustedTrader(userId, { username, label });
   xInvestorFeedService.invalidateXPulseCache(userId);
+  invalidateTrustedPostsCache(userId);
   return row;
 }
 
 async function removeTrustedXTrader(userId, traderId) {
   const result = await trustedXTradersService.removeTrustedTrader(userId, traderId);
   xInvestorFeedService.invalidateXPulseCache(userId);
+  invalidateTrustedPostsCache(userId);
   return result;
 }
 

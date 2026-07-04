@@ -1,7 +1,4 @@
-const axios = require('axios');
-const config = require('../config');
-const logger = require('../utils/logger');
-const { resolveQuantAgiBaseUrl } = require('../utils/quantAgiBaseUrl');
+const { fetchTrustedPostsForHandles } = require('./trustedXPostsCache');
 const trustedXTradersService = require('./trustedXTradersService');
 
 const CASHTAG_RE = /\$([A-Z]{1,5})\b/g;
@@ -52,35 +49,22 @@ function resolvePostHandle(raw) {
   return handleFromXUrl(raw.url);
 }
 
-async function fetchPostsForHandles(handles) {
+async function fetchPostsForHandles(handles, { forceRefresh = false, allowFetch = true } = {}) {
   const uniq = [...new Set(handles.map((h) => normalizeHandle(h)).filter(Boolean))];
   if (!uniq.length) {
     return { posts: [], error: null, errorCode: null, xSearch: false };
   }
 
-  const base = resolveQuantAgiBaseUrl();
-  try {
-    const { data } = await axios.post(
-      `${base}/bot/x-trusted-posts`,
-      { handles: uniq.slice(0, trustedXTradersService.MAX_TRUSTED) },
-      { timeout: Math.max(config.QUANT_AGI_RANK_TIMEOUT_MS || 45000, 90000) }
-    );
-    return {
-      posts: Array.isArray(data?.posts) ? data.posts : [],
-      error: data?.error ? String(data.error) : null,
-      errorCode: data?.error_code ? String(data.error_code) : null,
-      xSearch: Boolean(data?.x_search)
-    };
-  } catch (err) {
-    const msg = err.response?.data?.error || err.response?.data?.message || err.message;
-    logger.warn(`Trusted traders digest x_search failed: ${msg}`);
-    return {
-      posts: [],
-      error: String(msg),
-      errorCode: 'request_failed',
-      xSearch: false
-    };
-  }
+  const result = await fetchTrustedPostsForHandles(uniq.slice(0, trustedXTradersService.MAX_TRUSTED), {
+    forceRefresh,
+    allowFetch
+  });
+  return {
+    posts: result.posts,
+    error: result.error,
+    errorCode: result.errorCode,
+    xSearch: !result.skipped
+  };
 }
 
 /**
@@ -216,14 +200,18 @@ function userFacingFetchError(error, errorCode) {
 /**
  * Per-user trusted trader posts for daily digest email.
  * @param {number} userId
+ * @param {{ forceRefresh?: boolean, allowFetch?: boolean }} [opts]
  */
-async function fetchTrustedTradersDigestForEmail(userId) {
+async function fetchTrustedTradersDigestForEmail(userId, { forceRefresh = false, allowFetch = true } = {}) {
   const traders = await trustedXTradersService.listTrustedTraders(userId);
   if (!traders.length) {
     return { traders: [], sections: [], tickerBuzz: [], summaryLine: null };
   }
 
-  const fetchResult = await fetchPostsForHandles(traders.map((t) => t.username));
+  const fetchResult = await fetchPostsForHandles(traders.map((t) => t.username), {
+    forceRefresh,
+    allowFetch
+  });
   const sections = buildTraderSections(traders, fetchResult.posts);
   const tickerBuzz = aggregateTickerBuzz(sections);
 

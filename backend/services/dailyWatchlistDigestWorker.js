@@ -9,6 +9,7 @@ const { buildAgentWatchlistContext } = require('./agentWatchlistContext');
 const { getResearchArtifactsForUser } = require('./researchArtifactsReader');
 const { fetchDailyQuantAgiSuggestions } = require('./quantAgiDailySuggestions');
 const { fetchTrustedTradersDigestForEmail, supplementTrustedDigestFromDigestLinks } = require('./trustedTradersDigestService');
+const trustedXTradersService = require('./trustedXTradersService');
 
 let running = false;
 
@@ -105,9 +106,17 @@ async function runDailyWatchlistDigestTick(alertService) {
 
       let trustedTradersPack = { traders: [], sections: [], tickerBuzz: [], summaryLine: null };
       try {
-        trustedTradersPack = await fetchTrustedTradersDigestForEmail(row.id);
+        const traders = await trustedXTradersService.listTrustedTraders(row.id);
+        if (traders.length) {
+          trustedTradersPack = {
+            traders: traders.map((t) => ({ username: t.username, label: t.label || t.username })),
+            sections: [],
+            tickerBuzz: [],
+            summaryLine: null
+          };
+        }
       } catch (te) {
-        logger.warn(`Daily digest: trusted traders skipped user ${row.id}: ${te.message}`);
+        logger.warn(`Daily digest: trusted traders list skipped user ${row.id}: ${te.message}`);
       }
 
       let digest;
@@ -143,6 +152,13 @@ async function runDailyWatchlistDigestTick(alertService) {
 
       try {
         trustedTradersPack = supplementTrustedDigestFromDigestLinks(trustedTradersPack, digest);
+        if (!trustedTradersPack.sections?.length && trustedTradersPack.traders?.length) {
+          trustedTradersPack = await fetchTrustedTradersDigestForEmail(row.id, {
+            allowFetch: true,
+            forceRefresh: false
+          });
+          trustedTradersPack = supplementTrustedDigestFromDigestLinks(trustedTradersPack, digest);
+        }
       } catch (te) {
         logger.warn(`Daily digest: trusted traders supplement skipped user ${row.id}: ${te.message}`);
       }

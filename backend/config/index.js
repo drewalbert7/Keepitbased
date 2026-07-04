@@ -303,6 +303,11 @@ const config = {
     return Number.isFinite(n) && n >= 3600000 ? n : 24 * 60 * 60 * 1000;
   })(),
   PAPER_BOT_LEARNING_CRON: process.env.PAPER_BOT_LEARNING_CRON || '15 */1 * * *',
+  /** TTL for Grok x_search trusted-trader posts cache (ms). Default 4h. */
+  TRUSTED_X_POSTS_CACHE_TTL_MS: (() => {
+    const n = parseInt(process.env.TRUSTED_X_POSTS_CACHE_TTL_MS, 10);
+    return Number.isFinite(n) && n >= 0 ? n : 4 * 60 * 60 * 1000;
+  })(),
   /** Auto-approve conservative tightening rules from scheduled learning (never loosens caps). */
   PAPER_BOT_LEARNING_AUTO_APPROVE: process.env.PAPER_BOT_LEARNING_AUTO_APPROVE !== 'false',
   /** Max cashtags from trusted X monitors merged into bot universe per run. */
