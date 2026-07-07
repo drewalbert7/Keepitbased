@@ -222,7 +222,10 @@ async function fetchTrustedTradersDigestForEmail(userId, { forceRefresh = false,
     summaryLine = 'Recent posts from your trusted X traders — tap each link for the full thread.';
   }
 
-  const fetchError = sections.length ? null : userFacingFetchError(fetchResult.error, fetchResult.errorCode);
+  let fetchError =
+    sections.length || fetchResult.stale
+      ? null
+      : userFacingFetchError(fetchResult.error, fetchResult.errorCode);
 
   return {
     traders: traders.map((t) => ({ username: t.username, label: t.label || t.username })),
@@ -231,7 +234,8 @@ async function fetchTrustedTradersDigestForEmail(userId, { forceRefresh = false,
     summaryLine,
     postCount: sections.reduce((n, s) => n + s.posts.length, 0),
     fetchError,
-    xSearchEnabled: fetchResult.xSearch
+    staleFromCache: Boolean(fetchResult.stale || fetchResult.fromCache),
+    xSearchEnabled: fetchResult.xSearch !== false
   };
 }
 

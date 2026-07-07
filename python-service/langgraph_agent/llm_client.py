@@ -572,6 +572,17 @@ class LlmClient:
         arts = digest_bundle.get("researchArtifacts") if isinstance(digest_bundle.get("researchArtifacts"), list) else []
         rd_meta = digest_bundle.get("researchDigestMeta") if isinstance(digest_bundle.get("researchDigestMeta"), dict) else {}
 
+        trusted_raw = digest_bundle.get("trustedHandles") or digest_bundle.get("trusted_handles") or []
+        trusted_handles: list[str] = []
+        if isinstance(trusted_raw, list):
+            for raw in trusted_raw:
+                h = str(raw or "").strip().lstrip("@").lower()
+                if not h or h in trusted_handles:
+                    continue
+                trusted_handles.append(h)
+                if len(trusted_handles) >= 10:
+                    break
+
         wl_json = json.dumps(wl_ctx, default=str)[:20000]
         arts_trim = arts[:42] if isinstance(arts, list) else []
         arts_json = json.dumps(arts_trim, default=str)[:14000]
@@ -616,7 +627,7 @@ class LlmClient:
         )
         if self.provider == "grok" and self.grok_api_key and use_x_search:
             try:
-                raw = self._grok_daily_digest_x_search(system, user, wl_ctx)
+                raw = self._grok_daily_digest_x_search(system, user, wl_ctx, trusted_handles=trusted_handles)
                 self.last_fallback_used = False
                 self.last_used_provider = "grok"
                 return self._normalize_daily_digest(raw, wl_ctx)
@@ -635,7 +646,12 @@ class LlmClient:
         return self._daily_digest_template(wl_ctx, arts_trim)
 
     def _grok_daily_digest_x_search(
-        self, system: str, user: str, wl_ctx: Dict[str, Any]
+        self,
+        system: str,
+        user: str,
+        wl_ctx: Dict[str, Any],
+        *,
+        trusted_handles: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         syms = []
         for it in (wl_ctx.get("items") or [])[:12]:
@@ -643,24 +659,33 @@ class LlmClient:
             if s and re.match(r"^[A-Z]{1,10}$", s):
                 syms.append(s)
         sym_query = ", ".join(sorted(set(syms))) if syms else "US equities breadth"
+        handles = [h for h in (trusted_handles or []) if h][:10]
         now = datetime.now(timezone.utc)
         from_date = (now - timedelta(days=3)).strftime("%Y-%m-%d")
         to_date = now.strftime("%Y-%m-%d")
+        trusted_note = (
+            f" Also search recent posts from trusted handles: {', '.join('@' + h for h in handles)}."
+            if handles
+            else ""
+        )
         user_x = (
             user
             + "\n\nTask: Call x_search for recent discussion on "
             + sym_query
-            + f" versus broad macro ({from_date} to {to_date}). Then output ONLY the JSON object required in SYSTEM."
+            + f" versus broad macro ({from_date} to {to_date})."
+            + trusted_note
+            + " Then output ONLY the JSON object required in SYSTEM."
         )
+        x_tool: Dict[str, Any] = {
+            "type": "x_search",
+            "from_date": from_date,
+            "to_date": to_date,
+        }
+        if handles:
+            x_tool["allowed_x_handles"] = handles
         payload = {
             "model": self.model,
-            "tools": [
-                {
-                    "type": "x_search",
-                    "from_date": from_date,
-                    "to_date": to_date,
-                }
-            ],
+            "tools": [x_tool],
             "input": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user_x[:35000]},

@@ -812,7 +812,12 @@ class EmailService {
                 : ''
             }
             ${
-              trustedDigest.fetchError
+              trustedDigest.staleFromCache && trustedTraderBlocks
+                ? `<p style="font-size: 12px; color: #64748b; line-height: 1.5; margin: 0 0 14px;">Showing cached trusted-trader posts from an earlier fetch — live Grok x_search refresh was unavailable this run.</p>`
+                : ''
+            }
+            ${
+              trustedDigest.fetchError && !trustedTraderBlocks
                 ? `<p style="font-size: 13px; color: #b45309; line-height: 1.5; margin: 0 0 14px; padding: 10px 12px; background: #fffbeb; border-radius: 8px; border: 1px solid #fcd34d;">${prose(
                     trustedDigest.fetchError
                   )}</p>`
@@ -820,7 +825,7 @@ class EmailService {
             }
             ${
               trustedTraderBlocks ||
-              (trustedDigest.fetchError
+              (trustedDigest.fetchError || trustedDigest.staleFromCache
                 ? ''
                 : `<p style="color: #64748b; font-size: 14px;">No recent posts returned for your handles this run. Check that trusted traders are set in Quant AGI → Learning lab.</p>`)
             }
@@ -869,8 +874,10 @@ class EmailService {
       });
       const metaLine =
         meta.providerUsed != null
-          ? `<p style="font-size: 11px; color: #94a3b8; margin-top: 16px;">Model: ${escapeHtml(String(meta.providerUsed))}${meta.fallbackUsed ? ' • template/fallback portions possible' : ''}</p>`
-          : '';
+          ? `<p style="font-size: 11px; color: #94a3b8; margin-top: 16px;">Model: ${escapeHtml(String(meta.providerUsed))}${meta.fallbackUsed ? ' • template/fallback portions possible' : ''}${digest.enrichedFromWatchlist ? ' • watchlist quotes merged when Grok was unavailable' : ''}</p>`
+          : digest.enrichedFromWatchlist
+            ? `<p style="font-size: 11px; color: #94a3b8; margin-top: 16px;">Watchlist quotes merged when Grok was unavailable.</p>`
+            : '';
 
       const html = `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 640px; margin: 0 auto;">

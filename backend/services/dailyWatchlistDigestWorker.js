@@ -10,6 +10,7 @@ const { getResearchArtifactsForUser } = require('./researchArtifactsReader');
 const { fetchDailyQuantAgiSuggestions } = require('./quantAgiDailySuggestions');
 const { fetchTrustedTradersDigestForEmail, supplementTrustedDigestFromDigestLinks } = require('./trustedTradersDigestService');
 const trustedXTradersService = require('./trustedXTradersService');
+const { enrichDigestFromWatchlist } = require('./dailyDigestEnrichment');
 
 let running = false;
 
@@ -105,8 +106,10 @@ async function runDailyWatchlistDigestTick(alertService) {
       }
 
       let trustedTradersPack = { traders: [], sections: [], tickerBuzz: [], summaryLine: null };
+      let trustedHandles = [];
       try {
         const traders = await trustedXTradersService.listTrustedTraders(row.id);
+        trustedHandles = traders.map((t) => t.username).filter(Boolean);
         if (traders.length) {
           trustedTradersPack = {
             traders: traders.map((t) => ({ username: t.username, label: t.label || t.username })),
@@ -131,7 +134,8 @@ async function runDailyWatchlistDigestTick(alertService) {
               lookbackHours: researchPack.lookbackHours,
               artifactCount: (researchPack.artifacts || []).length,
               symbolsCovered: researchPack.symbolsAllowed || []
-            }
+            },
+            trustedHandles
           },
           { timeout: 180000 }
         );
@@ -139,25 +143,58 @@ async function runDailyWatchlistDigestTick(alertService) {
           throw new Error(data?.error || 'daily-watchlist-digest failed');
         }
         pyMeta = data.runMetadata && typeof data.runMetadata === 'object' ? data.runMetadata : {};
-        digest = data.digest;
+        digest = enrichDigestFromWatchlist(
+          data.digest,
+          watchlistContext,
+          researchPack.artifacts,
+          pyMeta
+        );
         if (!digest || typeof digest !== 'object') {
           throw new Error('Invalid digest payload');
         }
       } catch (e) {
         logger.warn(`Daily digest: Grok call failed user ${row.id} ${row.email}: ${e.message}`);
-        failed += 1;
-        await sleep(config.DAILY_WATCHLIST_DIGEST_STAGGER_MS);
-        continue;
+        digest = enrichDigestFromWatchlist(
+          {
+            macroAnalysis: '',
+            marketOverview: '',
+            holdingsAnalysis: '',
+            newsHighlights: [],
+            xSocialSummary:
+              'Live Grok briefing unavailable — see watchlist snapshot sections above and trusted-trader links when cached.',
+            xPostLinks: [],
+            topStockPicks: [],
+            disclaimer:
+              'Grok daily briefing unavailable this run — macro and holdings below use your live watchlist quotes. Not investment advice.'
+          },
+          watchlistContext,
+          researchPack.artifacts,
+          { fallbackUsed: true }
+        );
+        pyMeta = { providerUsed: 'watchlist_snapshot', fallbackUsed: true, grokError: String(e.message).slice(0, 240) };
       }
 
       try {
+        if (trustedHandles.length) {
+          const fetched = await fetchTrustedTradersDigestForEmail(row.id, {
+            allowFetch: true,
+            forceRefresh: true
+          });
+          trustedTradersPack = {
+            ...trustedTradersPack,
+            ...fetched,
+            traders: fetched.traders?.length ? fetched.traders : trustedTradersPack.traders
+          };
+        }
         trustedTradersPack = supplementTrustedDigestFromDigestLinks(trustedTradersPack, digest);
         if (!trustedTradersPack.sections?.length && trustedTradersPack.traders?.length) {
-          trustedTradersPack = await fetchTrustedTradersDigestForEmail(row.id, {
-            allowFetch: true,
+          const cached = await fetchTrustedTradersDigestForEmail(row.id, {
+            allowFetch: false,
             forceRefresh: false
           });
-          trustedTradersPack = supplementTrustedDigestFromDigestLinks(trustedTradersPack, digest);
+          if (cached.sections?.length) {
+            trustedTradersPack = { ...trustedTradersPack, ...cached, fetchError: null };
+          }
         }
       } catch (te) {
         logger.warn(`Daily digest: trusted traders supplement skipped user ${row.id}: ${te.message}`);

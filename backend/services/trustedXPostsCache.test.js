@@ -42,4 +42,24 @@ describe('trustedXPostsCache', () => {
 
     expect(axios.post).toHaveBeenCalledTimes(2);
   });
+
+  test('credits error keeps prior cached posts', async () => {
+    axios.post
+      .mockResolvedValueOnce({
+        data: { posts: [{ monitor_username: 'alpha', snippet: '$NVDA moon' }] }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          posts: [],
+          error: 'permission-denied: spending limit',
+          error_code: 'credits_or_permission'
+        }
+      });
+
+    await fetchTrustedPostsForHandles(['alpha']);
+    const second = await fetchTrustedPostsForHandles(['alpha'], { forceRefresh: true });
+
+    expect(second.posts).toHaveLength(1);
+    expect(second.stale).toBe(true);
+  });
 });

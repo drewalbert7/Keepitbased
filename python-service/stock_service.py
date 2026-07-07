@@ -561,6 +561,9 @@ def daily_watchlist_digest():
             "researchArtifacts": artifacts,
             "researchDigestMeta": digest_meta,
         }
+        trusted_raw = body.get("trustedHandles") or body.get("trusted_handles") or []
+        if isinstance(trusted_raw, list):
+            bundle["trustedHandles"] = trusted_raw
         run_id = str(uuid.uuid4())
         t0 = time.perf_counter()
         from langgraph_agent.llm_client import LlmClient

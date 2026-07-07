@@ -22,10 +22,25 @@ function cacheTtlMs() {
   return config.TRUSTED_X_POSTS_CACHE_TTL_MS;
 }
 
+function isCreditsOrQuotaError(error, errorCode) {
+  const code = String(errorCode || '').toLowerCase();
+  const msg = String(error || '').toLowerCase();
+  return (
+    code === 'credits_or_permission' ||
+    msg.includes('spending limit') ||
+    msg.includes('available credits') ||
+    msg.includes('permission-denied')
+  );
+}
+
 function readCached(key) {
   const entry = cacheByHandles.get(key);
   if (!entry || entry.expiresAt <= Date.now()) return null;
   return entry;
+}
+
+function readStale(key) {
+  return cacheByHandles.get(key) || null;
 }
 
 /**
@@ -54,8 +69,8 @@ async function fetchTrustedPostsForHandles(handles, { forceRefresh = false, allo
   }
 
   if (!allowFetch) {
-    const stale = cacheByHandles.get(key);
-    if (stale) {
+    const stale = readStale(key);
+    if (stale?.posts?.length) {
       return {
         posts: stale.posts,
         error: stale.error,
@@ -89,16 +104,41 @@ async function fetchTrustedPostsForHandles(handles, { forceRefresh = false, allo
     } catch (err) {
       const msg = err.response?.data?.error || err.response?.data?.message || err.message;
       error = String(msg);
-      errorCode = 'request_failed';
+      errorCode = err.response?.data?.error_code ? String(err.response.data.error_code) : 'request_failed';
+      if (err.response?.status === 403) errorCode = 'credits_or_permission';
       logger.warn(`x_search trusted posts failed: ${msg}`);
     }
 
-    cacheByHandles.set(key, {
-      posts,
-      error,
-      errorCode,
-      expiresAt: Date.now() + cacheTtlMs()
-    });
+    const prev = readStale(key);
+    if (posts.length > 0) {
+      cacheByHandles.set(key, {
+        posts,
+        error: null,
+        errorCode: null,
+        expiresAt: Date.now() + cacheTtlMs()
+      });
+      return { posts, error: null, errorCode: null, fromCache: false, skipped: false };
+    }
+
+    if (prev?.posts?.length && (isCreditsOrQuotaError(error, errorCode) || error)) {
+      return {
+        posts: prev.posts,
+        error,
+        errorCode,
+        fromCache: true,
+        stale: true,
+        skipped: false
+      };
+    }
+
+    if (!error) {
+      cacheByHandles.set(key, {
+        posts: [],
+        error: null,
+        errorCode: null,
+        expiresAt: Date.now() + cacheTtlMs()
+      });
+    }
 
     return { posts, error, errorCode, fromCache: false, skipped: false };
   })();
