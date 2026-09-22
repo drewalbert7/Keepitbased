@@ -81,7 +81,10 @@ stripe listen --forward-to localhost:3001/api/webhooks/stripe
 }
 ```
 
-## Security notes
+## Complimentary access (existing users)
+
+`subscription_status = 'comped'` counts as paid for MCP keys (grandfathered accounts). Existing users were granted this on 2026-09-21. New signups stay `none` until Stripe Checkout or a manual grant.
+
 
 - Keys are stored as **SHA-256 hashes** only (raw key shown once).
 - MCP auth requires **active/trialing** subscription (unless `MCP_ENTITLEMENT_BYPASS`).

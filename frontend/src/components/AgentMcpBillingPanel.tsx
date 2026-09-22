@@ -149,7 +149,13 @@ export function AgentMcpBillingPanel() {
                 <p className="font-medium text-kib-fg">
                   Status:{' '}
                   <span className={paid ? 'text-emerald-400' : 'text-amber-300'}>
-                    {paid ? 'Pro active' : billing.status === 'none' ? 'Free' : billing.status}
+                    {paid
+                      ? billing.status === 'comped'
+                        ? 'Pro (included)'
+                        : 'Pro active'
+                      : billing.status === 'none'
+                        ? 'Free'
+                        : billing.status}
                   </span>
                   {billing.bypass ? (
                     <span className="ml-2 text-xs text-kib-muted">(dev bypass on)</span>

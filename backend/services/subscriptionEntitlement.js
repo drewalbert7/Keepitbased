@@ -1,7 +1,7 @@
 const db = require('../models/database');
 const config = require('../config');
 
-const PAID_STATUSES = new Set(['active', 'trialing']);
+const PAID_STATUSES = new Set(['active', 'trialing', 'comped']);
 
 /**
  * @param {object|null} row users row or partial

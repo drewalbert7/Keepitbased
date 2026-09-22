@@ -11,6 +11,7 @@ describe('subscriptionEntitlement', () => {
     const { statusIsPaid, publicSubscriptionView } = require('./subscriptionEntitlement');
     expect(statusIsPaid({ subscription_status: 'active' })).toBe(true);
     expect(statusIsPaid({ subscription_status: 'trialing' })).toBe(true);
+    expect(statusIsPaid({ subscription_status: 'comped' })).toBe(true);
     expect(statusIsPaid({ subscription_status: 'canceled' })).toBe(false);
     expect(statusIsPaid({ subscription_status: 'none' })).toBe(false);
     const view = publicSubscriptionView({

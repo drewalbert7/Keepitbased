@@ -124,7 +124,7 @@ async function authenticateMcpKey(rawKey) {
 
   const paid =
     config.MCP_ENTITLEMENT_BYPASS ||
-    ['active', 'trialing'].includes(String(row.subscription_status || '').toLowerCase());
+    ['active', 'trialing', 'comped'].includes(String(row.subscription_status || '').toLowerCase());
   if (!paid) return null;
 
   await db.query(`UPDATE user_mcp_api_keys SET last_used_at = NOW() WHERE id = $1`, [row.id]);
