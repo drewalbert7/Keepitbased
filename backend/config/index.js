@@ -319,6 +319,24 @@ const config = {
     const n = parseInt(process.env.PAPER_BOT_MAX_TRUSTED_X_TRADERS, 10);
     return Number.isFinite(n) && n > 0 ? Math.min(n, 20) : 12;
   })(),
+
+  /**
+   * Stripe Billing + MCP connector for paying dashboard users.
+   * Set STRIPE_SECRET_KEY + STRIPE_PRICE_ID_PRO (+ webhook secret in prod).
+   * MCP_ENTITLEMENT_BYPASS=true allows key minting without an active Stripe sub (dev only).
+   */
+  STRIPE_SECRET_KEY: (process.env.STRIPE_SECRET_KEY || '').trim(),
+  STRIPE_WEBHOOK_SECRET: (process.env.STRIPE_WEBHOOK_SECRET || '').trim(),
+  STRIPE_PRICE_ID_PRO: (process.env.STRIPE_PRICE_ID_PRO || '').trim(),
+  STRIPE_PUBLISHABLE_KEY: (process.env.STRIPE_PUBLISHABLE_KEY || '').trim(),
+  ENABLE_MCP_CONNECTOR: process.env.ENABLE_MCP_CONNECTOR !== 'false',
+  MCP_ENTITLEMENT_BYPASS: process.env.MCP_ENTITLEMENT_BYPASS === 'true',
+  MCP_PUBLIC_URL: (process.env.MCP_PUBLIC_URL || '').trim(),
+  MCP_MAX_KEYS_PER_USER: (() => {
+    const n = parseInt(process.env.MCP_MAX_KEYS_PER_USER, 10);
+    return Number.isFinite(n) && n > 0 ? Math.min(n, 20) : 5;
+  })(),
+
   /** Cron expression for news ingestion (default: every 10 minutes). */
   RESEARCH_NEWS_CRON: process.env.RESEARCH_NEWS_CRON || '*/10 * * * *',
   /** Max distinct stock tickers to poll per cron tick (rate-limit friendly). */

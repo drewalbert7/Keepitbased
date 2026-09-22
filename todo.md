@@ -2,7 +2,11 @@
 
 > **Single source of truth:** `keepitbased/todo.md` in this repo. When you or Cursor reference **`todo.md`**, use **this file only**. A stub at `/home/dstrad/todo.md` redirects here.
 
-Last updated: **2026-07-03** (STOP FOR NIGHT · Grok x_search spend fix).
+Last updated: **2026-09-21** (Agent MCP connector + Stripe Pro billing scaffold).
+
+**Session checkpoint (2026-09-21) — Agent MCP connector for paying users:** **Shipped + pushed:** Stripe Checkout + Customer Portal (`/api/billing/*`), webhook (`/api/webhooks/stripe`), `user_mcp_api_keys` + subscription columns on `users`, Streamable HTTP MCP at **`/api/mcp`** (Bearer `kib_live_…`), Profile **Agent MCP connector** UI, Quant AGI Bot **(Paused as of 7/13/26)** title labels. Tools: watchlist, deploy list, opportunity signals, paper-bot state, subscription status, ask_agent. Docs: [`docs/MCP_CONNECTOR.md`](docs/MCP_CONNECTOR.md). **Also on main (prior local commits):** digest enrichment when Grok fails · Grok x_search spend fix. **Ops still required:** set `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID_PRO`, `STRIPE_WEBHOOK_SECRET` in `backend/.env`, create Pro Price in Stripe Dashboard, webhook → `/api/webhooks/stripe`, `pm2 restart keepitbased-api --update-env`. Dev: `MCP_ENTITLEMENT_BYPASS=true` to mint keys without paying. **Tax note:** enable Stripe Tax + registrations before `automatic_tax` if charging US/EU. **Next:** wire live Stripe keys · smoke Checkout → webhook → create key → Cursor MCP connect · DMARC/SPF DNS · optional MCP write tools.
+
+**Session checkpoint (2026-07-24) — Ops review · website + todo sync:** **Site healthy** · digest OK · Grok spend ~1×/day · **Quant AGI Bot paused as of 7/13/26** (UI label committed). **Still open (ops):** DMARC/SPF DNS; SES production.
 
 **Session checkpoint (2026-07-03) — STOP FOR NIGHT · Grok API token spend fix:** **Root cause:** `/bot/x-trusted-posts` fired on **every** paper-bot auto-run (~12/hr × 2 handles) via `buildRunContext` → `loadXTrustedPulse`; failed `/bot/run-day` **500** did not update `last_auto_run_at` → **5‑min retry loop** burned credits; daily digest also **double-fetched** trusted traders before + after main Grok digest. **Shipped:** **`trustedXPostsCache.js`** — 4h TTL cache (`TRUSTED_X_POSTS_CACHE_TTL_MS`); **`buildRunContext`** defaults **`allowTrustedFetch: false`** (no Grok on auto-run/dry-run; learning memory symbols still merge); **`recordAutoRunAttempt`** updates `last_auto_run_at` on skip/fail/success; digest uses **`supplementTrustedDigestFromDigestLinks`** first, cached fetch fallback only; learning cycle **one** forced refresh; cache invalidate on trusted-trader add/remove. **Tests:** `trustedXPostsCache.test.js`. **Ops:** `pm2 restart keepitbased-api` · restore xAI credits at console.x.ai if 403 persists. **Next:** confirm auto-run no longer spams x_search in quant-agi logs · tomorrow digest with `@ren_stocks` · optional `grok_usage` audit table · **5f tail** learning smoke.
 
@@ -230,9 +234,30 @@ npm run email:test-opportunity
 
 ## Resume Here Next Session
 
-### Session save spot (2026-06-19) — **continue here next time**
+### Session save spot (2026-09-21) — **continue here next time**
 
-**Product (start here):** **Quant AGI Bot** — **`/quant-agi` only** · Phases 0–3 ✅ · **4a core ✅** · **4c quant exec ✅** · **5a–5e ✅** · **5f partial ✅** (outcome gate UI + learning smoke shape) · main dashboard unchanged.
+**Shipped on main:** KeepItBased Pro MCP connector scaffold + bot pause UI labels + digest/Grok spend fixes.
+
+**Highest-leverage next:**
+1. **Stripe ops** — Price + keys + webhook (`docs/MCP_CONNECTOR.md`) → smoke Checkout → mint MCP key → Cursor connect
+2. **DNS** — DMARC `_dmarc` + SPF `include:amazonses.com`
+3. Bot stays **PAUSED** (7/13/26) until intentionally resumed
+
+**Product (when bot resumes):** **`/quant-agi`** · Phases 0–3 ✅ · **4a–5e ✅** · **5f partial**.
+
+### Session save spot (2026-07-24) — prior
+
+**Ops status:** Site **healthy**. Daily digest **working**. Grok x_search **under control**. **Quant AGI Bot PAUSED** (7/13/26).
+
+**DNS still open:** DMARC + SPF SES include.
+
+**Product (when bot resumes):** **`/quant-agi`** · Phases 0–3 ✅ · **4a core ✅** · **4c ✅** · **5a–5e ✅** · **5f partial ✅**. Signal hierarchy: rank primary · coach overlay · X whisper · outcome gate (N=10 trades).
+
+**Recommended default experiment (after unpause):** Universe **`quant_auto_agent`** · trusted X @handles · Bot ON during RTH · learning cycle after hours · Outcome gate card · brain **`research_brief`**.
+
+### Session save spot (2026-06-19) — prior
+
+**Product:** **Quant AGI Bot** — **`/quant-agi` only** · Phases 0–3 ✅ · **4a core ✅** · **4c quant exec ✅** · **5a–5e ✅** · **5f partial ✅** (outcome gate UI + learning smoke shape) · main dashboard unchanged.
 
 **Signal hierarchy (enforced in code):** rank tape **primary** · coaching memory **overlay** · trusted X **whisper** · outcome gate blocks tightening until next **N** paper trades improve metrics (default 10).
 

@@ -129,6 +129,15 @@ app.use(cors({
 }));
 
 app.use(morgan('combined'));
+
+// Stripe webhooks need the raw body for signature verification (before json parser).
+const stripeWebhookRoutes = require('./routes/stripeWebhook');
+app.use(
+  '/api/webhooks/stripe',
+  express.raw({ type: 'application/json' }),
+  stripeWebhookRoutes
+);
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -137,6 +146,10 @@ const priceMonitor = new PriceMonitor(io);
 const alertService = new AlertService();
 const paperBotSocket = require('./services/paperBotSocket');
 paperBotSocket.setIo(io);
+
+const billingRoutes = require('./routes/billing');
+const mcpKeysRoutes = require('./routes/mcpKeys');
+const mcpRoutes = require('./routes/mcp');
 
 // Routes
 app.use('/api/webhooks/ses-delivery', sesDeliveryWebhook);
@@ -160,6 +173,9 @@ app.use('/api/internal/research', internalResearchRoutes);
 app.use('/api/admin', adminSignupInviteRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/fundamentals', fundamentalsRoutes);
+app.use('/api/billing', billingRoutes);
+app.use('/api/mcp-keys', mcpKeysRoutes);
+app.use('/api/mcp', mcpRoutes);
 
 // Serve static files from React build
 app.use(express.static(path.join(__dirname, '../frontend/build')));

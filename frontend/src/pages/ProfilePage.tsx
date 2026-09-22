@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { authService } from '../services/authService';
 import { fetchPublicHealthConfig, type PublicHealthConfig } from '../services/healthConfigService';
 import type { User } from '../types';
+import { AgentMcpBillingPanel } from '../components/AgentMcpBillingPanel';
 
 type OpportunityToastTier = 'all' | 'overreaction_only';
 type OpportunityEmailTier = 'all' | 'overreaction_only' | 'capitulation_only';
@@ -322,6 +323,7 @@ const ProfilePage: React.FC = () => {
       </div>
       
       <div className="space-y-6">
+        <AgentMcpBillingPanel />
         {/* User Information */}
         <div className="card">
           <h2 className="text-xl font-semibold text-kib-fg mb-4">Account Information</h2>

@@ -6,7 +6,9 @@ export function TerminalHeader({ embed = false }: { embed?: boolean }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.24em] text-white/60">Quant AGI Terminal</p>
-          <h1 className="text-xl font-semibold text-white">Quant AGI Bot</h1>
+          <h1 className="text-xl font-semibold text-white">
+            Quant AGI Bot <span className="font-medium text-amber-200/90">(Paused as of 7/13/26)</span>
+          </h1>
           {!embed ? (
             <p className="mt-1 text-xs text-white/50">
               <a href="#quant-agi-bot" className="text-neon underline-offset-2 hover:underline">

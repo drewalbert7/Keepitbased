@@ -573,6 +573,44 @@ async function runInitializeDatabase() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS is_signup_admin BOOLEAN NOT NULL DEFAULT false;
     `);
     await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(255);
+    `);
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_subscription_id VARCHAR(255);
+    `);
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(64) NOT NULL DEFAULT 'none';
+    `);
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_price_id VARCHAR(255);
+    `);
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_current_period_end TIMESTAMPTZ;
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_users_stripe_customer_id
+      ON users (stripe_customer_id)
+      WHERE stripe_customer_id IS NOT NULL;
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_mcp_api_keys (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name VARCHAR(120) NOT NULL DEFAULT 'default',
+        key_prefix VARCHAR(24) NOT NULL,
+        key_hash VARCHAR(128) NOT NULL UNIQUE,
+        scopes TEXT[] NOT NULL DEFAULT ARRAY['mcp:read']::text[],
+        last_used_at TIMESTAMPTZ,
+        revoked_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_mcp_api_keys_user_id
+      ON user_mcp_api_keys (user_id)
+      WHERE revoked_at IS NULL;
+    `);
+    await client.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_lower
       ON users (LOWER(username))
       WHERE username IS NOT NULL;

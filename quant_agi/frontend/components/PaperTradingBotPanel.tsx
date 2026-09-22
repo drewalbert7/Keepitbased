@@ -152,7 +152,9 @@ export function PaperTradingBotPanel({ embed = false }: { embed?: boolean }) {
         <div className="min-w-0">
           <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-violet-300/80">Zone B</p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            <h2 className="text-lg font-semibold text-white sm:text-xl">Quant AGI Bot</h2>
+            <h2 className="text-lg font-semibold text-white sm:text-xl">
+              Quant AGI Bot <span className="font-medium text-amber-200/90">(Paused as of 7/13/26)</span>
+            </h2>
             <span className="rounded-full bg-violet-500/20 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-violet-200">
               Paper · simulated fills
             </span>
