@@ -2,7 +2,9 @@
 
 > **Single source of truth:** `keepitbased/todo.md` in this repo. When you or Cursor reference **`todo.md`**, use **this file only**. A stub at `/home/dstrad/todo.md` redirects here.
 
-Last updated: **2026-09-28** (MCP billing load fix · SPA cache bust).
+Last updated: **2026-09-28** (ops/security review · MCP healthy).
+
+**Session checkpoint (2026-09-28) — Ops / security / smoke review:** **App healthy** — `/health` + `/api/health` 200 · PM2 online · MCP auth/tools/nginx `/api/mcp` + `/sse` pass · dalbert billing/keys 200 · UI key create 201 after path fix. **Findings (not yet fixed):** (1) confirm/rotate prod `JWT_SECRET` if still placeholder-like · (2) `sudo nginx -t && sudo systemctl reload nginx` so SPA `no-store` headers apply · (3) when Stripe goes live, don’t toast Pro-ready on `?billing=success` until webhook/`paid` confirms · (4) Stripe env still unset for new paid signups · (5) SSL through **2026-12-04** · minor apt `libpcap` security update. **Prior same day:** MCP double-`/api` load fix + SPA cache meta. **Next:** nginx reload · JWT check · Stripe when ready · Grok 4.7 · DMARC/SPF.
 
 **Session checkpoint (2026-09-28) — MCP page load + cache:** **Fixed:** Agent MCP connector stuck on Loading — axios paths were `/api/api/billing` / `/api/api/mcp-keys` (baseURL already `/api`); now `/billing/*` + `/mcp-keys`. Panel shows Retry on error instead of infinite Loading. **UX:** Comp’d accounts show Pro (included) without broken Manage billing. **Cache:** nginx `no-store` on SPA HTML shell + meta cache-control on `index.html` (reload nginx when password available: `sudo nginx -t && sudo systemctl reload nginx`). **Access:** dalbert **comped** / MCP keys mint OK. **Next:** users connect via `/mcp` · `sudo` nginx reload · Stripe for new paid users · Grok 4.7 when xAI unlocks · DMARC/SPF.
 
@@ -240,14 +242,15 @@ npm run email:test-opportunity
 
 ### Session save spot (2026-09-28) — **continue here next time**
 
-**Shipped:** MCP page load fix (billing/mcp-keys paths) · SPA HTML no-cache · dalbert **comped**. Bot **PAUSED** (7/13/26).
+**Shipped:** MCP page load fix · SPA HTML no-cache (config) · dalbert **comped** · smoke/review: app + MCP healthy. Bot **PAUSED** (7/13/26).
 
 **Highest-leverage next:**
 1. `sudo nginx -t && sudo systemctl reload nginx` (SPA Cache-Control headers)
-2. Users connect Cursor via **`/mcp`** → `https://app.keepitbased.com/api/mcp`
-3. Enable **Grok 4.7** on xAI team → set `LLM_MODEL=grok-4.7` + restart stock-service / quant-agi-api
-4. **Stripe ops** for *new* paid users (`docs/MCP_CONNECTOR.md`)
-5. **DNS** — DMARC + SPF `include:amazonses.com`
+2. Confirm/rotate prod `JWT_SECRET` if placeholder-like · restart `keepitbased-api`
+3. Users connect Cursor via **`/mcp`** → `https://app.keepitbased.com/api/mcp`
+4. **Stripe ops** for *new* paid users (`docs/MCP_CONNECTOR.md`) — toast only after `paid` true
+5. Enable **Grok 4.7** on xAI team → set `LLM_MODEL=grok-4.7` + restart stock-service / quant-agi-api
+6. **DNS** — DMARC + SPF `include:amazonses.com`
 
 **Product (when bot resumes):** **`/quant-agi`** · Phases 0–3 ✅ · **4a–5e ✅** · **5f partial**.
 
