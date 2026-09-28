@@ -26,13 +26,38 @@ const McpPage: React.FC = () => {
               only once.
             </li>
             <li>
-              Click <strong className="text-kib-fg">Copy JSON</strong>, then in Cursor open{' '}
-              <strong className="text-kib-fg">Settings → MCP</strong> and add a remote server with that config
-              (or paste into your <code className="font-mono text-kib-fg">mcp.json</code>).
+              In Cursor use the MCP endpoint{' '}
+              <code className="font-mono text-kib-fg">https://app.keepitbased.com/api/mcp</code>
+              — not the website page <code className="font-mono">/mcp</code>. Paste the JSON below into{' '}
+              <strong className="text-kib-fg">Settings → MCP</strong> (or{' '}
+              <code className="font-mono text-kib-fg">~/.cursor/mcp.json</code>).
             </li>
             <li>
-              Restart MCP / reload the window if needed, then ask your agent to use KeepItBased tools (e.g.
-              “show my watchlist”).
+              If Cursor still shows a <strong className="text-kib-fg">404</strong>, use the stdio bridge
+              workaround on that computer (requires Node.js):
+              <pre className="mt-2 overflow-x-auto rounded bg-black/40 p-2 text-[11px] text-kib-fg">{`{
+  "mcpServers": {
+    "keepitbased": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://app.keepitbased.com/api/mcp",
+        "--transport",
+        "http-only",
+        "--header",
+        "Authorization:\${AUTH_HEADER}"
+      ],
+      "env": {
+        "AUTH_HEADER": "Bearer YOUR_KIB_LIVE_KEY"
+      }
+    }
+  }
+}`}</pre>
+            </li>
+            <li>
+              Restart MCP / reload Cursor, then ask your agent to use KeepItBased tools (e.g. “show my
+              watchlist”).
             </li>
           </ol>
           <div className="mt-4 rounded-lg border border-white/[0.08] bg-black/20 p-4 text-sm text-kib-muted">
