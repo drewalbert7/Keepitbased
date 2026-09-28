@@ -1,3 +1,9 @@
+const nodeCrypto = require('crypto');
+// MCP SDK expects Web Crypto on globalThis (not always present on Node 18 CJS).
+if (!globalThis.crypto && nodeCrypto.webcrypto) {
+  globalThis.crypto = nodeCrypto.webcrypto;
+}
+
 const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
 const { z } = require('zod');

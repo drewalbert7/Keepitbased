@@ -18,7 +18,7 @@ async function getWatchlist(userId) {
 }
 
 async function getDeployList(userId) {
-  const deployListService = require('./deployListService');
+  const deployListService = require('../services/deployListService');
   return deployListService.listDeployList(userId);
 }
 
@@ -36,12 +36,12 @@ async function getOpportunitySignals(userId, { limit = 20 } = {}) {
 }
 
 async function getPaperBotState(userId) {
-  const paperBotService = require('./paperBotService');
+  const paperBotService = require('../services/paperBotService');
   return paperBotService.getState(userId);
 }
 
 async function getSubscriptionStatus(userId) {
-  const { getSubscriptionRow, publicSubscriptionView } = require('./subscriptionEntitlement');
+  const { getSubscriptionRow, publicSubscriptionView } = require('../services/subscriptionEntitlement');
   const row = await getSubscriptionRow(userId);
   return publicSubscriptionView(row);
 }
@@ -54,7 +54,7 @@ async function askAgent(userId, { message }) {
   // Reuse internal agent path via HTTP to Node itself is awkward; call route logic if exported.
   // Prefer thin client to Python opportunity agent through existing agent service.
   try {
-    const agentGateway = require('./agentGateway');
+    const agentGateway = require('../services/agentGateway');
     if (typeof agentGateway.runUserChat === 'function') {
       return await agentGateway.runUserChat(userId, { message: text });
     }

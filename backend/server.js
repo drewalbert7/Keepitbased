@@ -6,6 +6,10 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const cron = require('node-cron');
 const path = require('path');
+const nodeCrypto = require('crypto');
+if (!globalThis.crypto && nodeCrypto.webcrypto) {
+  globalThis.crypto = nodeCrypto.webcrypto;
+}
 
 // Load robust configuration
 const config = require('./config');
