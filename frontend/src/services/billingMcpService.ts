@@ -21,18 +21,19 @@ export type McpKeyRow = {
   active: boolean;
 };
 
+/** Paths are relative to axios baseURL (`/api`). */
 export async function fetchBillingStatus(): Promise<BillingStatus> {
-  const { data } = await axios.get<BillingStatus>('/api/billing/status');
+  const { data } = await axios.get<BillingStatus>('/billing/status');
   return data;
 }
 
 export async function startBillingCheckout(): Promise<{ url: string; id: string }> {
-  const { data } = await axios.post<{ url: string; id: string }>('/api/billing/checkout');
+  const { data } = await axios.post<{ url: string; id: string }>('/billing/checkout');
   return data;
 }
 
 export async function openBillingPortal(): Promise<{ url: string }> {
-  const { data } = await axios.post<{ url: string }>('/api/billing/portal');
+  const { data } = await axios.post<{ url: string }>('/billing/portal');
   return data;
 }
 
@@ -42,7 +43,7 @@ export async function fetchMcpKeys(): Promise<{
   mcpUrl: string;
   maxKeys: number;
 }> {
-  const { data } = await axios.get('/api/mcp-keys');
+  const { data } = await axios.get('/mcp-keys');
   return data;
 }
 
@@ -54,10 +55,10 @@ export async function createMcpKey(name?: string): Promise<{
   mcpUrl: string;
   cursorSnippet: unknown;
 }> {
-  const { data } = await axios.post('/api/mcp-keys', { name: name || 'Cursor agent' });
+  const { data } = await axios.post('/mcp-keys', { name: name || 'Cursor agent' });
   return data;
 }
 
 export async function revokeMcpKey(id: number): Promise<void> {
-  await axios.delete(`/api/mcp-keys/${id}`);
+  await axios.delete(`/mcp-keys/${id}`);
 }

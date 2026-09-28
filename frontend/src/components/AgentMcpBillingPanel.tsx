@@ -11,23 +11,33 @@ import {
   type McpKeyRow
 } from '../services/billingMcpService';
 
+function apiErrorMessage(e: unknown, fallback: string): string {
+  const ax = e as { response?: { data?: { message?: string } }; message?: string };
+  return ax?.response?.data?.message || (e instanceof Error ? e.message : fallback);
+}
+
 export function AgentMcpBillingPanel() {
   const [billing, setBilling] = useState<BillingStatus | null>(null);
   const [keys, setKeys] = useState<McpKeyRow[]>([]);
   const [mcpUrl, setMcpUrl] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const [status, pack] = await Promise.all([fetchBillingStatus(), fetchMcpKeys()]);
       setBilling(status);
       setKeys(pack.keys.filter((k) => k.active));
       setMcpUrl(pack.mcpUrl);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not load billing / MCP');
+      const msg = apiErrorMessage(e, 'Could not load billing / MCP');
+      setLoadError(msg);
+      setBilling(null);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -72,10 +82,7 @@ export function AgentMcpBillingPanel() {
       const { url } = await startBillingCheckout();
       window.location.href = url;
     } catch (e: unknown) {
-      const msg =
-        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        (e instanceof Error ? e.message : 'Checkout failed');
-      toast.error(msg);
+      toast.error(apiErrorMessage(e, 'Checkout failed'));
     } finally {
       setBusy(false);
     }
@@ -87,10 +94,7 @@ export function AgentMcpBillingPanel() {
       const { url } = await openBillingPortal();
       window.location.href = url;
     } catch (e: unknown) {
-      const msg =
-        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        (e instanceof Error ? e.message : 'Portal failed');
-      toast.error(msg);
+      toast.error(apiErrorMessage(e, 'Portal failed'));
     } finally {
       setBusy(false);
     }
@@ -104,10 +108,7 @@ export function AgentMcpBillingPanel() {
       toast.success('MCP API key created — copy it now; it will not be shown again.');
       await load();
     } catch (e: unknown) {
-      const msg =
-        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        (e instanceof Error ? e.message : 'Could not create key');
-      toast.error(msg);
+      toast.error(apiErrorMessage(e, 'Could not create key'));
     } finally {
       setBusy(false);
     }
@@ -139,8 +140,15 @@ export function AgentMcpBillingPanel() {
         deploy list, opportunity signals, and paper-bot state with a personal API key.
       </p>
 
-      {loading || !billing ? (
+      {loading ? (
         <p className="text-sm text-kib-muted">Loading…</p>
+      ) : loadError || !billing ? (
+        <div className="space-y-3 text-sm">
+          <p className="text-amber-300">{loadError || 'Could not load billing / MCP status.'}</p>
+          <button type="button" className="btn-secondary text-sm" onClick={() => void load()}>
+            Retry
+          </button>
+        </div>
       ) : (
         <div className="space-y-4">
           <div className="rounded-lg border border-white/[0.08] bg-black/20 p-4 text-sm">
@@ -177,18 +185,23 @@ export function AgentMcpBillingPanel() {
                   >
                     {stripeReady ? 'Upgrade to Pro' : 'Stripe not configured'}
                   </button>
-                ) : (
+                ) : stripeReady && billing.status !== 'comped' ? (
                   <button
                     type="button"
-                    disabled={busy || !stripeReady}
+                    disabled={busy}
                     onClick={() => void onPortal()}
                     className="btn-secondary disabled:opacity-50"
                   >
                     Manage billing
                   </button>
-                )}
+                ) : null}
               </div>
             </div>
+            {paid && billing.status === 'comped' ? (
+              <p className="mt-3 text-xs text-kib-muted">
+                Pro is included on this account — you can create MCP keys below.
+              </p>
+            ) : null}
             {!stripeReady && !paid ? (
               <p className="mt-3 text-xs text-kib-muted">
                 Paid upgrade is not available yet on this host. If you believe you should have access, contact

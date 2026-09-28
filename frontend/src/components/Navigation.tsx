@@ -39,7 +39,7 @@ const Navigation: React.FC = () => {
     { name: 'Chat', href: '/chat', icon: ChatBubbleLeftRightIcon }
   ];
 
-  /** Always visible next to account controls (MCP immediately left of Profile). */
+  /** Always visible next to account controls (MCP immediately left of Profile). Deploy 2026-09-28. */
   const accountNav = [
     { name: 'MCP', href: '/mcp', icon: CommandLineIcon },
     { name: 'Profile', href: '/profile', icon: UserCircleIcon }
@@ -60,7 +60,7 @@ const Navigation: React.FC = () => {
     }`;
 
   return (
-    <nav className="sticky top-0 z-50 nav-shell pt-[env(safe-area-inset-top)]">
+    <nav data-build="20260928b" className="sticky top-0 z-50 nav-shell pt-[env(safe-area-inset-top)]">
       <div className="mx-auto flex h-14 max-w-[1360px] items-center justify-between gap-2 px-4 sm:px-6">
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
           <Link

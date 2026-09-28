@@ -2,7 +2,9 @@
 
 > **Single source of truth:** `keepitbased/todo.md` in this repo. When you or Cursor reference **`todo.md`**, use **this file only**. A stub at `/home/dstrad/todo.md` redirects here.
 
-Last updated: **2026-09-27** (dedicated MCP nav page · Grok 4.7 defaults ready).
+Last updated: **2026-09-28** (MCP billing load fix · SPA cache bust).
+
+**Session checkpoint (2026-09-28) — MCP page load + cache:** **Fixed:** Agent MCP connector stuck on Loading — axios paths were `/api/api/billing` / `/api/api/mcp-keys` (baseURL already `/api`); now `/billing/*` + `/mcp-keys`. Panel shows Retry on error instead of infinite Loading. **UX:** Comp’d accounts show Pro (included) without broken Manage billing. **Cache:** nginx `no-store` on SPA HTML shell + meta cache-control on `index.html` (reload nginx when password available: `sudo nginx -t && sudo systemctl reload nginx`). **Access:** dalbert **comped** / MCP keys mint OK. **Next:** users connect via `/mcp` · `sudo` nginx reload · Stripe for new paid users · Grok 4.7 when xAI unlocks · DMARC/SPF.
 
 **Session checkpoint (2026-09-27) — Dedicated MCP page in app nav:** **Shipped:** Nav link **MCP** (left of Profile) → **`/mcp`** with connect instructions, tool list, and key mint/revoke UI (`McpPage.tsx`); connector removed from Profile; Stripe checkout/portal return URLs → `/mcp`. Docs updated. **Prior:** Pro MCP API (`/api/mcp`, `kib_live_…` keys), existing users **comped**. **Grok:** code defaults → **`grok-4.7`**; production `.env` still **`grok-4.20-reasoning`** until this xAI team gets 4.7 access. **Next:** users connect via `/mcp` · enable Grok 4.7 in console.x.ai then flip `LLM_MODEL` · Stripe for new paid users · DMARC/SPF.
 
@@ -236,7 +238,20 @@ npm run email:test-opportunity
 
 ## Resume Here Next Session
 
-### Session save spot (2026-09-27) — **continue here next time**
+### Session save spot (2026-09-28) — **continue here next time**
+
+**Shipped:** MCP page load fix (billing/mcp-keys paths) · SPA HTML no-cache · dalbert **comped**. Bot **PAUSED** (7/13/26).
+
+**Highest-leverage next:**
+1. `sudo nginx -t && sudo systemctl reload nginx` (SPA Cache-Control headers)
+2. Users connect Cursor via **`/mcp`** → `https://app.keepitbased.com/api/mcp`
+3. Enable **Grok 4.7** on xAI team → set `LLM_MODEL=grok-4.7` + restart stock-service / quant-agi-api
+4. **Stripe ops** for *new* paid users (`docs/MCP_CONNECTOR.md`)
+5. **DNS** — DMARC + SPF `include:amazonses.com`
+
+**Product (when bot resumes):** **`/quant-agi`** · Phases 0–3 ✅ · **4a–5e ✅** · **5f partial**.
+
+### Session save spot (2026-09-27) — prior
 
 **Shipped:** Nav **MCP** page at **`/mcp`** (instructions + keys). Existing users **comped**. Bot **PAUSED** (7/13/26).
 
