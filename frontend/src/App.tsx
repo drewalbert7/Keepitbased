@@ -9,6 +9,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import ProfilePage from './pages/ProfilePage';
+import McpPage from './pages/McpPage';
 import ProfileAdminPage from './pages/ProfileAdminPage';
 import ProfileAdminSignupInvitePage from './pages/ProfileAdminSignupInvitePage';
 import { ChartPage } from './pages/ChartPage';
@@ -72,6 +73,11 @@ const AppRoutes: React.FC = () => {
               </ProtectedRoute>
             } />
             <Route path="/ai-agent" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/mcp" element={
+              <ProtectedRoute>
+                <McpPage />
+              </ProtectedRoute>
+            } />
             <Route path="/profile" element={
               <ProtectedRoute>
                 <ProfilePage />

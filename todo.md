@@ -2,9 +2,11 @@
 
 > **Single source of truth:** `keepitbased/todo.md` in this repo. When you or Cursor reference **`todo.md`**, use **this file only**. A stub at `/home/dstrad/todo.md` redirects here.
 
-Last updated: **2026-09-21** (MCP connector live · existing users comped).
+Last updated: **2026-09-27** (dedicated MCP nav page · Grok 4.7 defaults ready).
 
-**Session checkpoint (2026-09-21) — Agent MCP connector for paying users:** **Shipped + pushed:** Stripe Checkout + Customer Portal (`/api/billing/*`), webhook (`/api/webhooks/stripe`), `user_mcp_api_keys` + subscription columns on `users`, Streamable HTTP MCP at **`/api/mcp`** (Bearer `kib_live_…`), Profile **Agent MCP connector** UI, Quant AGI Bot **(Paused as of 7/13/26)** title labels. Tools: watchlist, deploy list, opportunity signals, paper-bot state, subscription status, ask_agent. Docs: [`docs/MCP_CONNECTOR.md`](docs/MCP_CONNECTOR.md). **Also on main (prior local commits):** digest enrichment when Grok fails · Grok x_search spend fix. **Ops still required:** set `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID_PRO`, `STRIPE_WEBHOOK_SECRET` in `backend/.env`, create Pro Price in Stripe Dashboard, webhook → `/api/webhooks/stripe`, `pm2 restart keepitbased-api --update-env`. Dev: `MCP_ENTITLEMENT_BYPASS=true` to mint keys without paying. **Tax note:** enable Stripe Tax + registrations before `automatic_tax` if charging US/EU. **Existing users (2026-09-21):** all 8 accounts set `subscription_status=comped` (MCP keys allowed without Stripe). New signups still need Checkout or a manual grant. **Next:** smoke create MCP key on Profile · Cursor connect · wire Stripe for *new* paid users · DMARC/SPF.
+**Session checkpoint (2026-09-27) — Dedicated MCP page in app nav:** **Shipped:** Nav link **MCP** (left of Profile) → **`/mcp`** with connect instructions, tool list, and key mint/revoke UI (`McpPage.tsx`); connector removed from Profile; Stripe checkout/portal return URLs → `/mcp`. Docs updated. **Prior:** Pro MCP API (`/api/mcp`, `kib_live_…` keys), existing users **comped**. **Grok:** code defaults → **`grok-4.7`**; production `.env` still **`grok-4.20-reasoning`** until this xAI team gets 4.7 access. **Next:** users connect via `/mcp` · enable Grok 4.7 in console.x.ai then flip `LLM_MODEL` · Stripe for new paid users · DMARC/SPF.
+
+**Session checkpoint (2026-09-21) — Agent MCP connector for paying users:** Stripe Checkout/portal/webhook + MCP keys + Streamable HTTP `/api/mcp` + existing users **comped**. Docs: [`docs/MCP_CONNECTOR.md`](docs/MCP_CONNECTOR.md).
 
 **Session checkpoint (2026-07-24) — Ops review · website + todo sync:** **Site healthy** · digest OK · Grok spend ~1×/day · **Quant AGI Bot paused as of 7/13/26** (UI label committed). **Still open (ops):** DMARC/SPF DNS; SES production.
 
@@ -234,16 +236,20 @@ npm run email:test-opportunity
 
 ## Resume Here Next Session
 
-### Session save spot (2026-09-21) — **continue here next time**
+### Session save spot (2026-09-27) — **continue here next time**
 
-**Shipped on main:** KeepItBased Pro MCP connector scaffold + bot pause UI labels + digest/Grok spend fixes.
+**Shipped:** Nav **MCP** page at **`/mcp`** (instructions + keys). Existing users **comped**. Bot **PAUSED** (7/13/26).
 
 **Highest-leverage next:**
-1. **Stripe ops** — Price + keys + webhook (`docs/MCP_CONNECTOR.md`) → smoke Checkout → mint MCP key → Cursor connect
-2. **DNS** — DMARC `_dmarc` + SPF `include:amazonses.com`
-3. Bot stays **PAUSED** (7/13/26) until intentionally resumed
+1. Enable **Grok 4.7** on xAI team → set `LLM_MODEL=grok-4.7` + restart stock-service / quant-agi-api
+2. **Stripe ops** for *new* paid users (`docs/MCP_CONNECTOR.md`)
+3. **DNS** — DMARC + SPF `include:amazonses.com`
 
 **Product (when bot resumes):** **`/quant-agi`** · Phases 0–3 ✅ · **4a–5e ✅** · **5f partial**.
+
+### Session save spot (2026-09-21) — prior
+
+**Shipped:** KeepItBased Pro MCP connector + bot pause UI + digest/Grok spend fixes. Users later got dedicated `/mcp` page (2026-09-27).
 
 ### Session save spot (2026-07-24) — prior
 

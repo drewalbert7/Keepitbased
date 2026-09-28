@@ -43,10 +43,10 @@ export function AgentMcpBillingPanel() {
     if (billingQ === 'success') {
       toast.success('Subscription updated — you can create an MCP key now.');
       void load();
-      window.history.replaceState({}, '', '/profile');
+      window.history.replaceState({}, '', '/mcp');
     } else if (billingQ === 'cancel') {
       toast('Checkout canceled');
-      window.history.replaceState({}, '', '/profile');
+      window.history.replaceState({}, '', '/mcp');
     }
   }, [load]);
 
@@ -189,10 +189,10 @@ export function AgentMcpBillingPanel() {
                 )}
               </div>
             </div>
-            {!stripeReady ? (
-              <p className="mt-3 text-xs text-amber-200/90">
-                Ops: set <code className="font-mono">STRIPE_SECRET_KEY</code> and{' '}
-                <code className="font-mono">STRIPE_PRICE_ID_PRO</code> in backend/.env, then restart the API.
+            {!stripeReady && !paid ? (
+              <p className="mt-3 text-xs text-kib-muted">
+                Paid upgrade is not available yet on this host. If you believe you should have access, contact
+                support.
               </p>
             ) : null}
           </div>

@@ -63,8 +63,8 @@ async function createCheckoutSession(userId) {
     customer: customerId,
     client_reference_id: String(userId),
     line_items: [{ price: config.STRIPE_PRICE_ID_PRO, quantity: 1 }],
-    success_url: `${base}/profile?billing=success`,
-    cancel_url: `${base}/profile?billing=cancel`,
+    success_url: `${base}/mcp?billing=success`,
+    cancel_url: `${base}/mcp?billing=cancel`,
     metadata: { keepitbased_user_id: String(userId) },
     subscription_data: {
       metadata: { keepitbased_user_id: String(userId) }
@@ -78,7 +78,7 @@ async function createCustomerPortalSession(userId) {
   const stripe = getStripe();
   const session = await stripe.billingPortal.sessions.create({
     customer: customerId,
-    return_url: `${frontendBase()}/profile`
+    return_url: `${frontendBase()}/mcp`
   });
   return { url: session.url };
 }

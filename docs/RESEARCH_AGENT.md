@@ -38,7 +38,7 @@ Both Python paths use **`LLM_PROVIDER=grok`** and **`GROK_API_KEY`** / **`XAI_AP
 | **`RESEARCH_CONTEXT_LOOKBACK_HOURS`** | Optional (default `24`). Hours of **`research_artifacts`** pulled into opportunity-scan replies. |
 | **`RESEARCH_CONTEXT_ARTIFACT_LIMIT`** | Optional (default `50`). Max rows returned per scan. |
 | **`LLM_PROVIDER`** | Use `grok` for Grok-backed paths. |
-| **`LLM_MODEL`** | Grok model id (e.g. `grok-4.20-reasoning`). For **`x_search`** on the Responses API, prefer a model **documented for agentic tools** (xAI examples often use **`grok-4.3`**). If dip-insight fails with 4xx on `/responses` + tools, try an updated tool-capable model. |
+| **`LLM_MODEL`** | Grok model id (default **`grok-4.7`**). For **`x_search`** on the Responses API, use a model documented for agentic tools. If dip-insight fails with 4xx on `/responses` + tools, try an updated tool-capable model. |
 | **`GROK_API_KEY`** or **`XAI_API_KEY`** | xAI API key. |
 | **`GROK_BASE_URL`** | Default `https://api.x.ai/v1`. |
 | **`DIP_INSIGHT_USE_X_SEARCH`** | Default `true`. Dip insight uses **Responses API + `x_search`** (no separate X/Twitter Developer API). Set `false` to skip native X search (falls back to template or snippet path if snippets were passed; Node currently sends empty snippets). |

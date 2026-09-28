@@ -195,7 +195,7 @@ def resolved_grok_model() -> str:
         if cand and str(cand).strip():
             return str(cand).strip()
     # Must match an ID your xAI team can access — same default as langgraph_agent/llm_client.py
-    return "grok-4.20-reasoning"
+    return "grok-4.7"
 
 
 # Ensure dirs exist early (no-op harmful)

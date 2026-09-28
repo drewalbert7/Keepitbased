@@ -11,7 +11,8 @@ import {
   Bars3Icon,
   XMarkIcon,
   ChatBubbleLeftRightIcon,
-  CpuChipIcon
+  CpuChipIcon,
+  CommandLineIcon
 } from '@heroicons/react/24/outline';
 
 const Navigation: React.FC = () => {
@@ -35,11 +36,14 @@ const Navigation: React.FC = () => {
     { name: 'Crypto Charts', href: '/crypto', icon: CurrencyDollarIcon },
     { name: 'Signals', href: '/opportunity-signals', icon: InboxIcon },
     { name: 'Chat', href: '/chat', icon: ChatBubbleLeftRightIcon },
+    { name: 'MCP', href: '/mcp', icon: CommandLineIcon },
     { name: 'Profile', href: '/profile', icon: UserCircleIcon }
   ];
 
   const isActive = (href: string) =>
-    location.pathname === href || (href === '/dashboard' && location.pathname === '/ai-agent');
+    location.pathname === href ||
+    (href === '/dashboard' && location.pathname === '/ai-agent') ||
+    (href === '/mcp' && location.pathname.startsWith('/mcp'));
 
   const linkClass = (href: string) =>
     `flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${

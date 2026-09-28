@@ -15,7 +15,7 @@ class LlmClient:
 
     def __init__(self):
         self.provider = os.getenv("LLM_PROVIDER", "").strip().lower()
-        self.model = os.getenv("LLM_MODEL", "grok-4.20-reasoning")
+        self.model = os.getenv("LLM_MODEL", "grok-4.7")
         self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
         self.openai_base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
         self.grok_api_key = os.getenv("GROK_API_KEY", "") or os.getenv("XAI_API_KEY", "")

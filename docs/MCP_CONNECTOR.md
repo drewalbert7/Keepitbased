@@ -11,7 +11,7 @@ Paid dashboard users get a **remote MCP endpoint** so Cursor / Claude / other ag
 | Stripe webhooks | `POST /api/webhooks/stripe` |
 | MCP API keys | `GET/POST/DELETE /api/mcp-keys` |
 | MCP Streamable HTTP | `POST/GET /api/mcp` (Bearer `kib_live_…`) |
-| Profile UI | **Profile → Agent MCP connector** |
+| Profile UI | **Nav → MCP** (`/mcp`) — instructions + key minting |
 
 ### MCP tools (v1)
 
@@ -64,8 +64,8 @@ stripe listen --forward-to localhost:3001/api/webhooks/stripe
 
 ## User flow
 
-1. Profile → **Upgrade to Pro** (Stripe Checkout)
-2. After webhook syncs `subscription_status=active` → **Create key**
+1. Open **[MCP](https://app.keepitbased.com/mcp)** in the app nav (left of Profile)
+2. After webhook syncs `subscription_status=active` (or you are `comped`) → **Create key**
 3. Paste Cursor MCP config (shown once):
 
 ```json
